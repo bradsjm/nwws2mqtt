@@ -146,7 +146,7 @@ class NWWSClient:
         if self.config.log_file:
             logger.add(
                 self.config.log_file,
-                level="DEBUG",
+                level=self.config.log_level,
                 rotation="10 MB",
                 retention="7 days",
                 format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} | {message}",
@@ -168,6 +168,8 @@ class NWWSClient:
 
             # Add error handlers
             factory.addBootstrap(xmlstream.STREAM_END_EVENT, self._on_disconnected)
+            factory.addBootstrap(xmlstream.STREAM_ERROR_EVENT, self._on_stream_error)
+            factory.addBootstrap(xmlstream.INIT_FAILED_EVENT, self._on_stream_error)
 
             connector = SRVConnector(
                 reactor,
@@ -451,6 +453,11 @@ class NWWSClient:
 
         except Exception as e:
             logger.error(f"Error processing group message: {e}")
+
+    def _on_stream_error(self, failure) -> None:
+        """Handle stream errors, such as authentication failures."""
+        logger.error(f"Stream error (likely authentication failure): {failure}")
+        self.shutdown()
 
     def shutdown(self) -> None:
         """Gracefully shutdown the client."""
