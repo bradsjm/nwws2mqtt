@@ -40,7 +40,7 @@ RECONNECT_DELAY = 30
 MAX_RECONNECT_ATTEMPTS = 10
 GROUPCHAT_MESSAGE_TIMEOUT = 300  # 5 minutes
 
-load_dotenv()
+load_dotenv(override=True)  # Load environment variables from .env file
 
 
 @dataclass
@@ -404,6 +404,8 @@ class NWWSClient:
 
             try:
                 tp = TextProduct(noaaport, parse_segments=True, ugc_provider={})
+                source = tp.source or "unknown"
+                afos = tp.afos or "unknown"
                 product_id = tp.get_product_id()
 
                 if product_id:
@@ -415,6 +417,7 @@ class NWWSClient:
                             tp,
                             unpicklable=False,
                             indent=2,
+                            max_depth=5,
                             separators=(",", ":")
                         )
 
@@ -424,7 +427,9 @@ class NWWSClient:
                             asyncio.set_event_loop(loop)
                             try:
                                 loop.run_until_complete(
-                                    self.output_manager.publish(product_id, structured_data, subject)
+                                    self.output_manager.publish(
+                                        source, afos[:3], product_id, structured_data, subject
+                                    )
                                 )
                             except Exception as e:
                                 logger.error(f"Failed to publish data: {e}")

@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
@@ -25,8 +26,9 @@ class OutputConfig:
     mqtt_password: str | None = None
     mqtt_topic_prefix: str = "nwws"
     mqtt_qos: int = 1
-    mqtt_retain: bool = False
+    mqtt_retain: bool = True
     mqtt_client_id: str = "nwws-oi-client"
+    mqtt_message_expiry_minutes: int = 5
 
     @classmethod
     def from_env(cls) -> "OutputConfig":
@@ -45,6 +47,7 @@ class OutputConfig:
             mqtt_qos=int(os.getenv("MQTT_QOS", "1")),
             mqtt_retain=os.getenv("MQTT_RETAIN", "false").lower() == "true",
             mqtt_client_id=os.getenv("MQTT_CLIENT_ID", "nwws-oi-client"),
+            mqtt_message_expiry_minutes=int(os.getenv("MQTT_MESSAGE_EXPIRY_MINUTES", "5")),
         )
 
 
@@ -56,7 +59,7 @@ class OutputHandler(ABC):
         self.config = config
 
     @abstractmethod
-    async def publish(self, product_id: str, structured_data: str, subject: str = "") -> None:
+    async def publish(self, source: str, afos: str,  product_id: str, structured_data: str, subject: str = "") -> None:
         """Publish structured data to the output destination."""
 
     @abstractmethod
@@ -76,12 +79,11 @@ class OutputHandler(ABC):
 class ConsoleOutputHandler(OutputHandler):
     """Output handler that prints to console."""
 
-    async def publish(self, product_id: str, structured_data: str, subject: str = "") -> None:
+    async def publish(self, source: str, afos: str, product_id: str, structured_data: str, subject: str = "") -> None:
         """Print structured data to console."""
         try:
             # Use logger instead of print to be consistent with the rest of the application
             logger.info(f"Product {product_id}: {structured_data}")
-            logger.debug(f"Published product {product_id} to console")
         except Exception as e:
             logger.error(f"Failed to publish to console: {e}")
 
@@ -115,6 +117,8 @@ class MQTTOutputHandler(OutputHandler):
         self.client: mqtt.Client | None = None
         self._connected = False
         self._connect_future: asyncio.Future | None = None
+        self._published_topics: dict[str, float] = {}  # topic -> timestamp
+        self._cleanup_task: asyncio.Task | None = None
 
     async def start(self) -> None:
         """Start MQTT client and connect to broker."""
@@ -151,12 +155,15 @@ class MQTTOutputHandler(OutputHandler):
             )
             
             if result != mqtt.MQTT_ERR_SUCCESS:
-                def _raise_connection_error():
-                    raise ConnectionError(f"Failed to connect to MQTT broker: {result}")
-                _raise_connection_error()
+                raise ConnectionError(f"Failed to connect to MQTT broker: {result}")
 
             # Wait for connection to complete
             await asyncio.wait_for(self._connect_future, timeout=30.0)
+            
+            # Start cleanup task only if retain is enabled
+            if self.config.mqtt_retain:
+                self._cleanup_task = asyncio.create_task(self._cleanup_expired_messages())
+            
             logger.info("MQTT output handler started and connected")
 
         except Exception as e:
@@ -167,6 +174,17 @@ class MQTTOutputHandler(OutputHandler):
 
     async def stop(self) -> None:
         """Stop MQTT client and disconnect from broker."""
+        if self._cleanup_task:
+            self._cleanup_task.cancel()
+            try:
+                await self._cleanup_task
+            except asyncio.CancelledError:
+                pass
+
+        # Clean up all retained messages only if retain is enabled
+        if self.config.mqtt_retain:
+            await self._cleanup_all_messages()
+
         if self.client:
             try:
                 logger.info("Stopping MQTT output handler")
@@ -177,25 +195,36 @@ class MQTTOutputHandler(OutputHandler):
             except Exception as e:
                 logger.error(f"Error stopping MQTT handler: {e}")
 
-    async def publish(self, product_id: str, structured_data: str, subject: str = "") -> None:
+    async def publish(self, source: str, afos: str, product_id: str, structured_data: str, subject: str = "") -> None:
         """Publish structured data to MQTT topic."""
         if not self.client or not self._connected:
             logger.warning("MQTT client not connected, skipping publish")
             return
 
         try:
-            # Create topic based on product ID
-            topic = f"{self.config.mqtt_topic_prefix}/{product_id}"
+            # Create topic based on source, AFOS, and product ID
+            topic = f"{self.config.mqtt_topic_prefix}/{source}/{afos}/{product_id}"
+            
+            # Create properties for message expiry only if retain is enabled
+            properties = None
+            if self.config.mqtt_retain:
+                properties = mqtt.Properties(mqtt.PacketTypes.PUBLISH)
+                expiry_seconds = self.config.mqtt_message_expiry_minutes * 60
+                properties.MessageExpiryInterval = expiry_seconds
             
             # Publish message
             result = self.client.publish(
                 topic,
                 structured_data,
                 qos=self.config.mqtt_qos,
-                retain=self.config.mqtt_retain
+                retain=self.config.mqtt_retain,
+                properties=properties
             )
             
             if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                # Track the published topic with timestamp only if retain is enabled
+                if self.config.mqtt_retain:
+                    self._published_topics[topic] = time.time()
                 logger.debug(f"Published product {product_id} to MQTT topic {topic}")
             else:
                 logger.warning(f"Failed to publish to MQTT: {result.rc}")
@@ -232,6 +261,64 @@ class MQTTOutputHandler(OutputHandler):
     def _on_publish(self, _client: Any, _userdata: Any, mid: int) -> None:
         """Handle MQTT publish confirmation."""
         logger.debug(f"MQTT message {mid} published successfully")
+
+    async def _cleanup_expired_messages(self) -> None:
+        """Periodically clean up expired messages."""
+        cleanup_interval = 60  # Check every minute
+        expiry_seconds = self.config.mqtt_message_expiry_minutes * 60
+        
+        while True:
+            try:
+                await asyncio.sleep(cleanup_interval)
+                
+                if not self._connected or not self.client:
+                    continue
+                
+                current_time = time.time()
+                expired_topics = []
+                
+                # Find expired topics
+                for topic, publish_time in self._published_topics.items():
+                    if current_time - publish_time >= expiry_seconds:
+                        expired_topics.append(topic)
+                
+                # Remove expired messages
+                for topic in expired_topics:
+                    try:
+                        # Publish empty retained message to remove it
+                        result = self.client.publish(topic, "", qos=0, retain=True)
+                        if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                            del self._published_topics[topic]
+                            logger.debug(f"Removed expired message from topic {topic}")
+                        else:
+                            logger.warning(f"Failed to remove expired message from topic {topic}: {result.rc}")
+                    except Exception as e:
+                        logger.error(f"Error removing expired message from topic {topic}: {e}")
+                        
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Error in cleanup task: {e}")
+
+    async def _cleanup_all_messages(self) -> None:
+        """Remove all tracked retained messages."""
+        if not self._connected or not self.client:
+            return
+            
+        logger.info(f"Cleaning up {len(self._published_topics)} retained messages")
+        
+        for topic in list(self._published_topics.keys()):
+            try:
+                # Publish empty retained message to remove it
+                result = self.client.publish(topic, "", qos=0, retain=True)
+                if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                    logger.debug(f"Removed retained message from topic {topic}")
+                else:
+                    logger.warning(f"Failed to remove retained message from topic {topic}: {result.rc}")
+            except Exception as e:
+                logger.error(f"Error removing retained message from topic {topic}: {e}")
+        
+        self._published_topics.clear()
 
 
 class OutputManager:
@@ -286,7 +373,7 @@ class OutputManager:
             except Exception as e:
                 logger.error(f"Failed to stop handler {type(handler).__name__}: {e}")
 
-    async def publish(self, product_id: str, structured_data: str, subject: str = "") -> None:
+    async def publish(self, wfo: str, afos: str, product_id: str, structured_data: str, subject: str = "") -> None:
         """Publish data to all enabled handlers."""
         if not self.handlers:
             logger.warning("No output handlers available")
@@ -296,7 +383,7 @@ class OutputManager:
         tasks = []
         for handler in self.handlers:
             if handler.is_connected:
-                tasks.append(handler.publish(product_id, structured_data, subject))
+                tasks.append(handler.publish(wfo, afos, product_id, structured_data, subject))
             else:
                 logger.warning(f"Handler {type(handler).__name__} is not connected, skipping")
 
