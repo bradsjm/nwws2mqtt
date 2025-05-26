@@ -44,10 +44,11 @@ class XMPPConfig:
 class NWWSXMPPClient:
     """Enhanced NWWS-OI XMPP Client."""
 
-    def __init__(self, config: XMPPConfig, output_manager: OutputManager) -> None:
+    def __init__(self, config: XMPPConfig, output_manager: OutputManager, stats_collector=None) -> None:
         """Initialize the XMPP client with configuration and output manager."""
         self.config = config
         self.output_manager = output_manager
+        self.stats_collector = stats_collector
         self.outstanding_pings: list[str] = []
         self.xmlstream: XmlStream | None = None
         self.housekeeping_task: LoopingCall | None = None
@@ -76,6 +77,9 @@ class NWWSXMPPClient:
     def connect(self) -> None:
         """Establish connection to NWWS-OI server."""
         try:
+            if self.stats_collector:
+                self.stats_collector.on_connection_attempt()
+                
             jid = JID(f"{self.config.username}@{self.config.server}")
             factory = client.XMPPClientFactory(jid, self.config.password)
             factory.addBootstrap(xmlstream.STREAM_CONNECTED_EVENT, self._on_connected)
@@ -96,7 +100,9 @@ class NWWSXMPPClient:
             connector.connect()
 
         except Exception as e:
-            logger.error(f"Failed to connect: {e}")
+            logger.error("Failed to connect", error=str(e))
+            if self.stats_collector:
+                self.stats_collector.on_connection_error()
             if self._on_error_callback:
                 self._on_error_callback(f"Connection failed: {e}")
             self._schedule_reconnect()
@@ -120,6 +126,10 @@ class NWWSXMPPClient:
         logger.info("Authenticated successfully")
         self.outstanding_pings = []
 
+        # Record successful connection
+        if self.stats_collector:
+            self.stats_collector.on_connected()
+
         # Join and subscribe to MUC room
         try:
             self._join_muc_room()
@@ -130,7 +140,7 @@ class NWWSXMPPClient:
                 self.housekeeping_task.start(PING_INTERVAL)
 
         except Exception as e:
-            logger.error(f"Failed during authentication: {e}")
+            logger.error("Failed during authentication", error=str(e))
             if self._on_error_callback:
                 self._on_error_callback(f"Authentication setup failed: {e}")
 
@@ -145,14 +155,14 @@ class NWWSXMPPClient:
             presence = domish.Element(("jabber:client", "presence"))
             presence["to"] = f"{MUC_ROOM}/{utc():%Y%m%d%H%M}"
 
-            logger.info(f"Joining and subscribing to MUC room: {MUC_ROOM}")
+            logger.info("Joining and subscribing to MUC room", room=MUC_ROOM)
             self.xmlstream.send(presence)
 
             # Send a follow-up presence to ensure we're properly subscribed
             reactor.callLater(2, self._send_subscription_presence)
 
         except Exception as e:
-            logger.error(f"Failed to join MUC room: {e}")
+            logger.error("Failed to join MUC room", error=str(e))
             if self._on_error_callback:
                 self._on_error_callback(f"Failed to join MUC room: {e}")
 
@@ -170,12 +180,12 @@ class NWWSXMPPClient:
             logger.debug("Sent subscription confirmation presence")
 
         except Exception as e:
-            logger.error(f"Failed to send subscription presence: {e}")
+            logger.error("Failed to send subscription presence", error=str(e))
 
     def _on_disconnected(self, reason) -> None:
         """Handle disconnection."""
         if not self.is_shutting_down:
-            logger.warning(f"Disconnected from server: {reason}")
+            logger.warning("Disconnected from server", reason=str(reason))
         else:
             logger.info("Disconnected cleanly during shutdown")
 
@@ -197,9 +207,14 @@ class NWWSXMPPClient:
             return
 
         self.reconnect_attempts += 1
+        if self.stats_collector:
+            self.stats_collector.on_reconnect_attempt()
+            
         delay = min(RECONNECT_DELAY * (2 ** (self.reconnect_attempts - 1)), 300)  # Exponential backoff, max 5 min
 
-        logger.info(f"Scheduling reconnection attempt {self.reconnect_attempts} in {delay} seconds")
+        logger.info("Scheduling reconnection attempt", 
+                   attempt=self.reconnect_attempts, 
+                   delay_seconds=delay)
         reactor.callLater(delay, self.connect)
 
     def _housekeeping(self) -> None:
@@ -213,13 +228,14 @@ class NWWSXMPPClient:
 
             # Check for groupchat message timeout
             if current_time - self.last_groupchat_message_time > GROUPCHAT_MESSAGE_TIMEOUT:
-                logger.warning(f"No groupchat messages received in {GROUPCHAT_MESSAGE_TIMEOUT} seconds, forcing reconnection")
+                logger.warning("No groupchat messages received, forcing reconnection", 
+                             timeout_seconds=GROUPCHAT_MESSAGE_TIMEOUT)
                 self._force_reconnect()
                 return
 
             # Handle outstanding pings
             if self.outstanding_pings:
-                logger.debug(f"Outstanding pings: {len(self.outstanding_pings)}")
+                logger.debug("Outstanding pings", count=len(self.outstanding_pings))
 
             if len(self.outstanding_pings) > MAX_UNRESPONDED_PINGS:
                 logger.error("Too many unresponded pings, forcing reconnection")
@@ -230,7 +246,7 @@ class NWWSXMPPClient:
             self._send_ping()
 
         except Exception as e:
-            logger.error(f"Error in housekeeping: {e}")
+            logger.error("Error in housekeeping", error=str(e))
 
     def _send_ping(self) -> None:
         """Send ping to server."""
@@ -249,10 +265,14 @@ class NWWSXMPPClient:
 
             self.outstanding_pings.append(pingid)
             self.xmlstream.send(ping)
-            logger.debug(f"Sent ping with ID: {pingid}")
+            
+            if self.stats_collector:
+                self.stats_collector.on_ping_sent()
+                
+            logger.debug("Sent ping", ping_id=pingid)
 
         except Exception as e:
-            logger.error(f"Failed to send ping: {e}")
+            logger.error("Failed to send ping", error=str(e))
 
     def _force_reconnect(self) -> None:
         """Force reconnection by closing current stream."""
@@ -264,18 +284,19 @@ class NWWSXMPPClient:
                 exc = error.StreamError("connection-timeout")
                 self.xmlstream.send(exc)
             except Exception as e:
-                logger.debug(f"Error sending stream error: {e}")
+                logger.debug("Error sending stream error", error=str(e))
 
     def _safe_on_iq(self, elem: domish.Element) -> None:
         """Safely handle IQ messages."""
         try:
             self._on_iq(elem)
         except Exception as e:
-            logger.error(f"Error processing IQ message: {e}")
+            logger.error("Error processing IQ message", error=str(e))
 
     def _on_iq(self, elem: domish.Element) -> None:
         """Process IQ message."""
-        logger.debug(f"Received IQ type: {elem.getAttribute('type')}")
+        iq_type = elem.getAttribute('type')
+        logger.debug("Received IQ", type=iq_type)
 
         typ = elem.getAttribute("type")
         first_element = elem.firstChildElement()
@@ -289,24 +310,28 @@ class NWWSXMPPClient:
                 pong["from"] = elem["to"]
                 pong["id"] = elem["id"]
                 self.xmlstream.send(pong)
-                logger.debug(f"Responded to ping from {elem['from']}")
+                logger.debug("Responded to ping", from_jid=elem['from'])
             except Exception as e:
-                logger.error(f"Failed to respond to ping: {e}")
+                logger.error("Failed to respond to ping", error=str(e))
 
         elif typ == "result":
             # Handle ping response
             ping_id = elem.getAttribute("id")
             if ping_id in self.outstanding_pings:
                 self.outstanding_pings.remove(ping_id)
-                logger.debug(f"Received pong for ping ID: {ping_id}")
+                if self.stats_collector:
+                    self.stats_collector.on_pong_received()
+                logger.debug("Received pong for ping", ping_id=ping_id)
 
     def _safe_on_message(self, elem: domish.Element) -> None:
         """Safely handle incoming messages."""
         try:
             self.last_message_time = time.time()
+            if self.stats_collector:
+                self.stats_collector.on_message_received()
             self._on_message(elem)
         except Exception as e:
-            logger.error(f"Error processing message: {e}")
+            logger.error("Error processing message", error=str(e))
 
     def _on_message(self, elem: domish.Element) -> None:
         """Process incoming message."""
@@ -317,6 +342,8 @@ class NWWSXMPPClient:
         """Process group chat message containing weather data."""
         # Update groupchat message timestamp
         self.last_groupchat_message_time = time.time()
+        if self.stats_collector:
+            self.stats_collector.on_groupchat_message_received()
 
         try:
             subject = str(elem.body or "")
@@ -339,7 +366,11 @@ class NWWSXMPPClient:
                 afos = tp.afos or "unknown"
                 product_id = tp.get_product_id()
                 if product_id:
-                    logger.info(f"Processed product: {product_id}", subject=subject)
+                    logger.info("product", subject=subject, product_id=product_id)
+
+                    # Record successful processing
+                    if self.stats_collector:
+                        self.stats_collector.on_message_processed(source, afos, product_id)
 
                     # Output structured data
                     try:
@@ -360,8 +391,11 @@ class NWWSXMPPClient:
                                         source, afos[:3], product_id, model_json, subject
                                     )
                                 )
+                                # Record successful publishing
+                                if self.stats_collector:
+                                    self.stats_collector.on_message_published()
                             except Exception as e:
-                                logger.error(f"Failed to publish data: {e}")
+                                logger.error("Failed to publish data", error=str(e))
                             finally:
                                 loop.close()
 
@@ -370,21 +404,29 @@ class NWWSXMPPClient:
                         publish_thread.start()
 
                     except Exception as e:
-                        logger.error(f"Failed to serialize product {product_id}: {e}")
+                        logger.error("Failed to serialize product", product_id=product_id, error=str(e))
+                        if self.stats_collector:
+                            self.stats_collector.on_message_failed("serialization_error")
                 else:
                     logger.debug("Product has no ID, skipping")
 
             except TextProductException as e:
-                logger.warning(f"Failed to parse text product: {e}")
+                logger.warning("Failed to parse text product", error=str(e))
+                if self.stats_collector:
+                    self.stats_collector.on_message_failed("parse_error")
             except Exception as e:
-                logger.error(f"Unexpected error parsing product: {e}")
+                logger.error("Unexpected error parsing product", error=str(e))
+                if self.stats_collector:
+                    self.stats_collector.on_message_failed("unexpected_error")
 
         except Exception as e:
-            logger.error(f"Error processing group message: {e}")
+            logger.error("Error processing group message", error=str(e))
+            if self.stats_collector:
+                self.stats_collector.on_message_failed("processing_error")
 
     def _on_stream_error(self, failure) -> None:
         """Handle stream errors, such as authentication failures."""
-        logger.error(f"Stream error (likely authentication failure): {failure}")
+        logger.error("Stream error (likely authentication failure)", failure=str(failure))
         if self._on_error_callback:
             self._on_error_callback(f"Stream error: {failure}")
 
@@ -414,7 +456,7 @@ class NWWSXMPPClient:
                     logger.info("Closed XML stream connection")
 
             except Exception as e:
-                logger.debug(f"Error during XMPP shutdown cleanup: {e}")
+                logger.debug("Error during XMPP shutdown cleanup", error=str(e))
 
     def is_connected(self) -> bool:
         """Check if the XMPP client is connected."""

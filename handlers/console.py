@@ -12,9 +12,9 @@ class ConsoleOutputHandler(OutputHandler):
         """Print structured data to console."""
         try:
             # Use logger instead of print to be consistent with the rest of the application
-            logger.info(f"Product {product_id}: {structured_data}")
+            logger.info("Product published", product_id=product_id, data=structured_data)
         except Exception as e:
-            logger.error(f"Failed to publish to console: {e}")
+            logger.error("Failed to publish to console", error=str(e))
 
     async def start(self) -> None:
         """Start console handler (no-op)."""

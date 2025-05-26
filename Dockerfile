@@ -28,6 +28,9 @@ ENV NWWS_PORT=5222
 ENV LOG_LEVEL=INFO
 # ENV LOG_FILE=/path/to/log/file.log
 
+# Statistics Configuration
+ENV STATS_INTERVAL=60
+
 # Output Configuration
 # Comma-separated list of output handlers: console, mqtt
 ENV OUTPUT_HANDLERS=console
