@@ -1,104 +1,18 @@
-"""Output handlers for NWWS-OI data."""
+"""MQTT output handler for NWWS-OI data."""
 
 import asyncio
-import os
 import time
-from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from typing import Any
 
 from loguru import logger
+
+from .base import OutputHandler, OutputConfig
 
 try:
     import paho.mqtt.client as mqtt
     MQTT_AVAILABLE = True
 except ImportError:
     MQTT_AVAILABLE = False
-
-
-@dataclass
-class OutputConfig:
-    """Configuration for output handlers."""
-    enabled_handlers: list[str]
-    mqtt_broker: str | None = None
-    mqtt_port: int = 1883
-    mqtt_username: str | None = None
-    mqtt_password: str | None = None
-    mqtt_topic_prefix: str = "nwws"
-    mqtt_qos: int = 1
-    mqtt_retain: bool = True
-    mqtt_client_id: str = "nwws-oi-client"
-    mqtt_message_expiry_minutes: int = 5
-
-    @classmethod
-    def from_env(cls) -> "OutputConfig":
-        """Create output config from environment variables."""
-        # Parse enabled handlers from comma-separated string
-        handlers_str = os.getenv("OUTPUT_HANDLERS", "console")
-        enabled_handlers = [h.strip() for h in handlers_str.split(",") if h.strip()]
-
-        return cls(
-            enabled_handlers=enabled_handlers,
-            mqtt_broker=os.getenv("MQTT_BROKER"),
-            mqtt_port=int(os.getenv("MQTT_PORT", "1883")),
-            mqtt_username=os.getenv("MQTT_USERNAME"),
-            mqtt_password=os.getenv("MQTT_PASSWORD"),
-            mqtt_topic_prefix=os.getenv("MQTT_TOPIC_PREFIX", "nwws"),
-            mqtt_qos=int(os.getenv("MQTT_QOS", "1")),
-            mqtt_retain=os.getenv("MQTT_RETAIN", "false").lower() == "true",
-            mqtt_client_id=os.getenv("MQTT_CLIENT_ID", "nwws-oi-client"),
-            mqtt_message_expiry_minutes=int(os.getenv("MQTT_MESSAGE_EXPIRY_MINUTES", "5")),
-        )
-
-
-class OutputHandler(ABC):
-    """Abstract base class for output handlers."""
-
-    def __init__(self, config: OutputConfig) -> None:
-        """Initialize the output handler."""
-        self.config = config
-
-    @abstractmethod
-    async def publish(self, source: str, afos: str,  product_id: str, structured_data: str, subject: str = "") -> None:
-        """Publish structured data to the output destination."""
-
-    @abstractmethod
-    async def start(self) -> None:
-        """Start the output handler (initialize connections, etc.)."""
-
-    @abstractmethod
-    async def stop(self) -> None:
-        """Stop the output handler (cleanup connections, etc.)."""
-
-    @property
-    @abstractmethod
-    def is_connected(self) -> bool:
-        """Return True if the handler is connected and ready to publish."""
-
-
-class ConsoleOutputHandler(OutputHandler):
-    """Output handler that prints to console."""
-
-    async def publish(self, source: str, afos: str, product_id: str, structured_data: str, subject: str = "") -> None:
-        """Print structured data to console."""
-        try:
-            # Use logger instead of print to be consistent with the rest of the application
-            logger.info(f"Product {product_id}: {structured_data}")
-        except Exception as e:
-            logger.error(f"Failed to publish to console: {e}")
-
-    async def start(self) -> None:
-        """Start console handler (no-op)."""
-        logger.info("Console output handler started")
-
-    async def stop(self) -> None:
-        """Stop console handler (no-op)."""
-        logger.info("Console output handler stopped")
-
-    @property
-    def is_connected(self) -> bool:
-        """Console is always available."""
-        return True
 
 
 class MQTTOutputHandler(OutputHandler):
@@ -319,83 +233,3 @@ class MQTTOutputHandler(OutputHandler):
                 logger.error(f"Error removing retained message from topic {topic}: {e}")
         
         self._published_topics.clear()
-
-
-class OutputManager:
-    """Manages multiple output handlers."""
-
-    def __init__(self, config: OutputConfig) -> None:
-        """Initialize output manager with configuration."""
-        self.config = config
-        self.handlers: list[OutputHandler] = []
-        self._initialize_handlers()
-
-    def _initialize_handlers(self) -> None:
-        """Initialize enabled output handlers."""
-        for handler_type in self.config.enabled_handlers:
-            handler_name = handler_type.lower()
-            
-            try:
-                if handler_name == "console":
-                    handler = ConsoleOutputHandler(self.config)
-                elif handler_name == "mqtt":
-                    handler = MQTTOutputHandler(self.config)
-                else:
-                    logger.warning(f"Unknown output handler: {handler_name}")
-                    continue
-                
-                self.handlers.append(handler)
-                logger.info(f"Initialized {handler_name} output handler")
-                
-            except Exception as e:
-                logger.error(f"Failed to initialize {handler_name} handler: {e}")
-
-        if not self.handlers:
-            # Fallback to console if no handlers are configured
-            logger.warning("No output handlers configured, falling back to console")
-            self.handlers.append(ConsoleOutputHandler(self.config))
-
-    async def start(self) -> None:
-        """Start all output handlers."""
-        logger.info(f"Starting {len(self.handlers)} output handlers")
-        for handler in self.handlers:
-            try:
-                await handler.start()
-            except Exception as e:
-                logger.error(f"Failed to start handler {type(handler).__name__}: {e}")
-
-    async def stop(self) -> None:
-        """Stop all output handlers."""
-        logger.info("Stopping output handlers")
-        for handler in self.handlers:
-            try:
-                await handler.stop()
-            except Exception as e:
-                logger.error(f"Failed to stop handler {type(handler).__name__}: {e}")
-
-    async def publish(self, wfo: str, afos: str, product_id: str, structured_data: str, subject: str = "") -> None:
-        """Publish data to all enabled handlers."""
-        if not self.handlers:
-            logger.warning("No output handlers available")
-            return
-
-        # Publish to all handlers concurrently
-        tasks = []
-        for handler in self.handlers:
-            if handler.is_connected:
-                tasks.append(handler.publish(wfo, afos, product_id, structured_data, subject))
-            else:
-                logger.warning(f"Handler {type(handler).__name__} is not connected, skipping")
-
-        if tasks:
-            try:
-                await asyncio.gather(*tasks, return_exceptions=True)
-            except Exception as e:
-                logger.error(f"Error publishing to handlers: {e}")
-        else:
-            logger.warning("No connected handlers available for publishing")
-
-    @property
-    def connected_handlers_count(self) -> int:
-        """Return the number of connected handlers."""
-        return sum(1 for handler in self.handlers if handler.is_connected)

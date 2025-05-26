@@ -24,7 +24,7 @@ from twisted.words.xish import domish
 from twisted.words.xish.xmlstream import STREAM_END_EVENT, XmlStream
 from models import convert_text_product_to_model
 
-from output_handlers import OutputConfig, OutputManager
+from handlers import OutputConfig, OutputManager
 
 """
 This script connects to the NWWS-OI XMPP server and listens for messages in the
