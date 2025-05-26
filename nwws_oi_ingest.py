@@ -1,8 +1,10 @@
 """Ingest data from NWWS-OI."""
 
+import asyncio
 import os
 import signal
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from types import FrameType
@@ -20,6 +22,8 @@ from twisted.words.protocols.jabber import client, error, xmlstream
 from twisted.words.protocols.jabber.jid import JID
 from twisted.words.xish import domish
 from twisted.words.xish.xmlstream import STREAM_END_EVENT, XmlStream
+
+from output_handlers import OutputConfig, OutputManager
 
 """
 This script connects to the NWWS-OI XMPP server and listens for messages in the
@@ -48,6 +52,7 @@ class Config:
     port: int = 5222
     log_level: str = "INFO"
     log_file: str | None = None
+    output_config: OutputConfig | None = None
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -65,6 +70,7 @@ class Config:
             port=int(os.getenv("NWWS_PORT", "5222")),
             log_level=os.getenv("LOG_LEVEL", "INFO"),
             log_file=os.getenv("LOG_FILE"),
+            output_config=OutputConfig.from_env(),
         )
 
 
@@ -82,6 +88,14 @@ class NWWSClient:
         self.last_message_time = time.time()
         self.last_groupchat_message_time = time.time()
 
+        # Initialize output manager
+        if config.output_config:
+            self.output_manager = OutputManager(config.output_config)
+        else:
+            # Fallback to console output
+            fallback_config = OutputConfig(enabled_handlers=["console"])
+            self.output_manager = OutputManager(fallback_config)
+
         # Setup enhanced logging
         self._setup_logging()
 
@@ -92,7 +106,27 @@ class NWWSClient:
         logger.info("Starting NWWS-OI client",
                    username=config.username, server=config.server)
 
+        # Start output handlers (we'll handle this in the twisted reactor context)
+        self._start_output_handlers()
+
         self._connect()
+
+    def _start_output_handlers(self) -> None:
+        """Start output handlers in the reactor context."""
+        def start_handlers():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(self.output_manager.start())
+                logger.info("Output handlers started successfully")
+            except Exception as e:
+                logger.error(f"Failed to start output handlers: {e}")
+            finally:
+                loop.close()
+
+        # Run in a separate thread to avoid blocking the reactor
+        handler_thread = threading.Thread(target=start_handlers, daemon=True)
+        handler_thread.start()
 
     def _setup_logging(self) -> None:
         """Configure structured logging."""
@@ -158,7 +192,7 @@ class NWWSClient:
         self.xmlstream.addObserver("/iq", self._safe_on_iq)
         self.xmlstream.addObserver(STREAM_END_EVENT, self._on_disconnected)
 
-    def _on_authenticated(self, xs: XmlStream) -> None:
+    def _on_authenticated(self, _xs: XmlStream) -> None:
         """Handle successful authentication."""
         logger.info("Authenticated successfully")
         self.outstanding_pings = []
@@ -383,7 +417,24 @@ class NWWSClient:
                             indent=2,
                             separators=(",", ":")
                         )
-                        print(structured_data)
+
+                        # Publish to all configured output handlers
+                        def publish_data():
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                            try:
+                                loop.run_until_complete(
+                                    self.output_manager.publish(product_id, structured_data, subject)
+                                )
+                            except Exception as e:
+                                logger.error(f"Failed to publish data: {e}")
+                            finally:
+                                loop.close()
+
+                        # Run in a separate thread to avoid blocking the reactor
+                        publish_thread = threading.Thread(target=publish_data, daemon=True)
+                        publish_thread.start()
+
                     except Exception as e:
                         logger.error(f"Failed to serialize product {product_id}: {e}")
                 else:
@@ -404,6 +455,25 @@ class NWWSClient:
 
         logger.info("Shutting down NWWS-OI client")
         self.is_shutting_down = True
+
+        # Stop output handlers first
+        try:
+            def stop_handlers():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    loop.run_until_complete(self.output_manager.stop())
+                    logger.info("Output handlers stopped")
+                except Exception as e:
+                    logger.error(f"Error stopping output handlers: {e}")
+                finally:
+                    loop.close()
+
+            stop_thread = threading.Thread(target=stop_handlers, daemon=True)
+            stop_thread.start()
+            stop_thread.join(timeout=5.0)  # Wait up to 5 seconds
+        except Exception as e:
+            logger.error(f"Error during output handler shutdown: {e}")
 
         if self.housekeeping_task and self.housekeeping_task.running:
             self.housekeeping_task.stop()
