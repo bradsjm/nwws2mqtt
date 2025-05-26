@@ -13,7 +13,7 @@ from loguru import logger
 from twisted.internet import reactor
 
 from handlers import OutputConfig, OutputManager
-from xmpp_client import NWWSXMPPClient, XMPPConfig
+from client.xmpp import NWWSXMPPClient, XMPPConfig
 
 """
 This script connects to the NWWS-OI XMPP server and listens for messages in the

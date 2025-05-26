@@ -311,9 +311,9 @@ class NWWSXMPPClient:
     def _on_message(self, elem: domish.Element) -> None:
         """Process incoming message."""
         if elem.hasAttribute("type") and elem["type"] == "groupchat":
-            self._process_group_message(elem)
+            self._group_message(elem)
 
-    def _process_group_message(self, elem: domish.Element) -> None:
+    def _group_message(self, elem: domish.Element) -> None:
         """Process group chat message containing weather data."""
         # Update groupchat message timestamp
         self.last_groupchat_message_time = time.time()
