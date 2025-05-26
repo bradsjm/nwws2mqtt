@@ -45,6 +45,9 @@ cp .env.example .env
 | `LOG_FILE` | Log file path | - | No |
 | `OUTPUT_HANDLERS` | Comma-separated list of output handlers | console | No |
 | `STATS_INTERVAL` | Statistics logging interval in seconds | 60 | No |
+| `METRICS_ENABLED` | Enable Prometheus metrics endpoint | true | No |
+| `METRICS_PORT` | Port for Prometheus metrics endpoint | 8080 | No |
+| `METRICS_UPDATE_INTERVAL` | Metrics update interval in seconds | 30 | No |
 
 ### Output Handlers
 
@@ -160,7 +163,9 @@ To add a new output handler:
 3. Add the handler to the `OutputManager._initialize_handlers()` method
 4. Update the environment configuration documentation
 
-## 📊 Statistics Collected
+## 📊 Statistics & Metrics
+
+The application provides comprehensive statistics collection with both logging and Prometheus metrics export.
 
 ### Connection Statistics
 - Application uptime and connection status
@@ -183,13 +188,100 @@ To add a new output handler:
 - Publishing performance metrics
 - Handler-specific uptime tracking
 
+### Prometheus Metrics
+
+The application exposes metrics in Prometheus format via a standard `/metrics` endpoint. This enables integration with monitoring systems like Prometheus, Grafana, and other observability tools.
+
+#### Available Metrics
+
+| Metric Name | Type | Description | Labels |
+|-------------|------|-------------|---------|
+| `nwws2mqtt_application_info` | Info | Application version and start time | - |
+| `nwws2mqtt_application_uptime_seconds` | Gauge | Application uptime in seconds | - |
+| `nwws2mqtt_connection_status` | Gauge | XMPP connection status (1=connected, 0=disconnected) | - |
+| `nwws2mqtt_connection_uptime_seconds` | Gauge | Current connection uptime in seconds | - |
+| `nwws2mqtt_connection_total_connections` | Counter | Total number of connections made | - |
+| `nwws2mqtt_connection_reconnect_attempts_total` | Counter | Total number of reconnection attempts | - |
+| `nwws2mqtt_messages_received_total` | Counter | Total number of messages received | - |
+| `nwws2mqtt_messages_processed_total` | Counter | Total number of messages successfully processed | - |
+| `nwws2mqtt_messages_failed_total` | Counter | Total number of messages that failed processing | `error_type` |
+| `nwws2mqtt_messages_published_total` | Counter | Total number of messages published to output handlers | - |
+| `nwws2mqtt_message_processing_success_rate` | Gauge | Message processing success rate as percentage | - |
+| `nwws2mqtt_product_types_total` | Counter | Total count by product type | `product_type` |
+| `nwws2mqtt_sources_total` | Counter | Total count by source | `source` |
+| `nwws2mqtt_afos_codes_total` | Counter | Total count by AFOS code | `afos_code` |
+| `nwws2mqtt_output_handler_status` | Gauge | Output handler connection status | `handler_name`, `handler_type` |
+| `nwws2mqtt_output_handler_published_total` | Counter | Total messages published by output handler | `handler_name`, `handler_type` |
+| `nwws2mqtt_output_handler_success_rate` | Gauge | Output handler success rate as percentage | `handler_name`, `handler_type` |
+
 ## 🔧 Configuration
 
-Statistics logging interval is configurable via environment variable:
+### Statistics Configuration
 
 ```bash
 STATS_INTERVAL=60  # Log statistics every 60 seconds (default)
 ```
+
+### Prometheus Metrics Configuration
+
+```bash
+METRICS_ENABLED=true          # Enable Prometheus metrics endpoint (default: true)
+METRICS_PORT=8080            # Port for metrics endpoint (default: 8080)
+METRICS_UPDATE_INTERVAL=30   # How often to update metrics in seconds (default: 30)
+```
+
+### Accessing Metrics
+
+Once the application is running, metrics are available at:
+```
+http://localhost:8080/metrics
+```
+
+You can test the endpoint with curl:
+```bash
+curl http://localhost:8080/metrics
+```
+
+### Integration with Monitoring Systems
+
+#### Prometheus Configuration
+
+Add this job to your `prometheus.yml`:
+
+```yaml
+scrape_configs:
+  - job_name: 'nwws2mqtt'
+    static_configs:
+      - targets: ['localhost:8080']
+    scrape_interval: 30s
+    metrics_path: /metrics
+```
+
+#### Grafana Dashboard
+
+The metrics can be visualized in Grafana. Key queries for monitoring:
+
+- **Connection Status**: `nwws2mqtt_connection_status`
+- **Message Processing Rate**: `rate(nwws2mqtt_messages_processed_total[5m])`
+- **Error Rate**: `rate(nwws2mqtt_messages_failed_total[5m])`
+- **Success Rate**: `nwws2mqtt_message_processing_success_rate`
+- **Top Product Types**: `topk(10, nwws2mqtt_product_types_total)`
+
+### Demo Mode
+
+To try the Prometheus metrics without NWWS credentials, you can run the demo:
+
+```bash
+python demo_metrics.py
+```
+
+This will:
+- Start a metrics server on port 8080 (configurable with `METRICS_PORT`)
+- Simulate realistic weather data processing
+- Generate all the metrics that the real application would produce
+- Allow you to test Prometheus scraping and Grafana dashboards
+
+While the demo is running, you can view metrics at http://localhost:8080/metrics
 
 ## License
 

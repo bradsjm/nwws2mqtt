@@ -1,7 +1,7 @@
 """Statistics collector for NWWS2MQTT application."""
 
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from loguru import logger

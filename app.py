@@ -14,7 +14,7 @@ from twisted.internet import reactor
 
 from handlers import OutputConfig, OutputManager
 from client.xmpp import NWWSXMPPClient, XMPPConfig
-from stats import StatsCollector, StatsLogger
+from stats import StatsCollector, StatsLogger, PrometheusMetricsExporter
 
 """
 This script connects to the NWWS-OI XMPP server and listens for messages in the
@@ -37,6 +37,9 @@ class Config:
     log_file: str | None = None
     output_config: OutputConfig | None = None
     stats_interval: int = 60  # Statistics logging interval in seconds
+    metrics_enabled: bool = True  # Enable Prometheus metrics endpoint
+    metrics_port: int = 8080  # Port for Prometheus metrics endpoint
+    metrics_update_interval: int = 30  # How often to update metrics in seconds
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -56,6 +59,9 @@ class Config:
             log_file=os.getenv("LOG_FILE"),
             output_config=OutputConfig.from_env(),
             stats_interval=int(os.getenv("STATS_INTERVAL", "60")),
+            metrics_enabled=os.getenv("METRICS_ENABLED", "true").lower() in ("true", "1", "yes"),
+            metrics_port=int(os.getenv("METRICS_PORT", "8080")),
+            metrics_update_interval=int(os.getenv("METRICS_UPDATE_INTERVAL", "30")),
         )
 
 
@@ -70,6 +76,15 @@ class NWWSApplication:
         # Initialize statistics collection
         self.stats_collector = StatsCollector()
         self.stats_logger = StatsLogger(self.stats_collector, config.stats_interval)
+        
+        # Initialize Prometheus metrics exporter if enabled
+        self.metrics_exporter = None
+        if config.metrics_enabled:
+            self.metrics_exporter = PrometheusMetricsExporter(
+                self.stats_collector,
+                port=config.metrics_port,
+                update_interval=config.metrics_update_interval
+            )
 
         # Initialize output manager
         if config.output_config:
@@ -107,6 +122,11 @@ class NWWSApplication:
 
         # Start statistics logging
         self.stats_logger.start()
+        
+        # Start Prometheus metrics exporter if enabled
+        if self.metrics_exporter:
+            self.metrics_exporter.start()
+            logger.info("Prometheus metrics available", url=self.metrics_exporter.metrics_url)
 
         # Start output handlers
         self._start_output_handlers()
@@ -223,6 +243,13 @@ class NWWSApplication:
             self.stats_logger.stop()
         except Exception as e:
             logger.error("Error stopping stats logger", error=str(e))
+            
+        # Stop Prometheus metrics exporter
+        if self.metrics_exporter:
+            try:
+                self.metrics_exporter.stop()
+            except Exception as e:
+                logger.error("Error stopping metrics exporter", error=str(e))
 
         # Log final statistics
         try:

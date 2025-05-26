@@ -135,20 +135,6 @@ class StatsLogger:
                 connection_errors=handler_stats.connection_errors,
             )
         
-        # Log top product types and sources if we have data
-        if stats.messages.product_types:
-            top_products = dict(stats.messages.product_types.most_common(5))
-            logger.info("Top Product Types", products=top_products)
-        
-        if stats.messages.sources:
-            top_sources = dict(stats.messages.sources.most_common(5))
-            logger.info("Top Sources", sources=top_sources)
-        
-        # Log any processing errors
-        if stats.messages.processing_errors:
-            error_summary = dict(stats.messages.processing_errors.most_common(3))
-            logger.warning("Processing Errors", errors=error_summary)
-
     def _calculate_rates(self) -> Dict[str, float]:
         """Calculate per-minute rates from recent snapshots."""
         if len(self._snapshots) < 2:

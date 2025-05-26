@@ -9,6 +9,7 @@ from .models import (
     StatsSnapshot,
 )
 from .logger import StatsLogger
+from .prometheus import PrometheusMetricsExporter
 
 __all__ = [
     "StatsCollector",
@@ -18,4 +19,5 @@ __all__ = [
     "ApplicationStats",
     "StatsSnapshot",
     "StatsLogger",
+    "PrometheusMetricsExporter",
 ]
