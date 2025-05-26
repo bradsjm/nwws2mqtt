@@ -1,0 +1,14 @@
+[project]
+name = "nwws2mqtt"
+version = "0.1.0"
+description = "Provides a gateway from NWWS OI feed to MQTT server"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "jsonpickle>=4.1.0",
+    "loguru>=0.7.3",
+    "psycopg[binary]>=3.2.9",
+    "pyiem>=1.23.0",
+    "python-dotenv>=1.1.0",
+    "twisted[tls]>=24.11.0",
+]
