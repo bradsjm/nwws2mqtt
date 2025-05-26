@@ -7,6 +7,10 @@ from pydantic import BaseModel, Field, ConfigDict
 class WMOProductBaseModel(BaseModel):
     """Base Pydantic model for WMO Product attributes."""
 
+    text: str = Field(
+        description="The full text content of the product.",
+        alias="fullText",
+    )
     warnings: list[str] = Field(
         description="List of parsing warnings encountered.",
         alias="parsingWarnings",
