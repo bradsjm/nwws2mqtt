@@ -691,13 +691,13 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "jsonpickle", specifier = ">=4.1.0" },
-    { name = "loguru", specifier = ">=0.7.3" },
-    { name = "paho-mqtt", specifier = ">=1.6.1" },
-    { name = "psycopg", extras = ["binary"], specifier = ">=3.2.9" },
-    { name = "pyiem", specifier = ">=1.23.0" },
-    { name = "python-dotenv", specifier = ">=1.1.0" },
-    { name = "twisted", extras = ["tls"], specifier = ">=24.11.0" },
+    { name = "jsonpickle" },
+    { name = "loguru" },
+    { name = "paho-mqtt" },
+    { name = "psycopg", extras = ["binary"] },
+    { name = "pyiem" },
+    { name = "python-dotenv" },
+    { name = "twisted", extras = ["tls"] },
 ]
 
 [[package]]
