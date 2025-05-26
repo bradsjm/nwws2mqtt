@@ -34,6 +34,7 @@ MAX_UNRESPONDED_PINGS = 5
 PING_INTERVAL = 60
 RECONNECT_DELAY = 30
 MAX_RECONNECT_ATTEMPTS = 10
+GROUPCHAT_MESSAGE_TIMEOUT = 300  # 5 minutes
 
 load_dotenv()
 
@@ -46,6 +47,7 @@ class Config:
     server: str = "nwws-oi.weather.gov"
     port: int = 5222
     log_level: str = "INFO"
+    log_file: Optional[str] = None
     
     @classmethod
     def from_env(cls) -> "Config":
@@ -62,6 +64,7 @@ class Config:
             server=os.getenv("NWWS_SERVER", "nwws-oi.weather.gov"),
             port=int(os.getenv("NWWS_PORT", "5222")),
             log_level=os.getenv("LOG_LEVEL", "INFO"),
+            log_file=os.getenv("LOG_FILE"),
         )
 
 
@@ -77,6 +80,7 @@ class NWWSClient:
         self.is_shutting_down = False
         self.reconnect_attempts = 0
         self.last_message_time = time.time()
+        self.last_groupchat_message_time = time.time()
         
         # Setup enhanced logging
         self._setup_logging()
@@ -102,13 +106,17 @@ class NWWSClient:
                    "<level>{message}</level>",
             serialize=False,
         )
-        logger.add(
-            "nwws_client.log",
-            level="DEBUG",
-            rotation="10 MB",
-            retention="7 days",
-            format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} | {message}",
-        )
+        
+        # Only add file logging if log_file is specified
+        if self.config.log_file:
+            logger.add(
+                self.config.log_file,
+                level="DEBUG",
+                rotation="10 MB",
+                retention="7 days",
+                format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} | {message}",
+            )
+            logger.info(f"File logging enabled: {self.config.log_file}")
 
     def _signal_handler(self, signum: int, frame) -> None:
         """Handle shutdown signals gracefully."""
@@ -245,6 +253,12 @@ class NWWSClient:
             if current_time - self.last_message_time > 300:  # 5 minutes
                 logger.warning("No messages received in 5 minutes, connection may be dead")
             
+            # Check for groupchat message timeout
+            if current_time - self.last_groupchat_message_time > GROUPCHAT_MESSAGE_TIMEOUT:
+                logger.warning(f"No groupchat messages received in {GROUPCHAT_MESSAGE_TIMEOUT} seconds, forcing reconnection")
+                self._force_reconnect()
+                return
+            
             # Handle outstanding pings
             if self.outstanding_pings:
                 logger.debug(f"Outstanding pings: {len(self.outstanding_pings)}")
@@ -343,6 +357,9 @@ class NWWSClient:
 
     def _process_group_message(self, elem: domish.Element) -> None:
         """Process group chat message containing weather data."""
+        # Update groupchat message timestamp
+        self.last_groupchat_message_time = time.time()
+        
         try:
             subject = str(elem.body or "")
             
