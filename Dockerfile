@@ -16,7 +16,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv pip install --system --no-cache --requirement pyproject.toml
 
 # Copy application code
-COPY . ./
+COPY ./src ./
 
 # NWWS-OI Configuration
 ENV NWWS_USERNAME=your_username_here
