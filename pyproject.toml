@@ -5,10 +5,10 @@ description = "Provides a gateway from NWWS OI feed to MQTT server"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "jsonpickle",
     "loguru",
     "paho-mqtt",
     "psycopg[binary]",
+    "pydantic>=2.11.5",
     "pyiem",
     "python-dotenv",
     "twisted[tls]",

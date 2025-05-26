@@ -6,10 +6,10 @@ import signal
 import sys
 import threading
 import time
+import json
 from dataclasses import dataclass
 from types import FrameType
 
-import jsonpickle
 from dotenv import load_dotenv
 from loguru import logger
 from pyiem.exceptions import TextProductException
@@ -22,6 +22,7 @@ from twisted.words.protocols.jabber import client, error, xmlstream
 from twisted.words.protocols.jabber.jid import JID
 from twisted.words.xish import domish
 from twisted.words.xish.xmlstream import STREAM_END_EVENT, XmlStream
+from models import convert_text_product_to_model
 
 from output_handlers import OutputConfig, OutputManager
 
@@ -407,19 +408,17 @@ class NWWSClient:
                 source = tp.source or "unknown"
                 afos = tp.afos or "unknown"
                 product_id = tp.get_product_id()
-
                 if product_id:
                     logger.info(f"Processed product: {product_id}", subject=subject)
 
                     # Output structured data
                     try:
-                        structured_data = jsonpickle.encode(
-                            tp,
-                            unpicklable=False,
-                            indent=2,
-                            max_depth=5,
-                            separators=(",", ":")
-                        )
+                        model = convert_text_product_to_model(tp)
+                        model_json = json.dumps(model.model_dump(
+                            mode="json",
+                            by_alias=True,
+                            exclude_defaults=True
+                        ), sort_keys=True, indent=1)
 
                         # Publish to all configured output handlers
                         def publish_data():
@@ -428,7 +427,7 @@ class NWWSClient:
                             try:
                                 loop.run_until_complete(
                                     self.output_manager.publish(
-                                        source, afos[:3], product_id, structured_data, subject
+                                        source, afos[:3], product_id, model_json, subject
                                     )
                                 )
                             except Exception as e:
