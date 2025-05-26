@@ -16,7 +16,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv pip install --system --no-cache --requirement pyproject.toml
 
 # Copy application code
-COPY nwws_oi_ingest.py output_handlers.py ./
+COPY *.py ./
 
 # NWWS-OI Configuration
 ENV NWWS_USERNAME=your_username_here
@@ -44,4 +44,4 @@ ENV OUTPUT_HANDLERS=console
 # ENV MQTT_CLIENT_ID=nwws-oi-client
 
 # Command to run the application
-CMD ["python", "nwws_oi_ingest.py"]
+CMD ["python", "./nwws_oi_ingest.py"]
