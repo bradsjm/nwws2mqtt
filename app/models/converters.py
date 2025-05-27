@@ -21,7 +21,7 @@ def convert_ugc_to_model(ugc_obj: "UGC") -> UGCModel:
         geoClass=ugc_obj.geoclass,
         number=ugc_obj.number,
         name=ugc_obj.name,
-        wfos=list(ugc_obj.wfos),
+        wfoIdList=list(ugc_obj.wfos),
     )
 
 
@@ -74,15 +74,15 @@ def convert_text_product_segment_to_model(
 
     return TextProductSegmentModel(
         segmentText=segment_obj.unixtext,
-        ugcs=[convert_ugc_to_model(u) for u in segment_obj.ugcs if u],
+        ugcRecords=[convert_ugc_to_model(u) for u in segment_obj.ugcs if u],
         ugcExpireTime=segment_obj.ugcexpire,
         headlines=list(segment_obj.headlines),
         hvtecRecords=hvtec_list,
-        tmlGisWkt=segment_obj.tml_giswkt,
-        tmlValidTime=segment_obj.tml_valid,
-        tmlSpeedKnots=segment_obj.tml_sknt,
-        tmlDirectionDegrees=segment_obj.tml_dir,
-        sbwGisWkt=segment_obj.giswkt,
+        timeMotLocGisWkt=segment_obj.tml_giswkt,
+        timeMotLocValidTime=segment_obj.tml_valid,
+        timeMotLocSpeedKnots=segment_obj.tml_sknt,
+        timeMotLocDirectionDegrees=segment_obj.tml_dir,
+        stormBasedWarningGisWkt=segment_obj.giswkt,
         windTag=segment_obj.windtag,
         windTagUnits=segment_obj.windtagunits,
         windThreat=segment_obj.windthreat,
