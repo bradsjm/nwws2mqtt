@@ -7,6 +7,7 @@ from loguru import logger
 from .base import OutputConfig, OutputHandler
 from .console import ConsoleOutputHandler
 from .mqtt import MQTTOutputHandler
+from messaging import MessageBus, ProductMessage, Topics
 
 
 class OutputManager:
@@ -18,6 +19,7 @@ class OutputManager:
         self.stats_collector = stats_collector
         self.handlers: list[OutputHandler] = []
         self._initialize_handlers()
+        self._subscribe_to_topics()
 
     def _initialize_handlers(self) -> None:
         """Initialize enabled output handlers."""
@@ -52,6 +54,46 @@ class OutputManager:
             if self.stats_collector:
                 self.stats_collector.register_output_handler("console", "console")
 
+    def _subscribe_to_topics(self) -> None:
+        """Subscribe to pubsub topics."""
+        MessageBus.subscribe(Topics.PRODUCT_RECEIVED, self._on_product_received)
+        logger.info("Subscribed to product topics")
+
+    def _on_product_received(self, message: ProductMessage) -> None:
+        """Handle received product messages from pubsub."""
+        try:
+            # Create a task to publish the message asynchronously
+            import asyncio
+            import threading
+            
+            def publish_data():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    loop.run_until_complete(
+                        self.publish(
+                            message.source, 
+                            message.afos, 
+                            message.product_id, 
+                            message.structured_data, 
+                            message.subject
+                        )
+                    )
+                except Exception as e:
+                    logger.error("Failed to publish product message", 
+                               product_id=message.product_id, error=str(e))
+                finally:
+                    loop.close()
+            
+            # Run in a separate thread to avoid blocking the pubsub system
+            publish_thread = threading.Thread(target=publish_data, daemon=True)
+            publish_thread.start()
+            
+        except Exception as e:
+            logger.error("Error handling product message", 
+                        product_id=getattr(message, 'product_id', 'unknown'), 
+                        error=str(e))
+
     async def start(self) -> None:
         """Start all output handlers."""
         logger.info("Starting output handlers", count=len(self.handlers))
@@ -72,6 +114,14 @@ class OutputManager:
     async def stop(self) -> None:
         """Stop all output handlers."""
         logger.info("Stopping output handlers")
+        
+        # Unsubscribe from pubsub topics
+        try:
+            MessageBus.unsubscribe(Topics.PRODUCT_RECEIVED, self._on_product_received)
+            logger.info("Unsubscribed from product topics")
+        except Exception as e:
+            logger.error("Error unsubscribing from topics", error=str(e))
+        
         for handler in self.handlers:
             try:
                 await handler.stop()

@@ -1,8 +1,6 @@
 """NWWS-OI XMPP client implementation."""
 
-import asyncio
 import json
-import threading
 import time
 from dataclasses import dataclass
 from typing import Callable
@@ -20,7 +18,7 @@ from twisted.words.xish import domish
 from twisted.words.xish.xmlstream import STREAM_END_EVENT, XmlStream
 
 from models import convert_text_product_to_model
-from handlers import OutputManager
+from messaging import MessageBus, ProductMessage, Topics
 
 
 # Configuration constants
@@ -44,10 +42,9 @@ class XMPPConfig:
 class NWWSXMPPClient:
     """Enhanced NWWS-OI XMPP Client."""
 
-    def __init__(self, config: XMPPConfig, output_manager: OutputManager, stats_collector=None) -> None:
-        """Initialize the XMPP client with configuration and output manager."""
+    def __init__(self, config: XMPPConfig, stats_collector=None) -> None:
+        """Initialize the XMPP client with configuration."""
         self.config = config
-        self.output_manager = output_manager
         self.stats_collector = stats_collector
         self.outstanding_pings: list[str] = []
         self.xmlstream: XmlStream | None = None
@@ -381,27 +378,20 @@ class NWWSXMPPClient:
                             exclude_defaults=True
                         ), sort_keys=True, indent=1)
 
-                        # Publish to all configured output handlers
-                        def publish_data():
-                            loop = asyncio.new_event_loop()
-                            asyncio.set_event_loop(loop)
-                            try:
-                                loop.run_until_complete(
-                                    self.output_manager.publish(
-                                        source, afos[:3], product_id, model_json, subject
-                                    )
-                                )
-                                # Record successful publishing
-                                if self.stats_collector:
-                                    self.stats_collector.on_message_published()
-                            except Exception as e:
-                                logger.error("Failed to publish data", error=str(e))
-                            finally:
-                                loop.close()
-
-                        # Run in a separate thread to avoid blocking the reactor
-                        publish_thread = threading.Thread(target=publish_data, daemon=True)
-                        publish_thread.start()
+                        # Publish product message to pubsub system
+                        product_message = ProductMessage(
+                            source=source,
+                            afos=afos[:3], 
+                            product_id=product_id,
+                            structured_data=model_json,
+                            subject=subject
+                        )
+                        
+                        MessageBus.publish(Topics.PRODUCT_RECEIVED, message=product_message)
+                        
+                        # Record successful publishing
+                        if self.stats_collector:
+                            self.stats_collector.on_message_published()
 
                     except Exception as e:
                         logger.error("Failed to serialize product", product_id=product_id, error=str(e))

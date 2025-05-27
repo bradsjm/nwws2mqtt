@@ -8,6 +8,9 @@ import threading
 from dataclasses import dataclass
 from types import FrameType
 
+# Add src directory to Python path for imports
+sys.path.insert(0, os.path.dirname(__file__))
+
 from dotenv import load_dotenv
 from loguru import logger
 from twisted.internet import reactor
@@ -108,7 +111,7 @@ class NWWSApplication:
             server=config.server,
             port=config.port
         )
-        self.xmpp_client = NWWSXMPPClient(xmpp_config, self.output_manager, self.stats_collector)
+        self.xmpp_client = NWWSXMPPClient(xmpp_config, self.stats_collector)
         
         # Set up XMPP client callbacks
         self.xmpp_client.set_callbacks(
