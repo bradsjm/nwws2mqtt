@@ -10,7 +10,6 @@ wheels/
 .venv
 
 # IDE and editor files
-.vscode/
 .idea/
 
 # Jupyter Notebook checkpoints
