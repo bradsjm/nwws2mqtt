@@ -150,44 +150,6 @@ Weather products are published as JSON-serialized data containing:
 - Geographic information
 - Text content
 
-## Extending Output Handlers
-
-To add a new output handler:
-
-1. Create a class that inherits from `OutputHandler` in `output_handlers.py`
-2. Implement the required methods:
-   - `publish(product_id, structured_data, subject)`
-   - `start()`
-   - `stop()`
-   - `is_connected` property
-3. Add the handler to the `OutputManager._initialize_handlers()` method
-4. Update the environment configuration documentation
-
-## 📊 Statistics & Metrics
-
-The application provides comprehensive statistics collection with both logging and Prometheus metrics export.
-
-### Connection Statistics
-- Application uptime and connection status
-- Total connections and disconnections
-- Reconnection attempts and authentication failures
-- Ping/pong latency monitoring
-- Outstanding ping tracking
-
-### Message Processing Statistics
-- Total messages received, processed, and failed
-- Processing success and error rates (calculated properties)
-- Product type distribution (e.g., FXUS61, WWUS81)
-- Source distribution (e.g., KBOU, KDEN, KGJT)
-- AFOS code distribution
-- Processing error categorization with counts
-
-### Output Handler Statistics
-- Per-handler publishing success rates
-- Connection status and error counts
-- Publishing performance metrics
-- Handler-specific uptime tracking
-
 ### Prometheus Metrics
 
 The application exposes metrics in Prometheus format via a standard `/metrics` endpoint. This enables integration with monitoring systems like Prometheus, Grafana, and other observability tools.
@@ -267,21 +229,6 @@ The metrics can be visualized in Grafana. Key queries for monitoring:
 - **Success Rate**: `nwws2mqtt_message_processing_success_rate`
 - **Top Product Types**: `topk(10, nwws2mqtt_product_types_total)`
 
-### Demo Mode
-
-To try the Prometheus metrics without NWWS credentials, you can run the demo:
-
-```bash
-python demo_metrics.py
-```
-
-This will:
-- Start a metrics server on port 8080 (configurable with `METRICS_PORT`)
-- Simulate realistic weather data processing
-- Generate all the metrics that the real application would produce
-- Allow you to test Prometheus scraping and Grafana dashboards
-
-While the demo is running, you can view metrics at http://localhost:8080/metrics
 
 ## License
 
