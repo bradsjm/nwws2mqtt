@@ -1,13 +1,13 @@
-from app.handlers import OutputConfig
-
-
 import os
 from dataclasses import dataclass
+
+from .output_config import OutputConfig
 
 
 @dataclass
 class Config:
     """Configuration class for NWWS-OI client."""
+
     username: str
     password: str
     server: str = "nwws-oi.weather.gov"

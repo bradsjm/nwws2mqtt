@@ -11,11 +11,30 @@ from .models import ApplicationStats, StatsSnapshot
 
 
 class StatsLogger:
-    """Handles periodic statistics logging and display."""
+    """
+    StatsLogger is responsible for periodically logging application statistics collected by a StatsCollector.
+    It supports starting and stopping periodic logging, immediate logging on demand, and calculating rates
+    such as messages processed per minute. The logger maintains a rolling window of recent statistics snapshots
+    to compute these rates and formats the output for human readability.
+
+    Attributes:
+        stats_collector (StatsCollector): The statistics collector instance providing current stats.
+        log_interval_seconds (int): Interval in seconds between periodic log outputs.
+        _logging_task (Optional[LoopingCall]): Internal task for periodic logging.
+        _is_running (bool): Indicates if the logger is currently running.
+        _snapshots (list[StatsSnapshot]): Recent statistics snapshots for rate calculations.
+        _max_snapshots (int): Maximum number of snapshots to retain for rate calculations.
+
+    Methods:
+        start(): Start periodic statistics logging.
+        stop(): Stop periodic statistics logging.
+        log_current_stats(): Log current statistics immediately.
+        is_running: Property indicating if the logger is running.
+    """
 
     def __init__(self, stats_collector: StatsCollector, log_interval_seconds: int = 60):
         """Initialize the stats logger.
-        
+
         Args:
             stats_collector: The statistics collector instance
             log_interval_seconds: How often to log stats (default 60 seconds)
@@ -24,11 +43,11 @@ class StatsLogger:
         self.log_interval_seconds = log_interval_seconds
         self._logging_task: Optional[LoopingCall] = None
         self._is_running = False
-        
+
         # Store snapshots for rate calculations
         self._snapshots: list[StatsSnapshot] = []
         self._max_snapshots = 10  # Keep last 10 snapshots for rate calculations
-        
+
         logger.debug("Statistics logger initialized", interval_seconds=log_interval_seconds)
 
     def start(self) -> None:
@@ -71,17 +90,17 @@ class StatsLogger:
         """Internal method for periodic stats logging."""
         try:
             stats = self.stats_collector.get_stats()
-            
+
             # Store snapshot for rate calculations
             snapshot = StatsSnapshot(timestamp=datetime.utcnow(), stats=stats)
             self._snapshots.append(snapshot)
-            
+
             # Keep only recent snapshots
             if len(self._snapshots) > self._max_snapshots:
-                self._snapshots = self._snapshots[-self._max_snapshots:]
-            
+                self._snapshots = self._snapshots[-self._max_snapshots :]
+
             self._log_stats(stats)
-            
+
         except Exception as e:
             logger.error("Error in periodic statistics logging", error=str(e))
 
@@ -89,11 +108,11 @@ class StatsLogger:
         """Log formatted statistics."""
         # Calculate rates if we have previous snapshots
         rates = self._calculate_rates()
-        
+
         # Format uptime
         uptime_str = self._format_duration(stats.running_time_seconds)
         connection_uptime_str = self._format_duration(stats.connection.uptime_seconds)
-        
+
         # Log connection statistics
         logger.info(
             "=== NWWS2MQTT Statistics ===",
@@ -104,11 +123,11 @@ class StatsLogger:
             reconnect_attempts=stats.connection.reconnect_attempts,
             outstanding_pings=stats.connection.outstanding_pings,
         )
-        
+
         # Log message statistics
         success_rate = f"{stats.messages.success_rate:.1f}%" if stats.messages.total_received > 0 else "N/A"
         error_rate = f"{stats.messages.error_rate:.1f}%" if stats.messages.total_received > 0 else "N/A"
-        
+
         logger.info(
             "Message Processing Stats",
             total_received=stats.messages.total_received,
@@ -119,11 +138,13 @@ class StatsLogger:
             messages_per_minute=rates.get("messages_per_minute", 0),
             processing_per_minute=rates.get("processing_per_minute", 0),
         )
-        
+
         # Log output handler statistics
         for handler_name, handler_stats in stats.output_handlers.items():
-            handler_success_rate = f"{handler_stats.success_rate:.1f}%" if (handler_stats.total_published + handler_stats.total_failed) > 0 else "N/A"
-            
+            handler_success_rate = (
+                f"{handler_stats.success_rate:.1f}%" if (handler_stats.total_published + handler_stats.total_failed) > 0 else "N/A"
+            )
+
             logger.info(
                 "Output Handler Statistics",
                 handler=handler_name,
@@ -134,43 +155,43 @@ class StatsLogger:
                 success_rate=handler_success_rate,
                 connection_errors=handler_stats.connection_errors,
             )
-        
+
     def _calculate_rates(self) -> Dict[str, float]:
         """Calculate per-minute rates from recent snapshots."""
         if len(self._snapshots) < 2:
             return {}
-        
+
         # Get current and previous snapshot (1 minute ago if available)
         current = self._snapshots[-1]
-        
+
         # Find snapshot from approximately 1 minute ago
         target_time = current.timestamp - timedelta(minutes=1)
         previous = None
-        
+
         for snapshot in reversed(self._snapshots[:-1]):
             if snapshot.timestamp <= target_time:
                 previous = snapshot
                 break
-        
+
         if not previous:
             # Use the oldest snapshot we have
             previous = self._snapshots[0]
-        
+
         # Calculate time difference in minutes
         time_diff_minutes = (current.timestamp - previous.timestamp).total_seconds() / 60.0
-        
+
         if time_diff_minutes <= 0:
             return {}
-        
+
         # Calculate rates
         rates = {}
-        
+
         message_diff = current.stats.messages.total_received - previous.stats.messages.total_received
         rates["messages_per_minute"] = round(message_diff / time_diff_minutes, 1)
-        
+
         processing_diff = current.stats.messages.total_processed - previous.stats.messages.total_processed
         rates["processing_per_minute"] = round(processing_diff / time_diff_minutes, 1)
-        
+
         return rates
 
     @staticmethod

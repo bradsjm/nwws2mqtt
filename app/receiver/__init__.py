@@ -1,8 +1,7 @@
 """XMPP client package for NWWS-OI."""
 
-from .xmpp import NWWSXMPPClient, XMPPConfig
+from .xmpp import NWWSXMPPClient
 
 __all__ = [
     "NWWSXMPPClient",
-    "XMPPConfig",
 ]

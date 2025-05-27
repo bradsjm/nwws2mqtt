@@ -1,7 +1,7 @@
 """Statistics collector for NWWS2MQTT application."""
 
 import threading
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 from loguru import logger
@@ -10,7 +10,80 @@ from .models import ApplicationStats, ConnectionStats, MessageStats, OutputHandl
 
 
 class StatsCollector:
-    """Thread-safe statistics collector."""
+    """
+    Thread-safe statistics collector for application, connection, message, and output handler metrics.
+
+    This class provides synchronized methods to record and retrieve various runtime statistics, including:
+    - Connection attempts, successes, failures, and errors.
+    - Message receipt, processing, publishing, and failure tracking.
+    - Output handler registration, connection status, publishing, and errors.
+
+    All operations are thread-safe, ensuring consistent statistics in concurrent environments.
+
+    Methods:
+        get_stats() -> ApplicationStats
+            Return a deep copy of the current statistics.
+
+        on_connection_attempt() -> None
+            Record a connection attempt.
+
+        on_connected() -> None
+            Record a successful connection.
+
+        on_disconnected() -> None
+            Record a disconnection event.
+
+        on_reconnect_attempt() -> None
+            Record a reconnection attempt.
+
+        on_auth_failure() -> None
+            Record an authentication failure.
+
+        on_connection_error() -> None
+            Record a connection error.
+
+        on_ping_sent() -> None
+            Record a ping sent event.
+
+        on_pong_received() -> None
+            Record a pong received event.
+
+        on_message_received() -> None
+            Record a message received event.
+
+        on_groupchat_message_received() -> None
+            Record a groupchat message received event.
+
+        on_message_processed(source: str, afos: str, product_id: Optional[str] = None) -> None
+            Record successful message processing, including source, AFOS code, and product type.
+
+        on_message_failed(error_type: str) -> None
+            Record a message processing failure with error type.
+
+        on_message_published() -> None
+            Record a message published to output handlers.
+
+        register_output_handler(handler_name: str, handler_type: str) -> None
+            Register an output handler for statistics tracking.
+
+        on_handler_connected(handler_name: str) -> None
+            Record output handler connection.
+
+        on_handler_disconnected(handler_name: str) -> None
+            Record output handler disconnection.
+
+        on_handler_publish_success(handler_name: str) -> None
+            Record successful publish to output handler.
+
+        on_handler_publish_failed(handler_name: str) -> None
+            Record failed publish to output handler.
+
+        on_handler_connection_error(handler_name: str) -> None
+            Record output handler connection error.
+
+        reset_stats() -> None
+            Reset all collected statistics.
+    """
 
     def __init__(self):
         """Initialize the stats collector."""

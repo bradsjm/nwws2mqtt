@@ -2,7 +2,6 @@
 
 import json
 import time
-from dataclasses import dataclass
 
 from loguru import logger
 from pyiem.exceptions import TextProductException
@@ -16,6 +15,7 @@ from twisted.words.protocols.jabber.jid import JID
 from twisted.words.xish import domish
 from twisted.words.xish.xmlstream import STREAM_END_EVENT, XmlStream
 
+from app.models.xmpp_config import XMPPConfig
 from models import convert_text_product_to_model
 from messaging import MessageBus, ProductMessage, Topics
 from messaging.message_bus import StatsConnectionMessage, StatsMessageProcessingMessage
@@ -30,17 +30,34 @@ MAX_RECONNECT_ATTEMPTS = 10
 GROUPCHAT_MESSAGE_TIMEOUT = 300  # 5 minutes
 
 
-@dataclass
-class XMPPConfig:
-    """Configuration class for XMPP client."""
-    username: str
-    password: str
-    server: str = "nwws-oi.weather.gov"
-    port: int = 5222
-
-
 class NWWSXMPPClient:
-    """Enhanced NWWS-OI XMPP Client."""
+    """
+    NWWSXMPPClient provides an enhanced XMPP client for interfacing with the NWWS-OI (National Weather Wire Service - Open Interface) system.
+    This client manages the connection lifecycle, authentication, and communication with the NWWS-OI XMPP server, including joining and subscribing to a Multi-User Chat (MUC) room to receive weather data products. It implements robust error handling, automatic reconnection with exponential backoff, and periodic housekeeping tasks such as pinging the server and monitoring message activity.
+
+    Key Features:
+    - Establishes and maintains an XMPP connection using provided configuration.
+    - Handles authentication and joins the designated MUC room for group chat messages.
+    - Processes incoming messages, including weather data products, and publishes structured events to a message bus.
+    - Implements periodic housekeeping to ensure connection health, including ping/pong handling and reconnection logic.
+    - Provides graceful shutdown and resource cleanup.
+    - Publishes detailed connection and message processing statistics and error events for monitoring and diagnostics.
+
+    Attributes:
+        config (XMPPConfig): Configuration for the XMPP connection.
+        outstanding_pings (list[str]): List of outstanding ping IDs awaiting pong responses.
+        xmlstream (XmlStream | None): The active XML stream for XMPP communication.
+        housekeeping_task (LoopingCall | None): Periodic task for housekeeping operations.
+        is_shutting_down (bool): Indicates if the client is in the process of shutting down.
+        reconnect_attempts (int): Number of consecutive reconnection attempts.
+        last_message_time (float): Timestamp of the last received message.
+        last_groupchat_message_time (float): Timestamp of the last received group chat message.
+
+    Methods:
+        connect(): Establishes a connection to the NWWS-OI server.
+        shutdown(): Gracefully shuts down the XMPP client and cleans up resources.
+        is_connected() -> bool: Returns True if the client is connected and not shutting down.
+    """
 
     def __init__(self, config: XMPPConfig) -> None:
         """Initialize the XMPP client with configuration."""
@@ -53,18 +70,14 @@ class NWWSXMPPClient:
         self.last_message_time = time.time()
         self.last_groupchat_message_time = time.time()
 
-        logger.info("Initializing NWWS-OI XMPP client", 
-                   username=config.username, server=config.server)
+        logger.info("Initializing NWWS-OI XMPP client", username=config.username, server=config.server)
 
     def connect(self) -> None:
         """Establish connection to NWWS-OI server."""
         try:
             # Publish connection attempt event
-            MessageBus.publish(
-                Topics.STATS_CONNECTION_ATTEMPT,
-                message=StatsConnectionMessage()
-            )
-                
+            MessageBus.publish(Topics.STATS_CONNECTION_ATTEMPT, message=StatsConnectionMessage())
+
             jid = JID(f"{self.config.username}@{self.config.server}")
             factory = client.XMPPClientFactory(jid, self.config.password)
             factory.addBootstrap(xmlstream.STREAM_CONNECTED_EVENT, self._on_connected)
@@ -87,15 +100,9 @@ class NWWSXMPPClient:
         except Exception as e:
             logger.error("Failed to connect", error=str(e))
             # Publish connection error event
-            MessageBus.publish(
-                Topics.STATS_CONNECTION_ERROR,
-                message=StatsConnectionMessage()
-            )
+            MessageBus.publish(Topics.STATS_CONNECTION_ERROR, message=StatsConnectionMessage())
             # Publish XMPP error event to MessageBus
-            MessageBus.publish(
-                Topics.XMPP_ERROR,
-                message=f"Connection failed: {e}"
-            )
+            MessageBus.publish(Topics.XMPP_ERROR, message=f"Connection failed: {e}")
             self._schedule_reconnect()
 
     def _on_connected(self, xs: XmlStream) -> None:
@@ -118,10 +125,7 @@ class NWWSXMPPClient:
         self.outstanding_pings = []
 
         # Record successful connection
-        MessageBus.publish(
-            Topics.STATS_CONNECTION_ESTABLISHED,
-            message=StatsConnectionMessage()
-        )
+        MessageBus.publish(Topics.STATS_CONNECTION_ESTABLISHED, message=StatsConnectionMessage())
 
         # Join and subscribe to MUC room
         try:
@@ -135,10 +139,7 @@ class NWWSXMPPClient:
         except Exception as e:
             logger.error("Failed during authentication", error=str(e))
             # Publish XMPP error event to MessageBus
-            MessageBus.publish(
-                Topics.XMPP_ERROR,
-                message=f"Authentication setup failed: {e}"
-            )
+            MessageBus.publish(Topics.XMPP_ERROR, message=f"Authentication setup failed: {e}")
 
     def _join_muc_room(self) -> None:
         """Join and subscribe to the MUC room with proper configuration."""
@@ -160,10 +161,7 @@ class NWWSXMPPClient:
         except Exception as e:
             logger.error("Failed to join MUC room", error=str(e))
             # Publish XMPP error event to MessageBus
-            MessageBus.publish(
-                Topics.XMPP_ERROR,
-                message=f"Failed to join MUC room: {e}"
-            )
+            MessageBus.publish(Topics.XMPP_ERROR, message=f"Failed to join MUC room: {e}")
 
     def _send_subscription_presence(self) -> None:
         """Send additional presence to ensure proper subscription."""
@@ -201,24 +199,16 @@ class NWWSXMPPClient:
         if self.reconnect_attempts >= MAX_RECONNECT_ATTEMPTS:
             logger.error("Maximum reconnection attempts reached")
             # Publish XMPP error event to MessageBus
-            MessageBus.publish(
-                Topics.XMPP_ERROR,
-                message="Maximum reconnection attempts reached"
-            )
+            MessageBus.publish(Topics.XMPP_ERROR, message="Maximum reconnection attempts reached")
             return
 
         self.reconnect_attempts += 1
         # Publish reconnection attempt event
-        MessageBus.publish(
-            Topics.STATS_RECONNECT_ATTEMPT,
-            message=StatsConnectionMessage()
-        )
-            
+        MessageBus.publish(Topics.STATS_RECONNECT_ATTEMPT, message=StatsConnectionMessage())
+
         delay = min(RECONNECT_DELAY * (2 ** (self.reconnect_attempts - 1)), 300)  # Exponential backoff, max 5 min
 
-        logger.info("Scheduling reconnection attempt", 
-                   attempt=self.reconnect_attempts, 
-                   delay_seconds=delay)
+        logger.info("Scheduling reconnection attempt", attempt=self.reconnect_attempts, delay_seconds=delay)
         reactor.callLater(delay, self.connect)
 
     def _housekeeping(self) -> None:
@@ -232,8 +222,7 @@ class NWWSXMPPClient:
 
             # Check for groupchat message timeout
             if current_time - self.last_groupchat_message_time > GROUPCHAT_MESSAGE_TIMEOUT:
-                logger.warning("No groupchat messages received, forcing reconnection", 
-                             timeout_seconds=GROUPCHAT_MESSAGE_TIMEOUT)
+                logger.warning("No groupchat messages received, forcing reconnection", timeout_seconds=GROUPCHAT_MESSAGE_TIMEOUT)
                 self._force_reconnect()
                 return
 
@@ -269,13 +258,10 @@ class NWWSXMPPClient:
 
             self.outstanding_pings.append(pingid)
             self.xmlstream.send(ping)
-            
+
             # Publish ping sent event
-            MessageBus.publish(
-                Topics.STATS_PING_SENT,
-                message=StatsConnectionMessage()
-            )
-                
+            MessageBus.publish(Topics.STATS_PING_SENT, message=StatsConnectionMessage())
+
             logger.debug("Sent ping", ping_id=pingid)
 
         except Exception as e:
@@ -302,7 +288,7 @@ class NWWSXMPPClient:
 
     def _on_iq(self, elem: domish.Element) -> None:
         """Process IQ message."""
-        iq_type = elem.getAttribute('type')
+        iq_type = elem.getAttribute("type")
         logger.debug("Received IQ", type=iq_type)
 
         typ = elem.getAttribute("type")
@@ -317,7 +303,7 @@ class NWWSXMPPClient:
                 pong["from"] = elem["to"]
                 pong["id"] = elem["id"]
                 self.xmlstream.send(pong)
-                logger.debug("Responded to ping", from_jid=elem['from'])
+                logger.debug("Responded to ping", from_jid=elem["from"])
             except Exception as e:
                 logger.error("Failed to respond to ping", error=str(e))
 
@@ -327,10 +313,7 @@ class NWWSXMPPClient:
             if ping_id in self.outstanding_pings:
                 self.outstanding_pings.remove(ping_id)
                 # Publish pong received event
-                MessageBus.publish(
-                    Topics.STATS_PONG_RECEIVED,
-                    message=StatsConnectionMessage()
-                )
+                MessageBus.publish(Topics.STATS_PONG_RECEIVED, message=StatsConnectionMessage())
                 logger.debug("Received pong for ping", ping_id=ping_id)
 
     def _safe_on_message(self, elem: domish.Element) -> None:
@@ -338,10 +321,7 @@ class NWWSXMPPClient:
         try:
             self.last_message_time = time.time()
             # Publish message received event
-            MessageBus.publish(
-                Topics.STATS_MESSAGE_RECEIVED,
-                message=StatsMessageProcessingMessage()
-            )
+            MessageBus.publish(Topics.STATS_MESSAGE_RECEIVED, message=StatsMessageProcessingMessage())
             self._on_message(elem)
         except Exception as e:
             logger.error("Error processing message", error=str(e))
@@ -356,10 +336,7 @@ class NWWSXMPPClient:
         # Update groupchat message timestamp
         self.last_groupchat_message_time = time.time()
         # Publish groupchat message received event
-        MessageBus.publish(
-            Topics.STATS_GROUPCHAT_MESSAGE_RECEIVED,
-            message=StatsMessageProcessingMessage()
-        )
+        MessageBus.publish(Topics.STATS_GROUPCHAT_MESSAGE_RECEIVED, message=StatsMessageProcessingMessage())
 
         try:
             subject = str(elem.body or "")
@@ -368,13 +345,12 @@ class NWWSXMPPClient:
                 logger.debug("No x element in group message, skipping")
                 return
 
-            unixtext = str(elem.x)
-
             # Process the weather product
-            noaaport = "\001" + unixtext.replace("\n\n", "\r\r\n")
-            if noaaport[-1] != "\n":
-                noaaport = noaaport + "\r\r\n"
-            noaaport = noaaport + "\003"
+            unix_text: str = str(elem.x)
+            noaaport: str = f"\x01{unix_text.replace('\n\n', '\r\r\n')}"
+            if not noaaport.endswith("\n"):
+                noaaport = f"{noaaport}\r\r\n"
+            noaaport = f"{noaaport}\x03"
 
             try:
                 tp = TextProduct(noaaport, parse_segments=True, ugc_provider={})
@@ -387,76 +363,52 @@ class NWWSXMPPClient:
                     # Record successful processing
                     MessageBus.publish(
                         Topics.STATS_MESSAGE_PROCESSED,
-                        message=StatsMessageProcessingMessage(
-                            source=source,
-                            afos=afos,
-                            product_id=product_id
-                        )
+                        message=StatsMessageProcessingMessage(source=source, afos=afos, product_id=product_id),
                     )
 
                     # Output structured data
                     try:
                         model = convert_text_product_to_model(tp)
-                        model_json = json.dumps(model.model_dump(
-                            mode="json",
-                            by_alias=True,
-                            exclude_defaults=True
-                        ), sort_keys=True, indent=1)
+                        model_json = json.dumps(
+                            model.model_dump(mode="json", by_alias=True, exclude_defaults=True), sort_keys=True, indent=1
+                        )
 
                         # Publish product message to pubsub system
                         product_message = ProductMessage(
-                            source=source,
-                            afos=afos[:3], 
-                            product_id=product_id,
-                            structured_data=model_json,
-                            subject=subject
+                            source=source, afos=afos[:3], product_id=product_id, structured_data=model_json, subject=subject
                         )
-                        
+
                         MessageBus.publish(Topics.PRODUCT_RECEIVED, message=product_message)
-                        
+
                         # Record successful publishing
-                        MessageBus.publish(
-                            Topics.STATS_MESSAGE_PUBLISHED,
-                            message=StatsMessageProcessingMessage()
-                        )
+                        MessageBus.publish(Topics.STATS_MESSAGE_PUBLISHED, message=StatsMessageProcessingMessage())
 
                     except Exception as e:
                         logger.error("Failed to serialize product", product_id=product_id, error=str(e))
                         MessageBus.publish(
-                            Topics.STATS_MESSAGE_FAILED,
-                            message=StatsMessageProcessingMessage(error_type="serialization_error")
+                            Topics.STATS_MESSAGE_FAILED, message=StatsMessageProcessingMessage(error_type="serialization_error")
                         )
                 else:
                     logger.debug("Product has no ID, skipping")
 
             except TextProductException as e:
                 logger.warning("Failed to parse text product", error=str(e))
-                MessageBus.publish(
-                    Topics.STATS_MESSAGE_FAILED,
-                    message=StatsMessageProcessingMessage(error_type="parse_error")
-                )
+                MessageBus.publish(Topics.STATS_MESSAGE_FAILED, message=StatsMessageProcessingMessage(error_type="parse_error"))
             except Exception as e:
                 logger.error("Unexpected error parsing product", error=str(e))
                 MessageBus.publish(
-                    Topics.STATS_MESSAGE_FAILED,
-                    message=StatsMessageProcessingMessage(error_type="unexpected_error")
+                    Topics.STATS_MESSAGE_FAILED, message=StatsMessageProcessingMessage(error_type="unexpected_error")
                 )
 
         except Exception as e:
             logger.error("Error processing group message", error=str(e))
-            MessageBus.publish(
-                Topics.STATS_MESSAGE_FAILED,
-                message=StatsMessageProcessingMessage(error_type="processing_error")
-            )
+            MessageBus.publish(Topics.STATS_MESSAGE_FAILED, message=StatsMessageProcessingMessage(error_type="processing_error"))
 
     def _on_stream_error(self, failure) -> None:
         """Handle stream errors, such as authentication failures."""
         logger.error("Stream error (likely authentication failure)", failure=str(failure))
         # Publish XMPP error event to MessageBus
-        MessageBus.publish(
-            Topics.XMPP_ERROR,
-            message=f"Stream error: {failure}"
-        )
+        MessageBus.publish(Topics.XMPP_ERROR, message=f"Stream error: {failure}")
 
     def shutdown(self) -> None:
         """Gracefully shutdown the XMPP client."""

@@ -48,4 +48,4 @@ exclude = [
 ]
 pythonVersion = "3.13"
 pythonPlatform = "All"
-typeCheckingMode = "off"
+typeCheckingMode = "basic"
