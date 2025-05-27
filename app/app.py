@@ -1,14 +1,15 @@
 """NWWS-OI application."""
 
 import asyncio
-import os
 import signal
 import sys
 import threading
+from asyncio import CancelledError
+from pathlib import Path
 from types import FrameType
 
 # Add app directory to Python path for imports
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.insert(0, str((Path(__file__).parent.parent).resolve()))
 
 
 from dotenv import load_dotenv
@@ -19,7 +20,13 @@ from app.handlers import HandlerRegistry
 from app.messaging import MessageBus, Topics
 from app.models import Config, OutputConfig, XMPPConfig
 from app.receiver import NWWSXMPPClient
-from app.stats import PrometheusMetricsExporter, StatsCollector, StatsConsumer, StatsLogger, WebDashboardServer
+from app.stats import (
+    PrometheusMetricsExporter,
+    StatsCollector,
+    StatsConsumer,
+    StatsLogger,
+    WebDashboardServer,
+)
 from app.utils import LoggingConfig
 
 load_dotenv(override=True)  # Load environment variables from .env file
@@ -45,14 +52,19 @@ class NWWSApplication:
         self.metrics_exporter = None
         if config.metrics_enabled:
             self.metrics_exporter = PrometheusMetricsExporter(
-                self.stats_collector, port=config.metrics_port, update_interval=config.metrics_update_interval
+                self.stats_collector,
+                port=config.metrics_port,
+                update_interval=config.metrics_update_interval,
             )
 
         # Initialize web dashboard server if enabled
         self.dashboard_server = None
         if config.dashboard_enabled:
             self.dashboard_server = WebDashboardServer(
-                self.stats_collector, port=config.dashboard_port, host=config.dashboard_host, update_interval=5.0
+                self.stats_collector,
+                port=config.dashboard_port,
+                host=config.dashboard_host,
+                update_interval=5.0,
             )
 
         # Initialize handler registry (replaces OutputManager)
@@ -68,7 +80,12 @@ class NWWSApplication:
         signal.signal(signal.SIGTERM, self._signal_handler)
 
         # Create XMPP client
-        xmpp_config = XMPPConfig(username=config.username, password=config.password, server=config.server, port=config.port)
+        xmpp_config = XMPPConfig(
+            username=config.username,
+            password=config.password,
+            server=config.server,
+            port=config.port,
+        )
         self.xmpp_client = NWWSXMPPClient(xmpp_config)
 
         # Subscribe to XMPP error events for shutdown logic
@@ -110,7 +127,7 @@ class NWWSApplication:
             try:
                 loop.run_until_complete(self.handler_registry.start())
                 logger.info("handlers started successfully")
-            except Exception as e:
+            except (TimeoutError, OSError, ConnectionError, RuntimeError) as e:
                 logger.error("Failed to start handlers", error=str(e))
             finally:
                 loop.close()
@@ -122,12 +139,15 @@ class NWWSApplication:
     def _signal_handler(self, signum: int, _frame: FrameType | None) -> None:
         """Handle shutdown signals gracefully."""
         logger.info("Received shutdown signal, initiating graceful shutdown", signal=signum)
-        reactor.callFromThread(self.shutdown)  # type: ignore
+        reactor.callFromThread(self.shutdown)  # type: ignore  # noqa: PGH003
 
     def _on_xmpp_error(self, error_msg: str) -> None:
         """Handle XMPP client errors."""
         logger.error("XMPP client error", error_msg=error_msg)
-        if "Maximum reconnection attempts reached" in error_msg or "authentication failure" in error_msg:
+        if (
+            "Maximum reconnection attempts reached" in error_msg
+            or "authentication failure" in error_msg
+        ):
             if "authentication failure" in error_msg:
                 # Publish auth failure event to stats
                 MessageBus.publish(Topics.STATS_AUTH_FAILURE)
@@ -142,48 +162,66 @@ class NWWSApplication:
         logger.info("Shutting down NWWS-OI application")
         self.is_shutting_down = True
 
+        self._cleanup_services()
+        self._stop_handlers()
+
+        # Give time for cleanup before stopping reactor
+        reactor.callLater(1.0, self._final_shutdown)  # type: ignore  # noqa: PGH003
+
+    def _cleanup_services(self) -> None:
+        """Stop all application services."""
         # Unsubscribe from XMPP error events
         MessageBus.unsubscribe(Topics.XMPP_ERROR, self._on_xmpp_error)
 
+        self._stop_stats_services()
+        self._stop_monitoring_services()
+        self._stop_xmpp_client()
+
+    def _stop_stats_services(self) -> None:
+        """Stop statistics-related services."""
         # Stop statistics logging
         try:
             self.stats_logger.stop()
-        except Exception as e:
+        except (TimeoutError, OSError, ConnectionError, RuntimeError, CancelledError) as e:
             logger.error("Error stopping stats logger", error=str(e))
 
         # Stop statistics consumer
         try:
             self.stats_consumer.stop()
-        except Exception as e:
+        except (TimeoutError, OSError, ConnectionError, RuntimeError, CancelledError) as e:
             logger.error("Error stopping stats consumer", error=str(e))
 
+        # Log final statistics
+        try:
+            self.stats_logger.log_current_stats()
+        except (TimeoutError, OSError, ConnectionError, RuntimeError, CancelledError) as e:
+            logger.error("Error logging final stats", error=str(e))
+
+    def _stop_monitoring_services(self) -> None:
+        """Stop monitoring and dashboard services."""
         # Stop Prometheus metrics exporter
         if self.metrics_exporter:
             try:
                 self.metrics_exporter.stop()
-            except Exception as e:
+            except (TimeoutError, OSError, ConnectionError, RuntimeError, CancelledError) as e:
                 logger.error("Error stopping metrics exporter", error=str(e))
 
         # Stop web dashboard server
         if self.dashboard_server:
             try:
                 self.dashboard_server.stop()
-            except Exception as e:
+            except (TimeoutError, OSError, ConnectionError, RuntimeError, CancelledError) as e:
                 logger.error("Error stopping dashboard server", error=str(e))
 
-        # Log final statistics
-        try:
-            self.stats_logger.log_current_stats()
-        except Exception as e:
-            logger.error("Error logging final stats", error=str(e))
-
-        # Shutdown XMPP client first
+    def _stop_xmpp_client(self) -> None:
+        """Stop the XMPP client."""
         try:
             self.xmpp_client.shutdown()
-        except Exception as e:
+        except (TimeoutError, OSError, ConnectionError, RuntimeError, CancelledError) as e:
             logger.error("Error shutting down XMPP client", error=str(e))
 
-        # Stop handlers
+    def _stop_handlers(self) -> None:
+        """Stop message handlers."""
         try:
 
             def stop_handlers():
@@ -195,7 +233,7 @@ class NWWSApplication:
                 try:
                     loop.run_until_complete(self.handler_registry.stop())
                     logger.info("handlers stopped")
-                except Exception as e:
+                except (TimeoutError, OSError, ConnectionError, RuntimeError, CancelledError) as e:
                     logger.error("Error stopping handlers", error=str(e))
                 finally:
                     loop.close()
@@ -203,29 +241,26 @@ class NWWSApplication:
             stop_thread = threading.Thread(target=stop_handlers, daemon=True)
             stop_thread.start()
             stop_thread.join(timeout=5.0)  # Wait up to 5 seconds
-        except Exception as e:
+        except (RuntimeError, OSError) as e:
             logger.error("Error during handler shutdown", error=str(e))
 
-        # Give time for cleanup before stopping reactor
-        reactor.callLater(1.0, self._final_shutdown)  # type: ignore
-
     def _final_shutdown(self) -> None:
-        """Final shutdown step - stop the reactor."""
+        """Stop the reactor."""
         logger.info("Stopping reactor")
-        reactor.stop()  # type: ignore
+        reactor.stop()  # type: ignore  # noqa: PGH003
 
 
 def main() -> None:
-    """Main entry point."""
+    """Start the application."""
     try:
         config = Config.from_env()
         _app = NWWSApplication(config)
-        reactor.run()  # type: ignore
+        reactor.run()  # type: ignore  # noqa: PGH003
 
     except ValueError as e:
         logger.error("Configuration error", error=str(e))
         sys.exit(1)
-    except Exception as e:
+    except (TimeoutError, OSError, ConnectionError, RuntimeError, CancelledError) as e:
         logger.error("Unexpected error", error=str(e))
         sys.exit(1)
     finally:

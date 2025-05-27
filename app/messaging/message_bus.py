@@ -1,5 +1,6 @@
 """Message bus and message types for the pubsub system."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -22,8 +23,6 @@ class ProductMessage:
 @dataclass
 class StatsConnectionMessage:
     """Message for connection-related statistics events."""
-
-    pass
 
 
 @dataclass
@@ -48,36 +47,38 @@ class MessageBus:
     """Central message bus for application-wide communication."""
 
     @staticmethod
-    def publish(topic: str, **kwargs) -> None:
+    def publish(topic: str, **kwargs: Any) -> None:
         """Publish a message to a topic."""
         try:
             pub.sendMessage(topic, **kwargs)
             logger.debug("Published message", topic=topic, kwargs_keys=list(kwargs.keys()))
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.error("Failed to publish message", topic=topic, error=str(e))
 
     @staticmethod
-    def subscribe(topic: str, listener) -> None:
+    def subscribe(topic: str, listener: Callable[..., Any]) -> None:
         """Subscribe to a topic."""
         try:
             pub.subscribe(listener, topic)
-            logger.debug("Subscribed to topic", topic=topic, listener=listener.__name__)
-        except Exception as e:
+            listener_name: str = getattr(listener, "__name__", str(listener))
+            logger.debug("Subscribed to topic", topic=topic, listener=listener_name)
+        except Exception as e:  # noqa: BLE001
             logger.error("Failed to subscribe to topic", topic=topic, error=str(e))
 
     @staticmethod
-    def unsubscribe(topic: str, listener) -> None:
+    def unsubscribe(topic: str, listener: Callable[..., Any]) -> None:
         """Unsubscribe from a topic."""
         try:
             pub.unsubscribe(listener, topic)
-            logger.debug("Unsubscribed from topic", topic=topic, listener=listener.__name__)
-        except Exception as e:
+            listener_name: str = getattr(listener, "__name__", str(listener))
+            logger.debug("Unsubscribed from topic", topic=topic, listener=listener_name)
+        except Exception as e:  # noqa: BLE001
             logger.error("Failed to unsubscribe from topic", topic=topic, error=str(e))
 
     @staticmethod
-    def get_topic_subscribers(topic: str) -> list:
+    def get_topic_subscribers(topic: str) -> list[Callable[..., Any]]:
         """Get all subscribers for a topic."""
         try:
             return pub.getDefaultTopicMgr().getTopic(topic).getListeners()
-        except Exception:
+        except Exception:  # noqa: BLE001
             return []
