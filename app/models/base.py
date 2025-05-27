@@ -1,7 +1,8 @@
 """Base model classes."""
 
 import datetime
-from pydantic import BaseModel, Field, ConfigDict
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class WMOProductBaseModel(BaseModel):
@@ -21,9 +22,7 @@ class WMOProductBaseModel(BaseModel):
         description="Issuing source/center identifier (e.g., KJAN).",
         alias="sourceId",
     )
-    wmo: str | None = Field(
-        default=None, description="WMO TTAAii heading.", alias="wmoHeader"
-    )
+    wmo: str | None = Field(default=None, description="WMO TTAAii heading.", alias="wmoHeader")
     ddhhmm: str | None = Field(
         default=None,
         description="Day-Hour-Minute group from the WMO header.",
@@ -48,7 +47,7 @@ class WMOProductBaseModel(BaseModel):
         description="Timestamp (UTC) when the product was processed or received.",
         alias="processedUtcTimestamp",
     )
-    z: str | None = Field( # Timezone abbreviation string
+    z: str | None = Field(  # Timezone abbreviation string
         default=None,
         description="Timezone abbreviation string if product time is localized.",
         alias="timezoneAbbreviation",

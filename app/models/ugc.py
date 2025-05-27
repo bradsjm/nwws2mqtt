@@ -1,6 +1,6 @@
 """UGC (Universal Geographic Code) model."""
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class UGCModel(BaseModel):
@@ -16,6 +16,7 @@ class UGCModel(BaseModel):
     wfos: list[str] = Field(
         description="List of Weather Forecast Offices (WFOs) associated with this UGC.",
         default_factory=list,
+        alias="wfoIdList",
     )
 
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)

@@ -1,12 +1,13 @@
 """Text product models."""
 
 import datetime
-from pydantic import BaseModel, Field, ConfigDict
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from .base import WMOProductBaseModel
+from .hvtec import HVTECModel
 from .ugc import UGCModel
 from .vtec import VTECModel
-from .hvtec import HVTECModel
 
 
 class TextProductSegmentModel(BaseModel):
@@ -24,6 +25,7 @@ class TextProductSegmentModel(BaseModel):
     ugcs: list[UGCModel] = Field(
         description="List of UGCs (Universal Geographic Codes) covered by this segment.",
         default_factory=list,
+        alias="ugcRecords",
     )
     ugcexpire: datetime.datetime | None = Field(
         default=None,
@@ -42,27 +44,27 @@ class TextProductSegmentModel(BaseModel):
     tml_giswkt: str | None = Field(
         default=None,
         description="TIME...MOT...LOC geometry as Well-Known Text (WKT).",
-        alias="tmlGisWkt",
+        alias="timeMotLocGisWkt",
     )
     tml_valid: datetime.datetime | None = Field(
         default=None,
         description="TIME...MOT...LOC valid timestamp (UTC).",
-        alias="tmlValidTime",
+        alias="timeMotLocValidTime",
     )
     tml_sknt: int | None = Field(
         default=None,
         description="TIME...MOT...LOC speed in knots.",
-        alias="tmlSpeedKnots",
+        alias="timeMotLocSpeedKnots",
     )
     tml_dir: int | None = Field(
         default=None,
         description="TIME...MOT...LOC direction in degrees.",
-        alias="tmlDirectionDegrees",
+        alias="timeMotLocDirectionDegrees",
     )
     giswkt: str | None = Field(
         default=None,
         description="Storm Based Warning (SBW) polygon as Well-Known Text (WKT), SRID=4326.",
-        alias="sbwGisWkt",
+        alias="stormBasedWarningGisWkt",
     )
     windtag: str | None = Field(
         default=None,
@@ -89,9 +91,7 @@ class TextProductSegmentModel(BaseModel):
         description="Hail size direction/comparison (e.g., '>', '<=').",
         alias="hailDirectionTag",
     )
-    hailthreat: str | None = Field(
-        default=None, description="Hail threat level.", alias="hailThreat"
-    )
+    hailthreat: str | None = Field(default=None, description="Hail threat level.", alias="hailThreat")
     winddirtag: str | None = Field(
         default=None,
         description="Wind speed direction/comparison (e.g., '>', '<=').",
@@ -188,6 +188,7 @@ class TextProductModel(WMOProductBaseModel):
     main_headline: str | None = Field(
         default=None,
         description="The primary headline from the product segments.",
+        alias="mainHeadline",
     )
     signature: str | None = Field(
         default=None,
@@ -202,18 +203,21 @@ class TextProductModel(WMOProductBaseModel):
     is_correction: bool | None = Field(
         default=None,
         description="Flag indicating if this product is a correction.",
+        alias="isCorrection",
     )
     is_resent: bool | None = Field(
-        default=None, description="Flag indicating if this product is a resend."
+        default=None,
+        description="Flag indicating if this product is a resend.",
+        alias="isResent",
     )
     attn_wfo: list[str] = Field(
         description="List of WFOs found in ATTN...WFO line.",
-        alias="attentionWfos",
+        alias="attentionWfoList",
         default_factory=list,
     )
     attn_rfc: list[str] = Field(
         description="List of RFCs found in ATTN...RFC line.",
-        alias="attentionRfcs",
+        alias="attentionRfcList",
         default_factory=list,
     )
 
