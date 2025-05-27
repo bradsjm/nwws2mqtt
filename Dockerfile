@@ -16,7 +16,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv pip install --system --no-cache --requirement pyproject.toml
 
 # Copy application code
-COPY ./src ./
+COPY ./app ./
 
 # NWWS-OI Configuration
 ENV NWWS_USERNAME=your_username_here
@@ -45,6 +45,10 @@ ENV OUTPUT_HANDLERS=console
 # ENV MQTT_QOS=1
 # ENV MQTT_RETAIN=true
 # ENV MQTT_CLIENT_ID=nwws-oi-client
+
+# Expose the ports the app runs on
+EXPOSE 8080
+EXPOSE 8081
 
 # Command to run the application
 CMD ["python", "./app.py"]

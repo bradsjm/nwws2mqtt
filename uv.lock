@@ -993,21 +993,21 @@ test = [
 
 [package.metadata]
 requires-dist = [
-    { name = "loguru" },
+    { name = "loguru", specifier = ">=0.7.0" },
     { name = "nicegui", specifier = ">=2.18.0" },
-    { name = "paho-mqtt" },
-    { name = "prometheus-client" },
-    { name = "psycopg", extras = ["binary"] },
+    { name = "paho-mqtt", specifier = ">=2.1.0" },
+    { name = "prometheus-client", specifier = ">=0.22.0" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.2.9" },
     { name = "pydantic", specifier = ">=2.11.5" },
-    { name = "pyiem" },
+    { name = "pyiem", specifier = ">=1.23.0" },
     { name = "pypubsub", specifier = ">=4.0.3" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0.0" },
     { name = "pytest-asyncio", marker = "extra == 'test'", specifier = ">=0.23.0" },
     { name = "pytest-cov", marker = "extra == 'test'", specifier = ">=5.0.0" },
     { name = "pytest-mock", marker = "extra == 'test'", specifier = ">=3.14.0" },
     { name = "pytest-xdist", marker = "extra == 'test'", specifier = ">=3.6.0" },
-    { name = "python-dotenv" },
-    { name = "twisted", extras = ["tls"] },
+    { name = "python-dotenv", specifier = ">=1.1.0" },
+    { name = "twisted", extras = ["tls"], specifier = ">=24.11.0" },
 ]
 provides-extras = ["test"]
 
