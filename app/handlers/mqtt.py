@@ -10,6 +10,8 @@ from .base import OutputHandler
 
 try:
     import paho.mqtt.client as mqtt
+    from paho.mqtt.packettypes import PacketTypes
+    from paho.mqtt.properties import Properties
 
     MQTT_AVAILABLE = True
 except ImportError:
@@ -112,7 +114,7 @@ class MQTTOutputHandler(OutputHandler):
             # Create properties for message expiry only if retain is enabled
             properties = None
             if self.config.mqtt_retain:
-                properties = mqtt.Properties(mqtt.PacketTypes.PUBLISH)
+                properties = Properties(PacketTypes.PUBLISH)
                 expiry_seconds = self.config.mqtt_message_expiry_minutes * 60
                 properties.MessageExpiryInterval = expiry_seconds
 

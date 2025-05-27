@@ -2,23 +2,23 @@
 
 from typing import TYPE_CHECKING
 
+from .hvtec import HVTECModel
+from .product import TextProductModel, TextProductSegmentModel
 from .ugc import UGCModel
 from .vtec import VTECModel
-from .hvtec import HVTECModel
-from .product import TextProductSegmentModel, TextProductModel
 
 if TYPE_CHECKING:
-    from pyiem.nws.ugc import UGC
-    from pyiem.nws.vtec import VTEC
     from pyiem.nws.hvtec import HVTEC
     from pyiem.nws.product import TextProduct, TextProductSegment
+    from pyiem.nws.ugc import UGC
+    from pyiem.nws.vtec import VTEC
 
 
 def convert_ugc_to_model(ugc_obj: "UGC") -> UGCModel:
     """Converts a UGC object to its Pydantic model."""
     return UGCModel(
         state=ugc_obj.state,
-        geoclass=ugc_obj.geoclass,
+        geoClass=ugc_obj.geoclass,
         number=ugc_obj.number,
         name=ugc_obj.name,
         wfos=list(ugc_obj.wfos),
@@ -31,13 +31,11 @@ def convert_vtec_to_model(vtec_obj: "VTEC") -> VTECModel:
         line=vtec_obj.line,
         status=vtec_obj.status,
         action=vtec_obj.action,
-        office=vtec_obj.office,
-        office4=vtec_obj.office4,
+        officeId=vtec_obj.office,
+        officeId4=vtec_obj.office4,
         phenomena=vtec_obj.phenomena,
         significance=vtec_obj.significance,
-        etn=vtec_obj.etn,
-        begints=vtec_obj.begints,
-        endts=vtec_obj.endts,
+        eventTrackingNumber=vtec_obj.etn,
         year=vtec_obj.year,
     )
 
@@ -56,12 +54,12 @@ def convert_hvtec_to_model(hvtec_obj: "HVTEC") -> HVTECModel:
 
     return HVTECModel(
         line=hvtec_obj.line,
-        nwsli_id=nwsli_id_val,
+        nwsliId=nwsli_id_val,
         severity=hvtec_obj.severity,
         cause=hvtec_obj.cause,
-        beginTS=hvtec_obj.beginTS,
-        crestTS=hvtec_obj.crestTS,
-        endTS=hvtec_obj.endTS,
+        beginTimestamp=hvtec_obj.beginTS,
+        crestTimestamp=hvtec_obj.crestTS,
+        endTimestamp=hvtec_obj.endTS,
         record=hvtec_obj.record,
     )
 
@@ -71,39 +69,36 @@ def convert_text_product_segment_to_model(
 ) -> TextProductSegmentModel:
     """Converts a TextProductSegment object to its Pydantic model."""
     hvtec_list = []
-    if segment_obj.hvtec: # Check if hvtec is not None and not empty
-        hvtec_list = [
-            convert_hvtec_to_model(h) for h in segment_obj.hvtec if h
-        ]
+    if segment_obj.hvtec:  # Check if hvtec is not None and not empty
+        hvtec_list = [convert_hvtec_to_model(h) for h in segment_obj.hvtec if h]
 
     return TextProductSegmentModel(
-        unixtext=segment_obj.unixtext,
-        vtec=[convert_vtec_to_model(v) for v in segment_obj.vtec if v],
+        segmentText=segment_obj.unixtext,
         ugcs=[convert_ugc_to_model(u) for u in segment_obj.ugcs if u],
-        ugcexpire=segment_obj.ugcexpire,
+        ugcExpireTime=segment_obj.ugcexpire,
         headlines=list(segment_obj.headlines),
-        hvtec=hvtec_list,
-        tml_giswkt=segment_obj.tml_giswkt,
-        tml_valid=segment_obj.tml_valid,
-        tml_sknt=segment_obj.tml_sknt,
-        tml_dir=segment_obj.tml_dir,
-        giswkt=segment_obj.giswkt,
-        windtag=segment_obj.windtag,
-        windtagunits=segment_obj.windtagunits,
-        windthreat=segment_obj.windthreat,
-        hailtag=segment_obj.hailtag,
-        haildirtag=segment_obj.haildirtag,
-        hailthreat=segment_obj.hailthreat,
-        winddirtag=segment_obj.winddirtag,
-        tornadotag=segment_obj.tornadotag,
-        waterspouttag=segment_obj.waterspouttag,
-        landspouttag=segment_obj.landspouttag,
-        damagetag=segment_obj.damagetag,
-        squalltag=segment_obj.squalltag,
-        flood_tags=dict(segment_obj.flood_tags),
-        is_emergency=segment_obj.is_emergency,
-        is_pds=segment_obj.is_pds,
-        bullets=list(segment_obj.bullets),
+        hvtecRecords=hvtec_list,
+        tmlGisWkt=segment_obj.tml_giswkt,
+        tmlValidTime=segment_obj.tml_valid,
+        tmlSpeedKnots=segment_obj.tml_sknt,
+        tmlDirectionDegrees=segment_obj.tml_dir,
+        sbwGisWkt=segment_obj.giswkt,
+        windTag=segment_obj.windtag,
+        windTagUnits=segment_obj.windtagunits,
+        windThreat=segment_obj.windthreat,
+        hailTag=segment_obj.hailtag,
+        hailDirectionTag=segment_obj.haildirtag,
+        hailThreat=segment_obj.hailthreat,
+        windDirectionTag=segment_obj.winddirtag,
+        tornadoTag=segment_obj.tornadotag,
+        waterspoutTag=segment_obj.waterspouttag,
+        landspoutTag=segment_obj.landspouttag,
+        damageThreatTag=segment_obj.damagetag,
+        squallTag=segment_obj.squalltag,
+        floodTags=dict(segment_obj.flood_tags),
+        isEmergency=segment_obj.is_emergency,
+        isPds=segment_obj.is_pds,
+        bulletPoints=list(segment_obj.bullets),
     )
 
 
@@ -139,30 +134,26 @@ def convert_text_product_to_model(
             ]
         ):
             product_id_val = product_obj.get_product_id()
-    except AttributeError: # Catch if methods or attributes are missing (should not happen with correct type)
+    except AttributeError:  # Catch if methods or attributes are missing (should not happen with correct type)
         product_id_val = None
-    except Exception: # Catch any other error during get_product_id()
+    except Exception:  # Catch any other error during get_product_id()
         product_id_val = None
-
 
     text_product_specific_attrs = {
         "afos": product_obj.afos,
         "unixtext": product_obj.unixtext,
         "sections": list(product_obj.sections),
-        "segments": [
-            convert_text_product_segment_to_model(s)
-            for s in product_obj.segments
-        ],
+        "segments": [convert_text_product_segment_to_model(s) for s in product_obj.segments],
         "geometry": product_obj.geometry,
         "product_id": product_id_val,
-        "nicedate": product_obj.get_nicedate() if hasattr(product_obj, 'get_nicedate') else None,
-        "main_headline": product_obj.get_main_headline("") if hasattr(product_obj, 'get_main_headline') else "",
-        "signature": product_obj.get_signature() if hasattr(product_obj, 'get_signature') else None,
-        "channels": product_obj.get_channels() if hasattr(product_obj, 'get_channels') and product_obj.afos else [],
-        "is_correction": product_obj.is_correction() if hasattr(product_obj, 'is_correction') else None,
-        "is_resent": product_obj.is_resent() if hasattr(product_obj, 'is_resent') else None,
-        "attn_wfo": product_obj.parse_attn_wfo() if hasattr(product_obj, 'parse_attn_wfo') else [],
-        "attn_rfc": product_obj.parse_attn_rfc() if hasattr(product_obj, 'parse_attn_rfc') else [],
+        "nicedate": product_obj.get_nicedate() if hasattr(product_obj, "get_nicedate") else None,
+        "main_headline": product_obj.get_main_headline("") if hasattr(product_obj, "get_main_headline") else "",
+        "signature": product_obj.get_signature() if hasattr(product_obj, "get_signature") else None,
+        "channels": product_obj.get_channels() if hasattr(product_obj, "get_channels") and product_obj.afos else [],
+        "is_correction": product_obj.is_correction() if hasattr(product_obj, "is_correction") else None,
+        "is_resent": product_obj.is_resent() if hasattr(product_obj, "is_resent") else None,
+        "attn_wfo": product_obj.parse_attn_wfo() if hasattr(product_obj, "parse_attn_wfo") else [],
+        "attn_rfc": product_obj.parse_attn_rfc() if hasattr(product_obj, "parse_attn_rfc") else [],
     }
 
     # Pydantic V2: model_validate combines dicts automatically
