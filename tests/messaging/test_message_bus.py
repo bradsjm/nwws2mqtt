@@ -1,9 +1,8 @@
 """Tests for message bus functionality."""
 
-from unittest.mock import Mock, call, patch
+from unittest.mock import Mock, patch
 
 import pytest
-from pubsub import pub
 
 from app.messaging.message_bus import (
     MessageBus,
@@ -65,18 +64,18 @@ class TestStatsMessages:
 
         assert message.source is None
         assert message.afos is None
-        assert message.product_id is None
+        assert message.wmo is None
         assert message.error_type is None
 
     def test_stats_message_processing_message_with_values(self):
         """Test StatsMessageProcessingMessage with provided values."""
         message = StatsMessageProcessingMessage(
-            source="NWWS-OI", afos="AFGAFC", product_id="AFGAFC.2025.05.27.120000", error_type="parsing_error"
+            source="NWWS-OI", afos="AFGAFC", wmo="AFGAFC.2025.05.27.120000", error_type="parsing_error"
         )
 
         assert message.source == "NWWS-OI"
         assert message.afos == "AFGAFC"
-        assert message.product_id == "AFGAFC.2025.05.27.120000"
+        assert message.wmo == "AFGAFC.2025.05.27.120000"
         assert message.error_type == "parsing_error"
 
     def test_stats_handler_message_required_fields(self):

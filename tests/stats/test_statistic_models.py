@@ -103,7 +103,7 @@ class TestMessageStats:
         assert stats.total_published == 0
         assert stats.last_message_time is None
         assert stats.last_groupchat_message_time is None
-        assert isinstance(stats.product_types, Counter)
+        assert isinstance(stats.wmo_codes, Counter)
         assert isinstance(stats.sources, Counter)
         assert isinstance(stats.afos_codes, Counter)
         assert isinstance(stats.processing_errors, Counter)
@@ -137,12 +137,12 @@ class TestMessageStats:
         """Test that Counter objects work correctly."""
         stats = MessageStats()
 
-        # Test product types
-        stats.product_types["FXUS61"] = 5
-        stats.product_types["FXUS62"] = 3
-        assert stats.product_types["FXUS61"] == 5
-        assert stats.product_types["FXUS62"] == 3
-        assert stats.product_types["UNKNOWN"] == 0  # Default counter behavior
+        # Test WMO codes
+        stats.wmo_codes["FXUS61"] = 5
+        stats.wmo_codes["FXUS62"] = 3
+        assert stats.wmo_codes["FXUS61"] == 5
+        assert stats.wmo_codes["FXUS62"] == 3
+        assert stats.wmo_codes["UNKNOWN"] == 0  # Default counter behavior
 
         # Test sources
         stats.sources["NWWS-OI"] = 10
@@ -316,9 +316,9 @@ class TestComplexStatisticsScenarios:
         app_stats.messages.total_failed = 50
         app_stats.messages.total_published = 940
 
-        # Add product types and sources
-        app_stats.messages.product_types["FXUS61"] = 300
-        app_stats.messages.product_types["FXUS62"] = 250
+        # Add WMO codes and sources
+        app_stats.messages.wmo_codes["FXUS61"] = 300
+        app_stats.messages.wmo_codes["FXUS62"] = 250
         app_stats.messages.sources["NWWS-OI"] = 1000
         app_stats.messages.afos_codes["AFGAFC"] = 150
         app_stats.messages.processing_errors["parse_error"] = 30
@@ -338,7 +338,7 @@ class TestComplexStatisticsScenarios:
         assert console_stats.success_rate == 100.0
 
         # Verify counters
-        assert sum(app_stats.messages.product_types.values()) == 550
+        assert sum(app_stats.messages.wmo_codes.values()) == 550
         assert app_stats.messages.sources["NWWS-OI"] == 1000
         assert sum(app_stats.messages.processing_errors.values()) == 50
 
@@ -351,7 +351,7 @@ class TestComplexStatisticsScenarios:
         # Set up complex message stats
         app_stats.messages.total_received = 5000
         app_stats.messages.total_processed = 4800
-        app_stats.messages.product_types.update({"FXUS61": 1500, "FXUS62": 1200, "WWUS75": 800, "URGENT": 300})
+        app_stats.messages.wmo_codes.update({"FXUS61": 1500, "FXUS62": 1200, "WWUS75": 800, "URGENT": 300})
 
         # Create snapshot
         timestamp = datetime.utcnow()
@@ -360,6 +360,6 @@ class TestComplexStatisticsScenarios:
         # Verify snapshot captures all data
         assert snapshot.stats.messages.total_received == 5000
         assert snapshot.stats.messages.total_processed == 4800
-        assert len(snapshot.stats.messages.product_types) == 4
-        assert snapshot.stats.messages.product_types["FXUS61"] == 1500
+        assert len(snapshot.stats.messages.wmo_codes) == 4
+        assert snapshot.stats.messages.wmo_codes["FXUS61"] == 1500
         assert snapshot.timestamp == timestamp

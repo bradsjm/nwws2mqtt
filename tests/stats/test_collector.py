@@ -48,18 +48,18 @@ class TestStatsCollectorInitialization:
             collector = StatsCollector()
 
         # Add complex data
-        collector._stats.messages.product_types["FXUS61"] = 50
+        collector._stats.messages.wmo_codes["FXUS61"] = 50
         collector._stats.output_handlers["mqtt"] = OutputHandlerStats(handler_type="mqtt")
 
         # Get copy
         stats_copy = collector.get_stats()
 
         # Modify original nested data
-        collector._stats.messages.product_types["FXUS61"] = 100
+        collector._stats.messages.wmo_codes["FXUS61"] = 100
         collector._stats.output_handlers["mqtt"].total_published = 25
 
         # Copy should be unchanged
-        assert stats_copy.messages.product_types["FXUS61"] == 50
+        assert stats_copy.messages.wmo_codes["FXUS61"] == 50
         assert stats_copy.output_handlers["mqtt"].total_published == 0
 
 
@@ -232,21 +232,21 @@ class TestMessageTracking:
     @pytest.mark.unit
     def test_on_message_processed(self, collector: StatsCollector) -> None:
         """Test recording message processed with all parameters."""
-        collector.on_message_processed(source="NWWS-OI", afos="AFGAFC", product_id="FXUS61KBOU")
+        collector.on_message_processed(source="NWWS-OI", afos="AFGAFC", wmo="FXUS61KBOU")
 
         stats = collector.get_stats()
         assert stats.messages.total_processed == 1
         assert stats.messages.sources["NWWS-OI"] == 1
         assert stats.messages.afos_codes["AFGAFC"] == 1
-        assert stats.messages.product_types["FXUS61"] == 1
+        assert stats.messages.wmo_codes["FXUS61KBOU"] == 1
 
     @pytest.mark.unit
     def test_on_message_processed_short_product_id(self, collector: StatsCollector) -> None:
         """Test message processed with short product ID."""
-        collector.on_message_processed(source="NWWS-OI", afos="AFGAFC", product_id="FX")
+        collector.on_message_processed(source="NWWS-OI", afos="AFGAFC", wmo="FX")
 
         stats = collector.get_stats()
-        assert stats.messages.product_types["FX"] == 1
+        assert stats.messages.wmo_codes["FX"] == 1
 
     @pytest.mark.unit
     def test_on_message_processed_no_product_id(self, collector: StatsCollector) -> None:
@@ -257,19 +257,19 @@ class TestMessageTracking:
         assert stats.messages.total_processed == 1
         assert stats.messages.sources["NWWS-OI"] == 1
         assert stats.messages.afos_codes["AFGAFC"] == 1
-        assert len(stats.messages.product_types) == 0
+        assert len(stats.messages.wmo_codes) == 0
 
     @pytest.mark.unit
     def test_on_message_processed_empty_values(self, collector: StatsCollector) -> None:
         """Test message processed with empty values."""
-        collector.on_message_processed(source="", afos="", product_id="")
+        collector.on_message_processed(source="", afos="", wmo="")
 
         stats = collector.get_stats()
         assert stats.messages.total_processed == 1
         # Empty strings should not increment counters
         assert len(stats.messages.sources) == 0
         assert len(stats.messages.afos_codes) == 0
-        assert len(stats.messages.product_types) == 0
+        assert len(stats.messages.wmo_codes) == 0
 
     @pytest.mark.unit
     def test_on_message_failed(self, collector: StatsCollector) -> None:
@@ -308,8 +308,8 @@ class TestMessageTracking:
         assert stats.messages.sources["NWWS-OI"] == 2
         assert stats.messages.afos_codes["AFGAFC"] == 1
         assert stats.messages.afos_codes["URGENT"] == 1
-        assert stats.messages.product_types["FXUS61"] == 1
-        assert stats.messages.product_types["FXUS62"] == 1
+        assert stats.messages.wmo_codes["FXUS61KBOU"] == 1
+        assert stats.messages.wmo_codes["FXUS62KDEN"] == 1
         assert stats.messages.processing_errors["timeout"] == 1
 
 

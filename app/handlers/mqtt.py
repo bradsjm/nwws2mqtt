@@ -19,7 +19,7 @@ except ImportError:
 
 
 class MQTTOutputHandler(OutputHandler):
-    """Autonomous output handler that publishes to MQTT broker."""
+    """output handler that publishes to MQTT broker."""
 
     async def _start_handler(self) -> None:
         """Start MQTT client and connect to broker."""
@@ -78,7 +78,7 @@ class MQTTOutputHandler(OutputHandler):
 
     async def _stop_handler(self) -> None:
         """Stop MQTT client and cleanup."""
-        logger.info("Stopping autonomous MQTT handler", handler="mqtt")
+        logger.info("Stopping MQTT handler", handler="mqtt")
 
         # Stop cleanup task
         if self._cleanup_task and not self._cleanup_task.done():

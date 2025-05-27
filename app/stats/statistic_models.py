@@ -1,14 +1,16 @@
 """Statistics data models."""
 
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, Counter as CounterType
-from collections import Counter
+from typing import Counter as CounterType
+from typing import Dict
 
 
 @dataclass
 class ConnectionStats:
     """Statistics for XMPP connection."""
+
     start_time: datetime = field(default_factory=datetime.utcnow)
     connected_at: datetime | None = None
     disconnected_at: datetime | None = None
@@ -21,16 +23,16 @@ class ConnectionStats:
     last_ping_sent: datetime | None = None
     last_pong_received: datetime | None = None
     outstanding_pings: int = 0
-    
+
     @property
     def uptime_seconds(self) -> float:
         """Calculate current uptime in seconds."""
         if not self.connected_at:
             return 0.0
-        
+
         end_time = self.disconnected_at if self.disconnected_at else datetime.utcnow()
         return (end_time - self.connected_at).total_seconds()
-    
+
     @property
     def total_uptime_seconds(self) -> float:
         """Calculate total uptime since start."""
@@ -42,24 +44,25 @@ class ConnectionStats:
 @dataclass
 class MessageStats:
     """Statistics for message processing."""
+
     total_received: int = 0
     total_processed: int = 0
     total_failed: int = 0
     total_published: int = 0
     last_message_time: datetime | None = None
     last_groupchat_message_time: datetime | None = None
-    product_types: CounterType[str] = field(default_factory=Counter)
+    wmo_codes: CounterType[str] = field(default_factory=Counter)
     sources: CounterType[str] = field(default_factory=Counter)
     afos_codes: CounterType[str] = field(default_factory=Counter)
     processing_errors: CounterType[str] = field(default_factory=Counter)
-    
+
     @property
     def success_rate(self) -> float:
         """Calculate message processing success rate."""
         if self.total_received == 0:
             return 0.0
         return (self.total_processed / self.total_received) * 100
-    
+
     @property
     def error_rate(self) -> float:
         """Calculate message processing error rate."""
@@ -71,6 +74,7 @@ class MessageStats:
 @dataclass
 class OutputHandlerStats:
     """Statistics for individual output handlers."""
+
     handler_type: str
     total_published: int = 0
     total_failed: int = 0
@@ -79,7 +83,7 @@ class OutputHandlerStats:
     disconnected_at: datetime | None = None
     connection_errors: int = 0
     last_publish_time: datetime | None = None
-    
+
     @property
     def success_rate(self) -> float:
         """Calculate publishing success rate."""
@@ -92,11 +96,12 @@ class OutputHandlerStats:
 @dataclass
 class ApplicationStats:
     """Overall application statistics."""
+
     start_time: datetime = field(default_factory=datetime.utcnow)
     connection: ConnectionStats = field(default_factory=ConnectionStats)
     messages: MessageStats = field(default_factory=MessageStats)
     output_handlers: Dict[str, OutputHandlerStats] = field(default_factory=dict)
-    
+
     @property
     def running_time_seconds(self) -> float:
         """Calculate total running time in seconds."""
@@ -106,9 +111,10 @@ class ApplicationStats:
 @dataclass
 class StatsSnapshot:
     """Snapshot of statistics at a point in time."""
+
     timestamp: datetime
     stats: ApplicationStats
-    
+
     def __post_init__(self):
         """Ensure timestamp is set."""
         if not self.timestamp:

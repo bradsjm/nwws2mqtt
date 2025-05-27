@@ -151,9 +151,9 @@ class PrometheusMetricsExporter:
             "nwws2mqtt_message_processing_error_rate", "Message processing error rate as percentage", registry=self.registry
         )
 
-        # Product type metrics
-        self.product_types_total = create_counter(
-            "nwws2mqtt_product_types_total", "Total count by product type", labelnames=["product_type"], registry=self.registry
+        # WMO code metrics
+        self.wmo_total = create_counter(
+            "nwws2mqtt_wmo_total", "Total count by WMO code", labelnames=["wmo_code"], registry=self.registry
         )
 
         # Source metrics
@@ -323,7 +323,7 @@ class PrometheusMetricsExporter:
                 "total_processed": 0,
                 "total_published": 0,
                 "processing_errors": {},
-                "product_types": {},
+                "wmo_codes": {},
                 "sources": {},
                 "afos_codes": {},
             }
@@ -356,13 +356,13 @@ class PrometheusMetricsExporter:
         self.message_processing_success_rate.set(stats.messages.success_rate)
         self.message_processing_error_rate.set(stats.messages.error_rate)
 
-        # Update product type counters
-        for product_type, count in stats.messages.product_types.items():
-            last_count = self._last_message_values["product_types"].get(product_type, 0)
+        # Update WMO code counters
+        for wmo_code, count in stats.messages.wmo_codes.items():
+            last_count = self._last_message_values["wmo_codes"].get(wmo_code, 0)
             diff = count - last_count
             if diff > 0:
-                self.product_types_total.labels(product_type=product_type).inc(diff)
-                self._last_message_values["product_types"][product_type] = count
+                self.wmo_total.labels(wmo_code=wmo_code).inc(diff)
+                self._last_message_values["wmo_codes"][wmo_code] = count
 
         # Update source counters
         for source, count in stats.messages.sources.items():

@@ -2,24 +2,26 @@
 
 from .collector import StatsCollector
 from .consumer import StatsConsumer
+from .logger import StatsLogger
+from .prometheus import PrometheusMetricsExporter
 from .statistic_models import (
+    ApplicationStats,
     ConnectionStats,
     MessageStats,
     OutputHandlerStats,
-    ApplicationStats,
     StatsSnapshot,
 )
-from .logger import StatsLogger
-from .prometheus import PrometheusMetricsExporter
+from .web_dashboard import WebDashboardServer
 
 __all__ = [
     "StatsCollector",
     "StatsConsumer",
     "ConnectionStats",
-    "MessageStats", 
+    "MessageStats",
     "OutputHandlerStats",
     "ApplicationStats",
     "StatsSnapshot",
     "StatsLogger",
     "PrometheusMetricsExporter",
+    "WebDashboardServer",
 ]

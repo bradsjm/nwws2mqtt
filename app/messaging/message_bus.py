@@ -10,6 +10,7 @@ from pubsub import pub
 @dataclass
 class ProductMessage:
     """Message containing weather product data."""
+
     source: str
     afos: str
     product_id: str
@@ -21,28 +22,31 @@ class ProductMessage:
 @dataclass
 class StatsConnectionMessage:
     """Message for connection-related statistics events."""
+
     pass
 
 
 @dataclass
 class StatsMessageProcessingMessage:
     """Message for message processing statistics events."""
+
     source: str | None = None
     afos: str | None = None
-    product_id: str | None = None
+    wmo: str | None = None
     error_type: str | None = None
 
 
 @dataclass
 class StatsHandlerMessage:
     """Message for output handler statistics events."""
+
     handler_name: str
     handler_type: str | None = None
 
 
 class MessageBus:
     """Central message bus for application-wide communication."""
-    
+
     @staticmethod
     def publish(topic: str, **kwargs) -> None:
         """Publish a message to a topic."""
@@ -51,7 +55,7 @@ class MessageBus:
             logger.debug("Published message", topic=topic, kwargs_keys=list(kwargs.keys()))
         except Exception as e:
             logger.error("Failed to publish message", topic=topic, error=str(e))
-    
+
     @staticmethod
     def subscribe(topic: str, listener) -> None:
         """Subscribe to a topic."""
@@ -60,7 +64,7 @@ class MessageBus:
             logger.debug("Subscribed to topic", topic=topic, listener=listener.__name__)
         except Exception as e:
             logger.error("Failed to subscribe to topic", topic=topic, error=str(e))
-    
+
     @staticmethod
     def unsubscribe(topic: str, listener) -> None:
         """Unsubscribe from a topic."""
@@ -69,7 +73,7 @@ class MessageBus:
             logger.debug("Unsubscribed from topic", topic=topic, listener=listener.__name__)
         except Exception as e:
             logger.error("Failed to unsubscribe from topic", topic=topic, error=str(e))
-    
+
     @staticmethod
     def get_topic_subscribers(topic: str) -> list:
         """Get all subscribers for a topic."""

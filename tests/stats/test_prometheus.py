@@ -244,7 +244,7 @@ class TestMetricsUpdates:
         stats.messages.total_published = 940
 
         # Add counters
-        stats.messages.product_types = Counter({"FXUS61": 300, "FXUS62": 250})
+        stats.messages.wmo_codes = Counter({"FXUS61": 300, "FXUS62": 250})
         stats.messages.sources = Counter({"NWWS-OI": 1000})
         stats.messages.afos_codes = Counter({"AFGAFC": 150, "URGENT": 100})
         stats.messages.processing_errors = Counter({"parse_error": 30, "timeout": 20})
@@ -341,7 +341,7 @@ class TestMetricsUpdates:
         """Test message metrics update for first time."""
         with patch.object(exporter.messages_received_total, "inc") as mock_received:
             with patch.object(exporter.message_processing_success_rate, "set") as mock_success_rate:
-                with patch.object(exporter.product_types_total, "labels") as mock_product_labels:
+                with patch.object(exporter.wmo_total, "labels") as mock_product_labels:
                     mock_product_counter = Mock()
                     mock_product_labels.return_value = mock_product_counter
 

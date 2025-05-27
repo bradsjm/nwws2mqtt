@@ -59,7 +59,7 @@ def sample_stats_message():
     """Sample StatsMessageProcessingMessage for testing."""
     from app.messaging.message_bus import StatsMessageProcessingMessage
 
-    return StatsMessageProcessingMessage(source="NWWS-OI", afos="AFGAFC", product_id="AFGAFC.2025.05.27.120000", error_type=None)
+    return StatsMessageProcessingMessage(source="NWWS-OI", afos="AFGAFC", wmo="AFGAFC.2025.05.27.120000", error_type=None)
 
 
 @pytest.fixture

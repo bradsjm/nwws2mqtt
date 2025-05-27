@@ -12,14 +12,14 @@ from app.utils import LoggingConfig
 
 class OutputHandler(ABC):
     """
-    Base class for autonomous output handlers.
+    Base class for output handlers.
 
     Each handler subscribes directly to the pubsub system and manages
     its own lifecycle independently for better isolation and reliability.
     """
 
     def __init__(self, config: OutputConfig) -> None:
-        """Initialize the autonomous output handler."""
+        """Initialize the output handler."""
         # Ensure logging is properly configured
         LoggingConfig.ensure_configured()
 
@@ -41,10 +41,10 @@ class OutputHandler(ABC):
             MessageBus.subscribe(Topics.PRODUCT_RECEIVED, self._on_product_received)
 
             self._is_started = True
-            logger.info("Autonomous handler started", handler=self._handler_name)
+            logger.info("handler started", handler=self._handler_name)
 
         except Exception as e:
-            logger.error("Failed to start autonomous handler", handler=self._handler_name, error=str(e))
+            logger.error("Failed to start handler", handler=self._handler_name, error=str(e))
             raise
 
     async def stop(self) -> None:
@@ -60,10 +60,10 @@ class OutputHandler(ABC):
             await self._stop_handler()
 
             self._is_started = False
-            logger.info("Autonomous handler stopped", handler=self._handler_name)
+            logger.info("handler stopped", handler=self._handler_name)
 
         except Exception as e:
-            logger.error("Error stopping autonomous handler", handler=self._handler_name, error=str(e))
+            logger.error("Error stopping handler", handler=self._handler_name, error=str(e))
 
     def _on_product_received(self, message: ProductMessage) -> None:
         """Handle received product messages from pubsub."""

@@ -48,6 +48,8 @@ cp .env.example .env
 | `METRICS_ENABLED` | Enable Prometheus metrics endpoint | true | No |
 | `METRICS_PORT` | Port for Prometheus metrics endpoint | 8080 | No |
 | `METRICS_UPDATE_INTERVAL` | Metrics update interval in seconds | 30 | No |
+| `DASHBOARD_ENABLED` | Enable web dashboard | false | No |
+| `DASHBOARD_PORT` | Port for web dashboard | 8081 | No |
 
 ### Output Handlers
 
@@ -169,7 +171,7 @@ The application exposes metrics in Prometheus format via a standard `/metrics` e
 | `nwws2mqtt_messages_failed_total` | Counter | Total number of messages that failed processing | `error_type` |
 | `nwws2mqtt_messages_published_total` | Counter | Total number of messages published to output handlers | - |
 | `nwws2mqtt_message_processing_success_rate` | Gauge | Message processing success rate as percentage | - |
-| `nwws2mqtt_product_types_total` | Counter | Total count by product type | `product_type` |
+| `nwws2mqtt_wmo_codes_total` | Counter | Total count by product type | `wmo_code` |
 | `nwws2mqtt_sources_total` | Counter | Total count by source | `source` |
 | `nwws2mqtt_afos_codes_total` | Counter | Total count by AFOS code | `afos_code` |
 | `nwws2mqtt_output_handler_status` | Gauge | Output handler connection status | `handler_name`, `handler_type` |
@@ -204,6 +206,34 @@ You can test the endpoint with curl:
 curl http://localhost:8080/metrics
 ```
 
+### Web Dashboard
+
+The application includes an optional real-time web dashboard for monitoring application health and statistics.
+
+#### Configuration
+
+```bash
+DASHBOARD_ENABLED=true       # Enable web dashboard (default: false)
+DASHBOARD_PORT=8081         # Port for web dashboard (default: 8081)
+```
+
+#### Accessing the Dashboard
+
+Once enabled, the dashboard is available at:
+```
+http://localhost:8081
+```
+
+The dashboard provides:
+- **Real-time Statistics**: Live connection status, message processing metrics, and error rates
+- **Connection Monitoring**: XMPP connection health, uptime, and reconnection statistics  
+- **Message Processing**: Processing throughput, success/error rates, and recent message activity
+- **Output Handler Status**: Status and performance of all configured output handlers
+- **Product Distribution**: Top product types, sources, and AFOS codes
+- **Error Tracking**: Recent processing errors and failure analysis
+
+The dashboard automatically refreshes every 5 seconds to provide up-to-date information.
+
 ### Integration with Monitoring Systems
 
 #### Prometheus Configuration
@@ -227,7 +257,7 @@ The metrics can be visualized in Grafana. Key queries for monitoring:
 - **Message Processing Rate**: `rate(nwws2mqtt_messages_processed_total[5m])`
 - **Error Rate**: `rate(nwws2mqtt_messages_failed_total[5m])`
 - **Success Rate**: `nwws2mqtt_message_processing_success_rate`
-- **Top Product Types**: `topk(10, nwws2mqtt_product_types_total)`
+- **Top Product Types**: `topk(10, nwws2mqtt_wmo_total)`
 
 
 ## License

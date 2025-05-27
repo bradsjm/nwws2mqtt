@@ -123,7 +123,7 @@ class StatsCollector:
                     total_published=self._stats.messages.total_published,
                     last_message_time=self._stats.messages.last_message_time,
                     last_groupchat_message_time=self._stats.messages.last_groupchat_message_time,
-                    product_types=self._stats.messages.product_types.copy(),
+                    wmo_codes=self._stats.messages.wmo_codes.copy(),
                     sources=self._stats.messages.sources.copy(),
                     afos_codes=self._stats.messages.afos_codes.copy(),
                     processing_errors=self._stats.messages.processing_errors.copy(),
@@ -215,7 +215,7 @@ class StatsCollector:
             self._stats.messages.last_groupchat_message_time = datetime.utcnow()
             logger.debug("Groupchat message received recorded")
 
-    def on_message_processed(self, source: str, afos: str, product_id: Optional[str] = None) -> None:
+    def on_message_processed(self, source: str, afos: str, wmo: Optional[str] = None) -> None:
         """Record successful message processing."""
         with self._lock:
             self._stats.messages.total_processed += 1
@@ -223,11 +223,9 @@ class StatsCollector:
                 self._stats.messages.sources[source] += 1
             if afos:
                 self._stats.messages.afos_codes[afos] += 1
-            if product_id:
-                # Extract product type from product_id (e.g., FXUS61 from FXUS61KBOU)
-                product_type = product_id[:6] if len(product_id) >= 6 else product_id
-                self._stats.messages.product_types[product_type] += 1
-            logger.debug("Message processed recorded", source=source, afos=afos, product_id=product_id)
+            if wmo:
+                self._stats.messages.wmo_codes[wmo] += 1
+            logger.debug("Message processed recorded", source=source, afos=afos, wmo=wmo)
 
     def on_message_failed(self, error_type: str) -> None:
         """Record message processing failure."""

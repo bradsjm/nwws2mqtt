@@ -188,9 +188,7 @@ class StatsConsumer:
 
     def _on_message_processed(self, message: StatsMessageProcessingMessage) -> None:
         """Handle message processed event."""
-        self.stats_collector.on_message_processed(
-            source=message.source or "", afos=message.afos or "", product_id=message.product_id
-        )
+        self.stats_collector.on_message_processed(source=message.source or "", afos=message.afos or "", wmo=message.wmo)
 
     def _on_message_failed(self, message: StatsMessageProcessingMessage) -> None:
         """Handle message failed event."""

@@ -16,7 +16,7 @@ type HandlerFactory = type[OutputHandler]
 
 class HandlerRegistry:
     """
-    Registry for autonomous output handlers.
+    Registry for output handlers.
 
     Provides centralized configuration and monitoring without
     managing handler lifecycles directly.

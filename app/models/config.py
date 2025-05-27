@@ -16,9 +16,12 @@ class Config:
     log_file: str | None = None
     output_config: OutputConfig | None = None
     stats_interval: int = 60  # Statistics logging interval in seconds
-    metrics_enabled: bool = True  # Enable Prometheus metrics endpoint
+    metrics_enabled: bool = False  # Enable Prometheus metrics endpoint
     metrics_port: int = 8080  # Port for Prometheus metrics endpoint
     metrics_update_interval: int = 30  # How often to update metrics in seconds
+    dashboard_enabled: bool = True  # Enable web dashboard
+    dashboard_port: int = 8081  # Port for web dashboard
+    dashboard_host: str = "localhost"  # Host for web dashboard
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -41,4 +44,7 @@ class Config:
             metrics_enabled=os.getenv("METRICS_ENABLED", "true").lower() in ("true", "1", "yes"),
             metrics_port=int(os.getenv("METRICS_PORT", "8080")),
             metrics_update_interval=int(os.getenv("METRICS_UPDATE_INTERVAL", "30")),
+            dashboard_enabled=os.getenv("DASHBOARD_ENABLED", "false").lower() in ("true", "1", "yes"),
+            dashboard_port=int(os.getenv("DASHBOARD_PORT", "8081")),
+            dashboard_host=os.getenv("DASHBOARD_HOST", "127.0.0.1"),
         )

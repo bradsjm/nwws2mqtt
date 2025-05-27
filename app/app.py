@@ -19,7 +19,7 @@ from app.handlers import HandlerRegistry
 from app.messaging import MessageBus, Topics
 from app.models import Config, OutputConfig, XMPPConfig
 from app.receiver import NWWSXMPPClient
-from app.stats import PrometheusMetricsExporter, StatsCollector, StatsConsumer, StatsLogger
+from app.stats import PrometheusMetricsExporter, StatsCollector, StatsConsumer, StatsLogger, WebDashboardServer
 from app.utils import LoggingConfig
 
 load_dotenv(override=True)  # Load environment variables from .env file
@@ -48,6 +48,13 @@ class NWWSApplication:
                 self.stats_collector, port=config.metrics_port, update_interval=config.metrics_update_interval
             )
 
+        # Initialize web dashboard server if enabled
+        self.dashboard_server = None
+        if config.dashboard_enabled:
+            self.dashboard_server = WebDashboardServer(
+                self.stats_collector, port=config.dashboard_port, host=config.dashboard_host, update_interval=5.0
+            )
+
         # Initialize handler registry (replaces OutputManager)
         if config.output_config:
             self.handler_registry = HandlerRegistry(config.output_config)
@@ -67,7 +74,7 @@ class NWWSApplication:
         # Subscribe to XMPP error events for shutdown logic
         MessageBus.subscribe(Topics.XMPP_ERROR, self._on_xmpp_error)
 
-        logger.info("Starting refactored NWWS-OI application", username=config.username, server=config.server)
+        logger.info("Starting NWWS-OI application", username=config.username, server=config.server)
 
         # Start statistics logging
         self.stats_logger.start()
@@ -80,14 +87,19 @@ class NWWSApplication:
             self.metrics_exporter.start()
             logger.info("Prometheus metrics available", url=self.metrics_exporter.metrics_url)
 
-        # Start autonomous handlers
+        # Start web dashboard server if enabled
+        if self.dashboard_server:
+            self.dashboard_server.start()
+            logger.info("Web dashboard available", url=self.dashboard_server.dashboard_url)
+
+        # Start handlers
         self._start_handlers()
 
         # Connect to XMPP server
         self.xmpp_client.connect()
 
     def _start_handlers(self) -> None:
-        """Start autonomous handlers in the reactor context."""
+        """Start handlers in the reactor context."""
 
         def start_handlers():
             # Ensure logging is configured in this thread
@@ -97,9 +109,9 @@ class NWWSApplication:
             asyncio.set_event_loop(loop)
             try:
                 loop.run_until_complete(self.handler_registry.start())
-                logger.info("Autonomous handlers started successfully")
+                logger.info("handlers started successfully")
             except Exception as e:
-                logger.error("Failed to start autonomous handlers", error=str(e))
+                logger.error("Failed to start handlers", error=str(e))
             finally:
                 loop.close()
 
@@ -127,7 +139,7 @@ class NWWSApplication:
         if self.is_shutting_down:
             return
 
-        logger.info("Shutting down refactored NWWS-OI application")
+        logger.info("Shutting down NWWS-OI application")
         self.is_shutting_down = True
 
         # Unsubscribe from XMPP error events
@@ -152,6 +164,13 @@ class NWWSApplication:
             except Exception as e:
                 logger.error("Error stopping metrics exporter", error=str(e))
 
+        # Stop web dashboard server
+        if self.dashboard_server:
+            try:
+                self.dashboard_server.stop()
+            except Exception as e:
+                logger.error("Error stopping dashboard server", error=str(e))
+
         # Log final statistics
         try:
             self.stats_logger.log_current_stats()
@@ -164,7 +183,7 @@ class NWWSApplication:
         except Exception as e:
             logger.error("Error shutting down XMPP client", error=str(e))
 
-        # Stop autonomous handlers
+        # Stop handlers
         try:
 
             def stop_handlers():
@@ -175,9 +194,9 @@ class NWWSApplication:
                 asyncio.set_event_loop(loop)
                 try:
                     loop.run_until_complete(self.handler_registry.stop())
-                    logger.info("Autonomous handlers stopped")
+                    logger.info("handlers stopped")
                 except Exception as e:
-                    logger.error("Error stopping autonomous handlers", error=str(e))
+                    logger.error("Error stopping handlers", error=str(e))
                 finally:
                     loop.close()
 
@@ -210,7 +229,7 @@ def main() -> None:
         logger.error("Unexpected error", error=str(e))
         sys.exit(1)
     finally:
-        logger.info("Refactored NWWS-OI application stopped")
+        logger.info("NWWS-OI application stopped")
 
 
 if __name__ == "__main__":

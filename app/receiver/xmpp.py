@@ -361,7 +361,7 @@ class NWWSXMPPClient:
                     # Record successful processing
                     MessageBus.publish(
                         Topics.STATS_MESSAGE_PROCESSED,
-                        message=StatsMessageProcessingMessage(source=source, afos=afos, product_id=product_id),
+                        message=StatsMessageProcessingMessage(source=source, afos=afos, wmo=tp.wmo),
                     )
 
                     # Output structured data
