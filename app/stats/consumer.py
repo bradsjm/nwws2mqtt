@@ -2,8 +2,9 @@
 
 from loguru import logger
 
-from messaging.message_bus import MessageBus, StatsConnectionMessage, StatsMessageProcessingMessage, StatsHandlerMessage
-from messaging.topics import Topics
+from app.messaging import MessageBus, StatsConnectionMessage, StatsHandlerMessage, StatsMessageProcessingMessage, Topics
+from app.utils.logging_config import LoggingConfig
+
 from .collector import StatsCollector
 
 
@@ -52,6 +53,9 @@ class StatsConsumer:
         Args:
             stats_collector: The statistics collector instance
         """
+        # Ensure logging is properly configured
+        LoggingConfig.ensure_configured()
+
         self.stats_collector = stats_collector
         self._subscribed = False
         logger.debug("Statistics consumer initialized")

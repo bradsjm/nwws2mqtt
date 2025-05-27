@@ -2,7 +2,7 @@
 
 from .collector import StatsCollector
 from .consumer import StatsConsumer
-from .models import (
+from .statistic_models import (
     ConnectionStats,
     MessageStats,
     OutputHandlerStats,

@@ -4,6 +4,8 @@ import json
 import time
 
 from loguru import logger
+from messaging import MessageBus, ProductMessage, Topics
+from messaging.message_bus import StatsConnectionMessage, StatsMessageProcessingMessage
 from pyiem.exceptions import TextProductException
 from pyiem.nws.product import TextProduct
 from pyiem.util import utc
@@ -15,11 +17,7 @@ from twisted.words.protocols.jabber.jid import JID
 from twisted.words.xish import domish
 from twisted.words.xish.xmlstream import STREAM_END_EVENT, XmlStream
 
-from app.models.xmpp_config import XMPPConfig
-from models import convert_text_product_to_model
-from messaging import MessageBus, ProductMessage, Topics
-from messaging.message_bus import StatsConnectionMessage, StatsMessageProcessingMessage
-
+from app.models import XMPPConfig, convert_text_product_to_model
 
 # Configuration constants
 MUC_ROOM = "nwws@conference.nwws-oi.weather.gov"
@@ -156,7 +154,7 @@ class NWWSXMPPClient:
             self.xmlstream.send(presence)
 
             # Send a follow-up presence to ensure we're properly subscribed
-            reactor.callLater(2, self._send_subscription_presence)
+            reactor.callLater(2, self._send_subscription_presence)  # type: ignore
 
         except Exception as e:
             logger.error("Failed to join MUC room", error=str(e))
@@ -209,7 +207,7 @@ class NWWSXMPPClient:
         delay = min(RECONNECT_DELAY * (2 ** (self.reconnect_attempts - 1)), 300)  # Exponential backoff, max 5 min
 
         logger.info("Scheduling reconnection attempt", attempt=self.reconnect_attempts, delay_seconds=delay)
-        reactor.callLater(delay, self.connect)
+        reactor.callLater(delay, self.connect)  # type: ignore
 
     def _housekeeping(self) -> None:
         """Periodic housekeeping tasks."""

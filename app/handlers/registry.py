@@ -4,9 +4,10 @@ import asyncio
 import threading
 
 from loguru import logger
-from messaging import MessageBus, Topics
-from messaging.message_bus import StatsHandlerMessage
-from models import OutputConfig
+
+from app.messaging import MessageBus, StatsHandlerMessage, Topics
+from app.models import OutputConfig
+from app.utils import LoggingConfig
 
 from .base import OutputHandler
 
@@ -23,6 +24,9 @@ class HandlerRegistry:
 
     def __init__(self, config: OutputConfig) -> None:
         """Initialize handler registry with configuration."""
+        # Ensure logging is properly configured in this thread
+        LoggingConfig.ensure_configured()
+
         self.config = config
         self._factories: dict[str, HandlerFactory] = {}
         self._active_handlers: dict[str, OutputHandler] = {}
@@ -48,6 +52,9 @@ class HandlerRegistry:
 
     async def start(self) -> None:
         """Start all enabled handlers."""
+        # Ensure logging is properly configured in this asyncio context
+        LoggingConfig.ensure_configured()
+
         if self._is_running:
             logger.warning("Handler registry is already running")
             return
@@ -100,6 +107,9 @@ class HandlerRegistry:
 
     async def _start_handler(self, handler_name: str, handler: OutputHandler) -> None:
         """Start a single handler with error isolation."""
+        # Ensure logging is properly configured for this handler's execution context
+        LoggingConfig.ensure_configured()
+
         try:
             await handler.start()
 

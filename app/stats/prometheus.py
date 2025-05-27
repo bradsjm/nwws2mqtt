@@ -8,8 +8,10 @@ from prometheus_client import Counter, Gauge, Info, start_http_server
 from prometheus_client.core import CollectorRegistry
 from twisted.internet.task import LoopingCall
 
+from app.utils.logging_config import LoggingConfig
+
 from .collector import StatsCollector
-from .models import ApplicationStats
+from .statistic_models import ApplicationStats
 
 
 def create_counter(name: str, documentation: str, labelnames=None, registry=None):
@@ -59,6 +61,9 @@ class PrometheusMetricsExporter:
             port: Port to serve metrics on
             update_interval: How often to update metrics (seconds)
         """
+        # Ensure logging is properly configured
+        LoggingConfig.ensure_configured()
+
         self.stats_collector = stats_collector
         self.port = port
         self.update_interval = update_interval

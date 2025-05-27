@@ -5,8 +5,9 @@ from abc import ABC, abstractmethod
 
 from loguru import logger
 
-from messaging import MessageBus, ProductMessage, Topics, StatsHandlerMessage
-from models import OutputConfig
+from app.messaging import MessageBus, ProductMessage, StatsHandlerMessage, Topics
+from app.models import OutputConfig
+from app.utils import LoggingConfig
 
 
 class OutputHandler(ABC):
@@ -19,6 +20,9 @@ class OutputHandler(ABC):
 
     def __init__(self, config: OutputConfig) -> None:
         """Initialize the autonomous output handler."""
+        # Ensure logging is properly configured
+        LoggingConfig.ensure_configured()
+
         self.config = config
         self._is_started = False
         self._handler_name = self.__class__.__name__.replace("OutputHandler", "").lower()

@@ -6,7 +6,9 @@ from typing import Optional
 
 from loguru import logger
 
-from .models import ApplicationStats, ConnectionStats, MessageStats, OutputHandlerStats
+from app.utils.logging_config import LoggingConfig
+
+from .statistic_models import ApplicationStats, ConnectionStats, MessageStats, OutputHandlerStats
 
 
 class StatsCollector:
@@ -87,6 +89,9 @@ class StatsCollector:
 
     def __init__(self):
         """Initialize the stats collector."""
+        # Ensure logging is properly configured
+        LoggingConfig.ensure_configured()
+
         self._lock = threading.Lock()
         self._stats = ApplicationStats()
         logger.debug("Statistics collector initialized")
@@ -242,9 +247,7 @@ class StatsCollector:
         """Register an output handler for tracking."""
         with self._lock:
             if handler_name not in self._stats.output_handlers:
-                self._stats.output_handlers[handler_name] = OutputHandlerStats(
-                    handler_type=handler_type
-                )
+                self._stats.output_handlers[handler_name] = OutputHandlerStats(handler_type=handler_type)
                 logger.debug("Output handler registered", handler_name=handler_name, handler_type=handler_type)
 
     def on_handler_connected(self, handler_name: str) -> None:

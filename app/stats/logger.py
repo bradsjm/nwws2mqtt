@@ -6,8 +6,10 @@ from typing import Dict, Optional
 from loguru import logger
 from twisted.internet.task import LoopingCall
 
+from app.utils.logging_config import LoggingConfig
+
 from .collector import StatsCollector
-from .models import ApplicationStats, StatsSnapshot
+from .statistic_models import ApplicationStats, StatsSnapshot
 
 
 class StatsLogger:
@@ -39,6 +41,9 @@ class StatsLogger:
             stats_collector: The statistics collector instance
             log_interval_seconds: How often to log stats (default 60 seconds)
         """
+        # Ensure logging is properly configured
+        LoggingConfig.ensure_configured()
+
         self.stats_collector = stats_collector
         self.log_interval_seconds = log_interval_seconds
         self._logging_task: Optional[LoopingCall] = None
