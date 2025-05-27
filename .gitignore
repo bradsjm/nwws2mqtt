@@ -18,3 +18,7 @@ wheels/
 # Logs and temporary files
 *.log
 .env
+
+# Coverage reports
+.coverage
+htmlcov/
