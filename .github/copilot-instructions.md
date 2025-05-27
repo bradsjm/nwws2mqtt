@@ -1,5 +1,8 @@
 # Python Code Generation Instructions (Python 3.12+)
 
+## Tools
+- Use `get-library-docs` with `resolve-library-id` for all third party libraries to ensure latest documentation is available.
+
 ## Type System (Pyright Strict)
 - **Target Version:** Use Python 3.12+ features (e.g. pattern matching, Self type).
 - **Complete Typing:** Type ALL function parameters, return values, class attributes, and critical variables.
@@ -20,6 +23,7 @@
 - **Unused Variables:** Remove or prefix with underscore.
 
 ## Structure & Complexity
+- **Imports:** Always use absolute imports.
 - **Function Parameters:** Limit to 5 arguments; group related parameters using dataclasses.
 - **Complexity Limits:**
   - Cyclomatic complexity < 10.
