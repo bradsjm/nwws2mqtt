@@ -133,7 +133,7 @@ STATS_INTERVAL=60  # Log statistics every 60 seconds
 1. Configure your environment variables in `.env`
 2. Run the application:
 ```bash
-python nwws_oi_ingest.py
+python app.py
 ```
 
 The application will:

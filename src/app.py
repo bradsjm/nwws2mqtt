@@ -13,7 +13,7 @@ from loguru import logger
 from twisted.internet import reactor
 
 from handlers import OutputConfig, OutputManager
-from client.xmpp import NWWSXMPPClient, XMPPConfig
+from client import NWWSXMPPClient, XMPPConfig
 from stats import StatsCollector, StatsLogger, PrometheusMetricsExporter
 
 """
