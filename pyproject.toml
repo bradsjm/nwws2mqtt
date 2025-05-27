@@ -5,16 +5,16 @@ description = "Provides a gateway from NWWS OI feed to MQTT server"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "loguru",
+    "loguru>=0.7.0",
     "nicegui>=2.18.0",
-    "paho-mqtt",
-    "prometheus-client",
-    "psycopg[binary]",
+    "paho-mqtt>=2.1.0",
+    "prometheus-client>=0.22.0",
+    "psycopg[binary]>=3.2.9",
     "pydantic>=2.11.5",
-    "pyiem",
+    "pyiem>=1.23.0",
     "pypubsub>=4.0.3",
-    "python-dotenv",
-    "twisted[tls]",
+    "python-dotenv>=1.1.0",
+    "twisted[tls]>=24.11.0",
 ]
 
 [project.optional-dependencies]

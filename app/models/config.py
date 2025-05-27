@@ -21,7 +21,7 @@ class Config:
     metrics_update_interval: int = 30  # How often to update metrics in seconds
     dashboard_enabled: bool = True  # Enable web dashboard
     dashboard_port: int = 8081  # Port for web dashboard
-    dashboard_host: str = "localhost"  # Host for web dashboard
+    dashboard_host: str = "127.0.0.1"  # Host for web dashboard
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -41,7 +41,7 @@ class Config:
             log_file=os.getenv("LOG_FILE"),
             output_config=OutputConfig.from_env(),
             stats_interval=int(os.getenv("STATS_INTERVAL", "60")),
-            metrics_enabled=os.getenv("METRICS_ENABLED", "true").lower() in ("true", "1", "yes"),
+            metrics_enabled=os.getenv("METRICS_ENABLED", "false").lower() in ("true", "1", "yes"),
             metrics_port=int(os.getenv("METRICS_PORT", "8080")),
             metrics_update_interval=int(os.getenv("METRICS_UPDATE_INTERVAL", "30")),
             dashboard_enabled=os.getenv("DASHBOARD_ENABLED", "false").lower() in ("true", "1", "yes"),
