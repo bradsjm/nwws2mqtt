@@ -1,7 +1,6 @@
 """Statistics logging and display functionality."""
 
-from datetime import datetime, timedelta
-from typing import Dict, Optional
+from datetime import UTC, datetime, timedelta
 
 from loguru import logger
 from twisted.internet.task import LoopingCall
@@ -13,8 +12,8 @@ from .statistic_models import ApplicationStats, StatsSnapshot
 
 
 class StatsLogger:
-    """
-    StatsLogger is responsible for periodically logging application statistics collected by a StatsCollector.
+    """StatsLogger is responsible for periodically logging application statistics.
+
     It supports starting and stopping periodic logging, immediate logging on demand, and calculating rates
     such as messages processed per minute. The logger maintains a rolling window of recent statistics snapshots
     to compute these rates and formats the output for human readability.
@@ -32,6 +31,7 @@ class StatsLogger:
         stop(): Stop periodic statistics logging.
         log_current_stats(): Log current statistics immediately.
         is_running: Property indicating if the logger is running.
+
     """
 
     def __init__(self, stats_collector: StatsCollector, log_interval_seconds: int = 60):
@@ -40,13 +40,14 @@ class StatsLogger:
         Args:
             stats_collector: The statistics collector instance
             log_interval_seconds: How often to log stats (default 60 seconds)
+
         """
         # Ensure logging is properly configured
         LoggingConfig.ensure_configured()
 
         self.stats_collector = stats_collector
         self.log_interval_seconds = log_interval_seconds
-        self._logging_task: Optional[LoopingCall] = None
+        self._logging_task: LoopingCall | None = None
         self._is_running = False
 
         # Store snapshots for rate calculations
@@ -80,7 +81,7 @@ class StatsLogger:
                 self._logging_task.stop()
             self._is_running = False
             logger.info("Statistics logging stopped")
-        except Exception as e:
+        except (TimeoutError, OSError, ConnectionError, RuntimeError) as e:
             logger.error("Error stopping statistics logging", error=str(e))
 
     def log_current_stats(self) -> None:
@@ -88,16 +89,16 @@ class StatsLogger:
         try:
             stats = self.stats_collector.get_stats()
             self._log_stats(stats)
-        except Exception as e:
+        except (TimeoutError, OSError, ConnectionError, RuntimeError) as e:
             logger.error("Error logging current statistics", error=str(e))
 
     def _log_periodic_stats(self) -> None:
-        """Internal method for periodic stats logging."""
+        """Log periodic statistics."""
         try:
             stats = self.stats_collector.get_stats()
 
             # Store snapshot for rate calculations
-            snapshot = StatsSnapshot(timestamp=datetime.utcnow(), stats=stats)
+            snapshot = StatsSnapshot(timestamp=datetime.now(UTC), stats=stats)
             self._snapshots.append(snapshot)
 
             # Keep only recent snapshots
@@ -106,7 +107,7 @@ class StatsLogger:
 
             self._log_stats(stats)
 
-        except Exception as e:
+        except (TimeoutError, OSError, ConnectionError, RuntimeError) as e:
             logger.error("Error in periodic statistics logging", error=str(e))
 
     def _log_stats(self, stats: ApplicationStats) -> None:
@@ -130,8 +131,12 @@ class StatsLogger:
         )
 
         # Log message statistics
-        success_rate = f"{stats.messages.success_rate:.1f}%" if stats.messages.total_received > 0 else "N/A"
-        error_rate = f"{stats.messages.error_rate:.1f}%" if stats.messages.total_received > 0 else "N/A"
+        success_rate = (
+            f"{stats.messages.success_rate:.1f}%" if stats.messages.total_received > 0 else "N/A"
+        )
+        error_rate = (
+            f"{stats.messages.error_rate:.1f}%" if stats.messages.total_received > 0 else "N/A"
+        )
 
         logger.info(
             "Message Processing Stats",
@@ -147,7 +152,9 @@ class StatsLogger:
         # Log output handler statistics
         for handler_name, handler_stats in stats.output_handlers.items():
             handler_success_rate = (
-                f"{handler_stats.success_rate:.1f}%" if (handler_stats.total_published + handler_stats.total_failed) > 0 else "N/A"
+                f"{handler_stats.success_rate:.1f}%"
+                if (handler_stats.total_published + handler_stats.total_failed) > 0
+                else "N/A"
             )
 
             logger.info(
@@ -161,7 +168,7 @@ class StatsLogger:
                 connection_errors=handler_stats.connection_errors,
             )
 
-    def _calculate_rates(self) -> Dict[str, float]:
+    def _calculate_rates(self) -> dict[str, float]:
         """Calculate per-minute rates from recent snapshots."""
         if len(self._snapshots) < 2:
             return {}
@@ -189,12 +196,16 @@ class StatsLogger:
             return {}
 
         # Calculate rates
-        rates = {}
+        rates: dict[str, float] = {}
 
-        message_diff = current.stats.messages.total_received - previous.stats.messages.total_received
+        message_diff = (
+            current.stats.messages.total_received - previous.stats.messages.total_received
+        )
         rates["messages_per_minute"] = round(message_diff / time_diff_minutes, 1)
 
-        processing_diff = current.stats.messages.total_processed - previous.stats.messages.total_processed
+        processing_diff = (
+            current.stats.messages.total_processed - previous.stats.messages.total_processed
+        )
         rates["processing_per_minute"] = round(processing_diff / time_diff_minutes, 1)
 
         return rates
@@ -204,15 +215,14 @@ class StatsLogger:
         """Format duration in seconds to human-readable string."""
         if seconds < 60:
             return f"{seconds:.0f}s"
-        elif seconds < 3600:
+        if seconds < 3600:
             minutes = seconds / 60
             return f"{minutes:.1f}m"
-        elif seconds < 86400:
+        if seconds < 86400:
             hours = seconds / 3600
             return f"{hours:.1f}h"
-        else:
-            days = seconds / 86400
-            return f"{days:.1f}d"
+        days = seconds / 86400
+        return f"{days:.1f}d"
 
     @property
     def is_running(self) -> bool:

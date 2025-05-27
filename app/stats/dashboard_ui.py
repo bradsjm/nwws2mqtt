@@ -1,6 +1,6 @@
 """Web-based status dashboard for NWWS2MQTT application."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from nicegui import ui
 
@@ -15,6 +15,7 @@ class StatusDashboard:
 
         Args:
             stats_collector: Statistics collector for real-time data
+
         """
         self.stats_collector = stats_collector
         self.update_timer: ui.timer | None = None
@@ -30,17 +31,17 @@ class StatusDashboard:
 
         Returns:
             Formatted uptime string
+
         """
         if seconds < 60:
             return f"{seconds:.1f}s"
-        elif seconds < 3600:
+        if seconds < 3600:
             return f"{seconds / 60:.1f}m"
-        elif seconds < 86400:
+        if seconds < 86400:
             return f"{seconds / 3600:.1f}h"
-        else:
-            days = int(seconds // 86400)
-            hours = int((seconds % 86400) // 3600)
-            return f"{days}d {hours}h"
+        days = int(seconds // 86400)
+        hours = int((seconds % 86400) // 3600)
+        return f"{days}d {hours}h"
 
     def _format_datetime(self, dt: datetime | None) -> str:
         """Format datetime for display.
@@ -50,6 +51,7 @@ class StatusDashboard:
 
         Returns:
             Formatted datetime string
+
         """
         if dt is None:
             return "Never"
@@ -64,13 +66,13 @@ class StatusDashboard:
 
         Returns:
             CSS color class
+
         """
         if not is_connected:
             return "red"
-        elif has_errors:
+        if has_errors:
             return "orange"
-        else:
-            return "green"
+        return "green"
 
     def _create_header(self) -> None:
         """Create dashboard header."""
@@ -78,7 +80,10 @@ class StatusDashboard:
             ui.label("NWWS2MQTT Status Dashboard").classes("text-2xl font-bold")
             with ui.column().classes("text-right"):
                 self.current_time_label = ui.label().classes("text-sm text-gray-600")
-                overall_status = self._get_status_color(self.stats.connection.is_connected, self.stats.messages.total_failed > 0)
+                overall_status = self._get_status_color(
+                    self.stats.connection.is_connected,
+                    self.stats.messages.total_failed > 0,
+                )
                 with ui.row().classes("items-center gap-2"):
                     ui.icon("circle", color=overall_status).classes("text-lg")
                     ui.label("System Status").classes("font-medium")
@@ -103,7 +108,9 @@ class StatusDashboard:
                 with ui.column().classes("text-center"):
                     ui.label("Connection Status").classes("text-sm text-gray-600")
                     color = self._get_status_color(self.stats.connection.is_connected)
-                    status_text = "Connected" if self.stats.connection.is_connected else "Disconnected"
+                    status_text = (
+                        "Connected" if self.stats.connection.is_connected else "Disconnected"
+                    )
                     ui.label(status_text).classes(f"text-xl font-bold text-{color}-600")
 
     def _create_connection_status(self) -> None:
@@ -163,44 +170,60 @@ class StatusDashboard:
                 # Received
                 with ui.column().classes("text-center"):
                     ui.label("Received").classes("text-sm text-gray-600")
-                    self.received_label = ui.label(str(msg.total_received)).classes("text-xl font-bold text-blue-600")
+                    self.received_label = ui.label(str(msg.total_received)).classes(
+                        "text-xl font-bold text-blue-600",
+                    )
 
                 # Processed
                 with ui.column().classes("text-center"):
                     ui.label("Processed").classes("text-sm text-gray-600")
-                    self.processed_label = ui.label(str(msg.total_processed)).classes("text-xl font-bold text-green-600")
+                    self.processed_label = ui.label(str(msg.total_processed)).classes(
+                        "text-xl font-bold text-green-600",
+                    )
 
                 # Failed
                 with ui.column().classes("text-center"):
                     ui.label("Failed").classes("text-sm text-gray-600")
                     color = "red" if msg.total_failed > 0 else "gray"
-                    self.failed_label = ui.label(str(msg.total_failed)).classes(f"text-xl font-bold text-{color}-600")
+                    self.failed_label = ui.label(str(msg.total_failed)).classes(
+                        f"text-xl font-bold text-{color}-600",
+                    )
 
                 # Published
                 with ui.column().classes("text-center"):
                     ui.label("Published").classes("text-sm text-gray-600")
-                    self.published_label = ui.label(str(msg.total_published)).classes("text-xl font-bold text-purple-600")
+                    self.published_label = ui.label(str(msg.total_published)).classes(
+                        "text-xl font-bold text-purple-600",
+                    )
 
             # Success and error rates
             with ui.row().classes("gap-8 mb-4"):
                 with ui.column().classes("text-center"):
                     ui.label("Success Rate").classes("text-sm text-gray-600")
-                    self.success_rate_label = ui.label(f"{msg.success_rate:.1f}%").classes("text-lg font-bold text-green-600")
+                    self.success_rate_label = ui.label(f"{msg.success_rate:.1f}%").classes(
+                        "text-lg font-bold text-green-600",
+                    )
 
                 with ui.column().classes("text-center"):
                     ui.label("Error Rate").classes("text-sm text-gray-600")
                     color = "red" if msg.error_rate > 0 else "gray"
-                    self.error_rate_label = ui.label(f"{msg.error_rate:.1f}%").classes(f"text-lg font-bold text-{color}-600")
+                    self.error_rate_label = ui.label(f"{msg.error_rate:.1f}%").classes(
+                        f"text-lg font-bold text-{color}-600",
+                    )
 
             # Last message times
             with ui.row().classes("gap-8"):
                 with ui.column():
                     ui.label("Last Message").classes("text-sm text-gray-600")
-                    self.last_message_label = ui.label(self._format_datetime(msg.last_message_time)).classes("text-sm")
+                    self.last_message_label = ui.label(
+                        self._format_datetime(msg.last_message_time),
+                    ).classes("text-sm")
 
                 with ui.column():
                     ui.label("Last Groupchat").classes("text-sm text-gray-600")
-                    self.last_groupchat_label = ui.label(self._format_datetime(msg.last_groupchat_message_time)).classes("text-sm")
+                    self.last_groupchat_label = ui.label(
+                        self._format_datetime(msg.last_groupchat_message_time),
+                    ).classes("text-sm")
 
     def _create_message_breakdowns(self) -> None:
         """Create message breakdown sections."""
@@ -255,12 +278,22 @@ class StatusDashboard:
                 {"name": "status", "label": "Status", "field": "status", "align": "center"},
                 {"name": "published", "label": "Published", "field": "published", "align": "right"},
                 {"name": "failed", "label": "Failed", "field": "failed", "align": "right"},
-                {"name": "success_rate", "label": "Success %", "field": "success_rate", "align": "right"},
-                {"name": "last_publish", "label": "Last Publish", "field": "last_publish", "align": "center"},
+                {
+                    "name": "success_rate",
+                    "label": "Success %",
+                    "field": "success_rate",
+                    "align": "right",
+                },
+                {
+                    "name": "last_publish",
+                    "label": "Last Publish",
+                    "field": "last_publish",
+                    "align": "center",
+                },
             ]
 
-            rows = []
-            for handler_name, handler_stats in self.stats.output_handlers.items():
+            rows: list[dict[str, str | int]] = []
+            for handler_stats in self.stats.output_handlers.values():
                 status_icon = "✅" if handler_stats.is_connected else "❌"
                 rows.append(
                     {
@@ -270,7 +303,7 @@ class StatusDashboard:
                         "failed": handler_stats.total_failed,
                         "success_rate": f"{handler_stats.success_rate:.1f}%",
                         "last_publish": self._format_datetime(handler_stats.last_publish_time),
-                    }
+                    },
                 )
 
             ui.table(columns=columns, rows=rows).classes("w-full")
@@ -296,7 +329,7 @@ class StatusDashboard:
         self.stats = self.stats_collector.get_stats()
 
         # Update current time
-        self.current_time_label.text = f"Updated: {datetime.utcnow().strftime('%H:%M:%S UTC')}"
+        self.current_time_label.text = f"Updated: {datetime.now(UTC).strftime('%H:%M:%S UTC')}"
 
         # Update uptime
         self.uptime_label.text = self._format_uptime(self.stats.running_time_seconds)

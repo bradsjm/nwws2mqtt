@@ -2,32 +2,27 @@
 
 import threading
 import time
-from typing import Optional
 
 from loguru import logger
 from nicegui import ui
 
-from ..utils import LoggingConfig
+from app.utils import LoggingConfig
+
 from .collector import StatsCollector
 from .dashboard_ui import StatusDashboard
 
 
 class WebDashboardServer:
-    """
-    WebDashboardServer provides a real-time web-based dashboard for monitoring NWWS2MQTT application statistics.
-
-    This class creates and manages a NiceGUI web server that displays real-time statistics including connection status,
-    message processing metrics, output handler status, and error information. The dashboard updates automatically
-    at regular intervals to provide current application state.
+    """WebDashboardServer provides a real-time web-based dashboard for monitoring application stats.
 
     Attributes:
-        stats_collector (StatsCollector): The statistics collector instance providing application stats.
+        stats_collector (StatsCollector): The statistics collector instance providing stats.
         port (int): The port on which the web dashboard is served.
         host (str): The host address to bind the web server to.
         update_interval (float): Interval in seconds for updating dashboard content.
         _is_running (bool): Indicates if the dashboard server is currently running.
         _server_thread (Optional[threading.Thread]): Thread running the web server.
-        _dashboard_instance (Optional[StatusDashboard]): The dashboard instance for the current session.
+        _dashboard_instance (Optional[StatusDashboard]): The dashboard instance for the session.
 
     Methods:
         start(): Starts the web dashboard server.
@@ -40,6 +35,7 @@ class WebDashboardServer:
         dashboard_server.start()
         # Dashboard available at dashboard_server.dashboard_url
         dashboard_server.stop()
+
     """
 
     def __init__(
@@ -56,6 +52,7 @@ class WebDashboardServer:
             port: Port to serve dashboard on
             host: Host address to bind the server to
             update_interval: How often to update dashboard content (seconds)
+
         """
         # Ensure logging is properly configured
         LoggingConfig.ensure_configured()
@@ -65,8 +62,8 @@ class WebDashboardServer:
         self.host = host
         self.update_interval = update_interval
         self._is_running = False
-        self._server_thread: Optional[threading.Thread] = None
-        self._dashboard_instance: Optional[StatusDashboard] = None
+        self._server_thread: threading.Thread | None = None
+        self._dashboard_instance: StatusDashboard | None = None
 
         logger.info(
             "Web dashboard server initialized",
@@ -114,7 +111,7 @@ class WebDashboardServer:
 
             logger.info("Web dashboard server stopped")
 
-        except Exception as e:
+        except (TimeoutError, OSError, ConnectionError, RuntimeError) as e:
             logger.error("Error stopping web dashboard server", error=str(e))
 
     def _run_server(self) -> None:
@@ -138,16 +135,16 @@ class WebDashboardServer:
                 show_welcome_message=False,  # Disable welcome message
             )
 
-        except Exception as e:
+        except (TimeoutError, OSError, ConnectionError, RuntimeError) as e:
             logger.error("Error running web dashboard server", error=str(e))
             self._is_running = False
 
     def _setup_routes(self) -> None:
-        """Setup the NiceGUI routes and pages."""
+        """Define NiceGUI routes and pages."""
 
         @ui.page("/")
-        def index() -> None:
-            """Main dashboard page."""
+        def index() -> None:  # type: ignore  # noqa: PGH003
+            """Display main dashboard page."""
             try:
                 # Create dashboard instance with stats collector
                 self._dashboard_instance = StatusDashboard(self.stats_collector)
@@ -155,19 +152,16 @@ class WebDashboardServer:
 
                 logger.debug("Dashboard page rendered successfully")
 
-            except Exception as e:
+            except (TimeoutError, OSError, ConnectionError, RuntimeError) as e:
                 logger.error("Error rendering dashboard page", error=str(e))
                 # Show error page
                 ui.label("Dashboard Error").classes("text-2xl font-bold text-red-600")
                 ui.label(f"Failed to load dashboard: {e}").classes("text-red-500")
 
         @ui.page("/health")
-        def health() -> None:
+        def health() -> None:  # type: ignore  # noqa: PGH003
             """Health check endpoint."""
             ui.label("OK")
-
-        # Configure static files if needed
-        # app.add_static_files("/static", "static")
 
     @property
     def is_running(self) -> bool:
@@ -177,4 +171,4 @@ class WebDashboardServer:
     @property
     def dashboard_url(self) -> str:
         """Get the dashboard URL."""
-        return f"http://{self.host if self.host != '0.0.0.0' else 'localhost'}:{self.port}"
+        return f"http://{self.host}:{self.port}"

@@ -2,16 +2,14 @@
 
 from collections import Counter
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Counter as CounterType
-from typing import Dict
+from datetime import UTC, datetime
 
 
 @dataclass
 class ConnectionStats:
     """Statistics for XMPP connection."""
 
-    start_time: datetime = field(default_factory=datetime.utcnow)
+    start_time: datetime = field(default_factory=lambda: datetime.now(UTC))
     connected_at: datetime | None = None
     disconnected_at: datetime | None = None
     total_connections: int = 0
@@ -30,7 +28,7 @@ class ConnectionStats:
         if not self.connected_at:
             return 0.0
 
-        end_time = self.disconnected_at if self.disconnected_at else datetime.utcnow()
+        end_time = self.disconnected_at if self.disconnected_at else datetime.now(UTC)
         return (end_time - self.connected_at).total_seconds()
 
     @property
@@ -38,7 +36,7 @@ class ConnectionStats:
         """Calculate total uptime since start."""
         if not self.start_time:
             return 0.0
-        return (datetime.utcnow() - self.start_time).total_seconds()
+        return (datetime.now(UTC) - self.start_time).total_seconds()
 
 
 @dataclass
@@ -51,10 +49,10 @@ class MessageStats:
     total_published: int = 0
     last_message_time: datetime | None = None
     last_groupchat_message_time: datetime | None = None
-    wmo_codes: CounterType[str] = field(default_factory=Counter)
-    sources: CounterType[str] = field(default_factory=Counter)
-    afos_codes: CounterType[str] = field(default_factory=Counter)
-    processing_errors: CounterType[str] = field(default_factory=Counter)
+    wmo_codes: Counter[str] = field(default_factory=Counter[str])
+    sources: Counter[str] = field(default_factory=Counter[str])
+    afos_codes: Counter[str] = field(default_factory=Counter[str])
+    processing_errors: Counter[str] = field(default_factory=Counter[str])
 
     @property
     def success_rate(self) -> float:
@@ -97,15 +95,17 @@ class OutputHandlerStats:
 class ApplicationStats:
     """Overall application statistics."""
 
-    start_time: datetime = field(default_factory=datetime.utcnow)
+    start_time: datetime = field(default_factory=lambda: datetime.now(UTC))
     connection: ConnectionStats = field(default_factory=ConnectionStats)
     messages: MessageStats = field(default_factory=MessageStats)
-    output_handlers: Dict[str, OutputHandlerStats] = field(default_factory=dict)
+    output_handlers: dict[str, OutputHandlerStats] = field(
+        default_factory=dict[str, OutputHandlerStats],
+    )
 
     @property
     def running_time_seconds(self) -> float:
         """Calculate total running time in seconds."""
-        return (datetime.utcnow() - self.start_time).total_seconds()
+        return (datetime.now(UTC) - self.start_time).total_seconds()
 
 
 @dataclass
@@ -118,4 +118,4 @@ class StatsSnapshot:
     def __post_init__(self):
         """Ensure timestamp is set."""
         if not self.timestamp:
-            self.timestamp = datetime.utcnow()
+            self.timestamp = datetime.now(UTC)

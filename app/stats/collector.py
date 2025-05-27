@@ -1,8 +1,7 @@
 """Statistics collector for NWWS2MQTT application."""
 
 import threading
-from datetime import datetime
-from typing import Optional
+from datetime import UTC, datetime
 
 from loguru import logger
 
@@ -12,8 +11,7 @@ from .statistic_models import ApplicationStats, ConnectionStats, MessageStats, O
 
 
 class StatsCollector:
-    """
-    Thread-safe statistics collector for application, connection, message, and output handler metrics.
+    """Thread-safe statistics collector for application, connection, message, and output handler metrics.
 
     This class provides synchronized methods to record and retrieve various runtime statistics, including:
     - Connection attempts, successes, failures, and errors.
@@ -85,6 +83,7 @@ class StatsCollector:
 
         reset_stats() -> None
             Reset all collected statistics.
+
     """
 
     def __init__(self):
@@ -152,7 +151,7 @@ class StatsCollector:
     def on_connected(self) -> None:
         """Record successful connection."""
         with self._lock:
-            now = datetime.utcnow()
+            now = datetime.now(UTC)
             self._stats.connection.connected_at = now
             self._stats.connection.disconnected_at = None
             self._stats.connection.total_connections += 1
@@ -162,7 +161,7 @@ class StatsCollector:
     def on_disconnected(self) -> None:
         """Record disconnection."""
         with self._lock:
-            now = datetime.utcnow()
+            now = datetime.now(UTC)
             self._stats.connection.disconnected_at = now
             self._stats.connection.total_disconnections += 1
             self._stats.connection.is_connected = False
@@ -189,14 +188,14 @@ class StatsCollector:
     def on_ping_sent(self) -> None:
         """Record ping sent."""
         with self._lock:
-            self._stats.connection.last_ping_sent = datetime.utcnow()
+            self._stats.connection.last_ping_sent = datetime.now(UTC)
             self._stats.connection.outstanding_pings += 1
             logger.debug("Ping sent recorded")
 
     def on_pong_received(self) -> None:
         """Record pong received."""
         with self._lock:
-            self._stats.connection.last_pong_received = datetime.utcnow()
+            self._stats.connection.last_pong_received = datetime.now(UTC)
             if self._stats.connection.outstanding_pings > 0:
                 self._stats.connection.outstanding_pings -= 1
             logger.debug("Pong received recorded")
@@ -206,16 +205,16 @@ class StatsCollector:
         """Record message received."""
         with self._lock:
             self._stats.messages.total_received += 1
-            self._stats.messages.last_message_time = datetime.utcnow()
+            self._stats.messages.last_message_time = datetime.now(UTC)
             logger.debug("Message received recorded")
 
     def on_groupchat_message_received(self) -> None:
         """Record groupchat message received."""
         with self._lock:
-            self._stats.messages.last_groupchat_message_time = datetime.utcnow()
+            self._stats.messages.last_groupchat_message_time = datetime.now(UTC)
             logger.debug("Groupchat message received recorded")
 
-    def on_message_processed(self, source: str, afos: str, wmo: Optional[str] = None) -> None:
+    def on_message_processed(self, source: str, afos: str, wmo: str | None = None) -> None:
         """Record successful message processing."""
         with self._lock:
             self._stats.messages.total_processed += 1
@@ -245,15 +244,21 @@ class StatsCollector:
         """Register an output handler for tracking."""
         with self._lock:
             if handler_name not in self._stats.output_handlers:
-                self._stats.output_handlers[handler_name] = OutputHandlerStats(handler_type=handler_type)
-                logger.debug("Output handler registered", handler_name=handler_name, handler_type=handler_type)
+                self._stats.output_handlers[handler_name] = OutputHandlerStats(
+                    handler_type=handler_type,
+                )
+                logger.debug(
+                    "Output handler registered",
+                    handler_name=handler_name,
+                    handler_type=handler_type,
+                )
 
     def on_handler_connected(self, handler_name: str) -> None:
         """Record output handler connection."""
         with self._lock:
             if handler_name in self._stats.output_handlers:
                 handler_stats = self._stats.output_handlers[handler_name]
-                handler_stats.connected_at = datetime.utcnow()
+                handler_stats.connected_at = datetime.now(UTC)
                 handler_stats.disconnected_at = None
                 handler_stats.is_connected = True
                 logger.debug("Output handler connected", handler_name=handler_name)
@@ -263,7 +268,7 @@ class StatsCollector:
         with self._lock:
             if handler_name in self._stats.output_handlers:
                 handler_stats = self._stats.output_handlers[handler_name]
-                handler_stats.disconnected_at = datetime.utcnow()
+                handler_stats.disconnected_at = datetime.now(UTC)
                 handler_stats.is_connected = False
                 logger.debug("Output handler disconnected", handler_name=handler_name)
 
@@ -273,7 +278,7 @@ class StatsCollector:
             if handler_name in self._stats.output_handlers:
                 handler_stats = self._stats.output_handlers[handler_name]
                 handler_stats.total_published += 1
-                handler_stats.last_publish_time = datetime.utcnow()
+                handler_stats.last_publish_time = datetime.now(UTC)
                 logger.debug("Handler publish success recorded", handler_name=handler_name)
 
     def on_handler_publish_failed(self, handler_name: str) -> None:
