@@ -4,7 +4,6 @@ from loguru import logger
 
 from app.messaging import (
     MessageBus,
-    StatsConnectionMessage,
     StatsHandlerMessage,
     StatsMessageProcessingMessage,
     Topics,
@@ -43,11 +42,11 @@ class StatsConsumer:
         _on_pong_received(message): Handles pong received events.
         _on_xmpp_connected(message): Handles XMPP connected events.
         _on_xmpp_disconnected(message): Handles XMPP disconnected events.
-        _on_message_received(message): Handles message received events.
-        _on_groupchat_message_received(message): Handles groupchat message received events.
-        _on_message_processed(message): Handles message processed events.
-        _on_message_failed(message): Handles message failed events.
-        _on_message_published(message): Handles message published events.
+        _onmessage_received(message): Handles message received events.
+        _on_groupchatmessage_received(message): Handles groupchat message received events.
+        _onmessage_processed(message): Handles message processed events.
+        _onmessage_failed(message): Handles message failed events.
+        _onmessage_published(message): Handles message published events.
         _on_handler_registered(message): Handles handler registered events.
         _on_handler_connected(message): Handles handler connected events.
         _on_handler_disconnected(message): Handles handler disconnected events.
@@ -92,14 +91,14 @@ class StatsConsumer:
         MessageBus.subscribe(Topics.XMPP_DISCONNECTED, self._on_xmpp_disconnected)
 
         # Subscribe to message events
-        MessageBus.subscribe(Topics.STATS_MESSAGE_RECEIVED, self._on_message_received)
+        MessageBus.subscribe(Topics.STATS_MESSAGE_RECEIVED, self._onmessage_received)
         MessageBus.subscribe(
             Topics.STATS_GROUPCHAT_MESSAGE_RECEIVED,
-            self._on_groupchat_message_received,
+            self._on_groupchatmessage_received,
         )
-        MessageBus.subscribe(Topics.STATS_MESSAGE_PROCESSED, self._on_message_processed)
-        MessageBus.subscribe(Topics.STATS_MESSAGE_FAILED, self._on_message_failed)
-        MessageBus.subscribe(Topics.STATS_MESSAGE_PUBLISHED, self._on_message_published)
+        MessageBus.subscribe(Topics.STATS_MESSAGE_PROCESSED, self._onmessage_processed)
+        MessageBus.subscribe(Topics.STATS_MESSAGE_FAILED, self._onmessage_failed)
+        MessageBus.subscribe(Topics.STATS_MESSAGE_PUBLISHED, self._onmessage_published)
 
         # Subscribe to handler events
         MessageBus.subscribe(Topics.STATS_HANDLER_REGISTERED, self._on_handler_registered)
@@ -135,14 +134,14 @@ class StatsConsumer:
         MessageBus.unsubscribe(Topics.XMPP_DISCONNECTED, self._on_xmpp_disconnected)
 
         # Unsubscribe from message events
-        MessageBus.unsubscribe(Topics.STATS_MESSAGE_RECEIVED, self._on_message_received)
+        MessageBus.unsubscribe(Topics.STATS_MESSAGE_RECEIVED, self._onmessage_received)
         MessageBus.unsubscribe(
             Topics.STATS_GROUPCHAT_MESSAGE_RECEIVED,
-            self._on_groupchat_message_received,
+            self._on_groupchatmessage_received,
         )
-        MessageBus.unsubscribe(Topics.STATS_MESSAGE_PROCESSED, self._on_message_processed)
-        MessageBus.unsubscribe(Topics.STATS_MESSAGE_FAILED, self._on_message_failed)
-        MessageBus.unsubscribe(Topics.STATS_MESSAGE_PUBLISHED, self._on_message_published)
+        MessageBus.unsubscribe(Topics.STATS_MESSAGE_PROCESSED, self._onmessage_processed)
+        MessageBus.unsubscribe(Topics.STATS_MESSAGE_FAILED, self._onmessage_failed)
+        MessageBus.unsubscribe(Topics.STATS_MESSAGE_PUBLISHED, self._onmessage_published)
 
         # Unsubscribe from handler events
         MessageBus.unsubscribe(Topics.STATS_HANDLER_REGISTERED, self._on_handler_registered)
@@ -162,57 +161,57 @@ class StatsConsumer:
         logger.info("Statistics consumer stopped and unsubscribed from all stats topics")
 
     # Connection event handlers
-    def _on_connection_attempt(self, _message: StatsConnectionMessage) -> None:
+    def _on_connection_attempt(self) -> None:
         """Handle connection attempt event."""
         self.stats_collector.on_connection_attempt()
 
-    def _on_connection_established(self, _message: StatsConnectionMessage) -> None:
+    def _on_connection_established(self) -> None:
         """Handle connection established event."""
         self.stats_collector.on_connected()
 
-    def _on_connection_lost(self, _message: StatsConnectionMessage) -> None:
+    def _on_connection_lost(self) -> None:
         """Handle connection lost event."""
         self.stats_collector.on_disconnected()
 
-    def _on_reconnect_attempt(self, _message: StatsConnectionMessage) -> None:
+    def _on_reconnect_attempt(self) -> None:
         """Handle reconnect attempt event."""
         self.stats_collector.on_reconnect_attempt()
 
-    def _on_auth_failure(self, _message: StatsConnectionMessage) -> None:
+    def _on_auth_failure(self) -> None:
         """Handle authentication failure event."""
         self.stats_collector.on_auth_failure()
 
-    def _on_connection_error(self, _message: StatsConnectionMessage) -> None:
+    def _on_connection_error(self) -> None:
         """Handle connection error event."""
         self.stats_collector.on_connection_error()
 
-    def _on_ping_sent(self, _message: StatsConnectionMessage) -> None:
+    def _on_ping_sent(self) -> None:
         """Handle ping sent event."""
         self.stats_collector.on_ping_sent()
 
-    def _on_pong_received(self, _message: StatsConnectionMessage) -> None:
+    def _on_pong_received(self) -> None:
         """Handle pong received event."""
         self.stats_collector.on_pong_received()
 
     # XMPP lifecycle event handlers
-    def _on_xmpp_connected(self, _message: StatsConnectionMessage) -> None:
+    def _on_xmpp_connected(self) -> None:
         """Handle XMPP connected event."""
         self.stats_collector.on_connected()
 
-    def _on_xmpp_disconnected(self, _message: StatsConnectionMessage) -> None:
+    def _on_xmpp_disconnected(self) -> None:
         """Handle XMPP disconnected event."""
         self.stats_collector.on_disconnected()
 
     # Message event handlers
-    def _on_message_received(self, _message: StatsMessageProcessingMessage) -> None:
+    def _onmessage_received(self) -> None:
         """Handle message received event."""
         self.stats_collector.on_message_received()
 
-    def _on_groupchat_message_received(self, _message: StatsMessageProcessingMessage) -> None:
+    def _on_groupchatmessage_received(self) -> None:
         """Handle groupchat message received event."""
         self.stats_collector.on_groupchat_message_received()
 
-    def _on_message_processed(self, message: StatsMessageProcessingMessage) -> None:
+    def _onmessage_processed(self, message: StatsMessageProcessingMessage) -> None:
         """Handle message processed event."""
         self.stats_collector.on_message_processed(
             source=message.source or "",
@@ -220,11 +219,11 @@ class StatsConsumer:
             wmo=message.wmo,
         )
 
-    def _on_message_failed(self, message: StatsMessageProcessingMessage) -> None:
+    def _onmessage_failed(self, message: StatsMessageProcessingMessage) -> None:
         """Handle message failed event."""
         self.stats_collector.on_message_failed(message.error_type or "unknown")
 
-    def _on_message_published(self, _message: StatsMessageProcessingMessage) -> None:
+    def _onmessage_published(self) -> None:
         """Handle message published event."""
         self.stats_collector.on_message_published()
 
