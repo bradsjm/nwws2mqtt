@@ -1,7 +1,6 @@
 """Centralized logging configuration for NWWS2MQTT application."""
 
 import sys
-from typing import Optional
 
 from loguru import logger
 
@@ -11,15 +10,16 @@ class LoggingConfig:
 
     _configured = False
     _log_level = "INFO"
-    _log_file: Optional[str] = None
+    _log_file: str | None = None
 
     @classmethod
-    def configure(cls, log_level: str, log_file: Optional[str] = None) -> None:
+    def configure(cls, log_level: str, log_file: str | None = None) -> None:
         """Configure logging for the entire application.
 
         Args:
             log_level: The logging level (DEBUG, INFO, WARNING, ERROR)
             log_file: Optional log file path for file logging
+
         """
         if cls._configured:
             return
@@ -31,8 +31,8 @@ class LoggingConfig:
         logger.remove()
 
         # Configure console logging with custom formatter
-        def format_record(record):
-            """Custom formatter that handles structured data."""
+        def format_record(record) -> str:  # type: ignore  # noqa: PGH003
+            """Format structured data."""
             # Format the basic message first
             basic_format = (
                 "<green>{time:MM-DD HH:mm:ss}</green> | "
@@ -42,11 +42,13 @@ class LoggingConfig:
             )
 
             # Use loguru's formatter to format the basic message
-            formatted_message = basic_format.format_map(record)
+            formatted_message = basic_format.format_map(record)  # type: ignore  # noqa: PGH003
 
             # Append extra data
             if record["extra"]:
-                extra_str = " | ".join([f"<cyan>{k}</cyan>=<magenta>{v}</magenta>" for k, v in record["extra"].items()])
+                extra_str = " | ".join(
+                    [f"<cyan>{k}</cyan>=<magenta>{v}</magenta>" for k, v in record["extra"].items()],  # type: ignore  # noqa: PGH003
+                )
                 formatted_message += f" | {extra_str}"
 
             return formatted_message + "\n"
@@ -54,22 +56,22 @@ class LoggingConfig:
         logger.add(
             sys.stdout,
             level=log_level,
-            format=format_record,
+            format=format_record,  # type: ignore  # noqa: PGH003
             serialize=False,
         )
 
         # Only add file logging if log_file is specified
         if log_file:
 
-            def format_file_record(record):
+            def format_file_record(record) -> str:  # type: ignore  # noqa: PGH003
                 """File formatter without color codes."""
                 # Format the basic message first
                 basic_format = "{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} | {message}"
-                formatted_message = basic_format.format_map(record)
+                formatted_message = basic_format.format_map(record)  # type: ignore  # noqa: PGH003
 
                 # Append extra data
                 if record["extra"]:
-                    extra_str = " | ".join([f"{k}={v}" for k, v in record["extra"].items()])
+                    extra_str = " | ".join([f"{k}={v}" for k, v in record["extra"].items()])  # type: ignore  # noqa: PGH003
                     formatted_message += f" | {extra_str}"
 
                 return formatted_message + "\n"
@@ -79,7 +81,7 @@ class LoggingConfig:
                 level=log_level,
                 rotation="10 MB",
                 retention="7 days",
-                format=format_file_record,
+                format=format_file_record,  # type: ignore  # noqa: PGH003
             )
             logger.info("File logging enabled", log_file=log_file)
 
