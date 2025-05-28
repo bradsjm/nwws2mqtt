@@ -209,7 +209,9 @@ class TestPeriodicLogging:
         return stats
 
     @pytest.mark.unit
-    def test_log_periodic_stats_success(self, logger: StatsLogger, sample_stats: ApplicationStats) -> None:
+    def test_log_periodic_stats_success(
+        self, logger: StatsLogger, sample_stats: ApplicationStats
+    ) -> None:
         """Test successful periodic stats logging."""
         logger.stats_collector.get_stats.return_value = sample_stats
 
@@ -227,7 +229,9 @@ class TestPeriodicLogging:
         assert logger._snapshots[0].stats == sample_stats
 
     @pytest.mark.unit
-    def test_log_periodic_stats_snapshot_management(self, logger: StatsLogger, sample_stats: ApplicationStats) -> None:
+    def test_log_periodic_stats_snapshot_management(
+        self, logger: StatsLogger, sample_stats: ApplicationStats
+    ) -> None:
         """Test snapshot management in periodic logging."""
         logger.stats_collector.get_stats.return_value = sample_stats
 
@@ -284,10 +288,18 @@ class TestStatsFormatting:
 
         # Output handlers
         mqtt_handler = OutputHandlerStats(
-            handler_type="mqtt", total_published=475, total_failed=25, is_connected=True, connection_errors=2
+            handler_type="mqtt",
+            total_published=475,
+            total_failed=25,
+            is_connected=True,
+            connection_errors=2,
         )
         console_handler = OutputHandlerStats(
-            handler_type="console", total_published=470, total_failed=0, is_connected=True, connection_errors=0
+            handler_type="console",
+            total_published=470,
+            total_failed=0,
+            is_connected=True,
+            connection_errors=0,
         )
 
         stats.output_handlers["mqtt_primary"] = mqtt_handler
@@ -296,15 +308,23 @@ class TestStatsFormatting:
         return stats
 
     @pytest.mark.unit
-    def test_log_stats_formatting(self, logger: StatsLogger, complete_stats: ApplicationStats) -> None:
+    def test_log_stats_formatting(
+        self, logger: StatsLogger, complete_stats: ApplicationStats
+    ) -> None:
         """Test complete stats formatting and logging."""
-        with patch.object(logger, "_calculate_rates", return_value={"messages_per_minute": 10.5, "processing_per_minute": 9.8}):
+        with patch.object(
+            logger,
+            "_calculate_rates",
+            return_value={"messages_per_minute": 10.5, "processing_per_minute": 9.8},
+        ):
             with patch.object(logger, "_format_duration", side_effect=lambda x: f"{x:.0f}s"):
                 with patch("app.stats.logger.logger") as mock_logger:
                     logger._log_stats(complete_stats)
 
         # Verify logging calls were made
-        assert mock_logger.info.call_count >= 3  # At least app stats, message stats, and handler stats
+        assert (
+            mock_logger.info.call_count >= 3
+        )  # At least app stats, message stats, and handler stats
 
     @pytest.mark.unit
     def test_calculate_rates_no_snapshots(self, logger: StatsLogger) -> None:
@@ -476,7 +496,9 @@ class TestComplexScenarios:
         stats.connection.is_connected = True
         stats.messages.total_received = 500
         stats.messages.total_processed = 475
-        stats.output_handlers["mqtt"] = OutputHandlerStats(handler_type="mqtt", total_published=237, is_connected=True)
+        stats.output_handlers["mqtt"] = OutputHandlerStats(
+            handler_type="mqtt", total_published=237, is_connected=True
+        )
 
         logger.stats_collector.get_stats.return_value = stats
 

@@ -170,25 +170,33 @@ class TestConnectionEventHandlers:
         return Mock()
 
     @pytest.mark.unit
-    def test_on_connection_attempt(self, consumer: StatsConsumer, mock_connection_message: Mock) -> None:
+    def test_on_connection_attempt(
+        self, consumer: StatsConsumer, mock_connection_message: Mock
+    ) -> None:
         """Test connection attempt handler."""
         consumer._on_connection_attempt(mock_connection_message)
         consumer.stats_collector.on_connection_attempt.assert_called_once()
 
     @pytest.mark.unit
-    def test_on_connection_established(self, consumer: StatsConsumer, mock_connection_message: Mock) -> None:
+    def test_on_connection_established(
+        self, consumer: StatsConsumer, mock_connection_message: Mock
+    ) -> None:
         """Test connection established handler."""
         consumer._on_connection_established(mock_connection_message)
         consumer.stats_collector.on_connected.assert_called_once()
 
     @pytest.mark.unit
-    def test_on_connection_lost(self, consumer: StatsConsumer, mock_connection_message: Mock) -> None:
+    def test_on_connection_lost(
+        self, consumer: StatsConsumer, mock_connection_message: Mock
+    ) -> None:
         """Test connection lost handler."""
         consumer._on_connection_lost(mock_connection_message)
         consumer.stats_collector.on_disconnected.assert_called_once()
 
     @pytest.mark.unit
-    def test_on_reconnect_attempt(self, consumer: StatsConsumer, mock_connection_message: Mock) -> None:
+    def test_on_reconnect_attempt(
+        self, consumer: StatsConsumer, mock_connection_message: Mock
+    ) -> None:
         """Test reconnect attempt handler."""
         consumer._on_reconnect_attempt(mock_connection_message)
         consumer.stats_collector.on_reconnect_attempt.assert_called_once()
@@ -200,7 +208,9 @@ class TestConnectionEventHandlers:
         consumer.stats_collector.on_auth_failure.assert_called_once()
 
     @pytest.mark.unit
-    def test_on_connection_error(self, consumer: StatsConsumer, mock_connection_message: Mock) -> None:
+    def test_on_connection_error(
+        self, consumer: StatsConsumer, mock_connection_message: Mock
+    ) -> None:
         """Test connection error handler."""
         consumer._on_connection_error(mock_connection_message)
         consumer.stats_collector.on_connection_error.assert_called_once()
@@ -282,19 +292,25 @@ class TestMessageEventHandlers:
         return message
 
     @pytest.mark.unit
-    def test_on_message_received(self, consumer: StatsConsumer, mock_message_processing_message: Mock) -> None:
+    def test_on_message_received(
+        self, consumer: StatsConsumer, mock_message_processing_message: Mock
+    ) -> None:
         """Test message received handler."""
         consumer._on_message_received(mock_message_processing_message)
         consumer.stats_collector.on_message_received.assert_called_once()
 
     @pytest.mark.unit
-    def test_on_groupchat_message_received(self, consumer: StatsConsumer, mock_message_processing_message: Mock) -> None:
+    def test_on_groupchat_message_received(
+        self, consumer: StatsConsumer, mock_message_processing_message: Mock
+    ) -> None:
         """Test groupchat message received handler."""
         consumer._on_groupchat_message_received(mock_message_processing_message)
         consumer.stats_collector.on_groupchat_message_received.assert_called_once()
 
     @pytest.mark.unit
-    def test_on_message_processed(self, consumer: StatsConsumer, mock_message_processing_message: Mock) -> None:
+    def test_on_message_processed(
+        self, consumer: StatsConsumer, mock_message_processing_message: Mock
+    ) -> None:
         """Test message processed handler."""
         consumer._on_message_processed(mock_message_processing_message)
         consumer.stats_collector.on_message_processed.assert_called_once_with(
@@ -310,10 +326,14 @@ class TestMessageEventHandlers:
         message.product_id = "FXUS61KBOU"
 
         consumer._on_message_processed(message)
-        consumer.stats_collector.on_message_processed.assert_called_once_with(source="", afos="", product_id="FXUS61KBOU")
+        consumer.stats_collector.on_message_processed.assert_called_once_with(
+            source="", afos="", product_id="FXUS61KBOU"
+        )
 
     @pytest.mark.unit
-    def test_on_message_failed(self, consumer: StatsConsumer, mock_message_processing_message: Mock) -> None:
+    def test_on_message_failed(
+        self, consumer: StatsConsumer, mock_message_processing_message: Mock
+    ) -> None:
         """Test message failed handler."""
         consumer._on_message_failed(mock_message_processing_message)
         consumer.stats_collector.on_message_failed.assert_called_once_with("parse_error")
@@ -328,7 +348,9 @@ class TestMessageEventHandlers:
         consumer.stats_collector.on_message_failed.assert_called_once_with("unknown")
 
     @pytest.mark.unit
-    def test_on_message_published(self, consumer: StatsConsumer, mock_message_processing_message: Mock) -> None:
+    def test_on_message_published(
+        self, consumer: StatsConsumer, mock_message_processing_message: Mock
+    ) -> None:
         """Test message published handler."""
         consumer._on_message_published(mock_message_processing_message)
         consumer.stats_collector.on_message_published.assert_called_once()
@@ -357,10 +379,14 @@ class TestHandlerEventHandlers:
         return message
 
     @pytest.mark.unit
-    def test_on_handler_registered(self, consumer: StatsConsumer, mock_handler_message: Mock) -> None:
+    def test_on_handler_registered(
+        self, consumer: StatsConsumer, mock_handler_message: Mock
+    ) -> None:
         """Test handler registered event."""
         consumer._on_handler_registered(mock_handler_message)
-        consumer.stats_collector.register_output_handler.assert_called_once_with(handler_name="mqtt_primary", handler_type="mqtt")
+        consumer.stats_collector.register_output_handler.assert_called_once_with(
+            handler_name="mqtt_primary", handler_type="mqtt"
+        )
 
     @pytest.mark.unit
     def test_on_handler_registered_none_handler_type(self, consumer: StatsConsumer) -> None:
@@ -376,31 +402,41 @@ class TestHandlerEventHandlers:
         )
 
     @pytest.mark.unit
-    def test_on_handler_connected(self, consumer: StatsConsumer, mock_handler_message: Mock) -> None:
+    def test_on_handler_connected(
+        self, consumer: StatsConsumer, mock_handler_message: Mock
+    ) -> None:
         """Test handler connected event."""
         consumer._on_handler_connected(mock_handler_message)
         consumer.stats_collector.on_handler_connected.assert_called_once_with("mqtt_primary")
 
     @pytest.mark.unit
-    def test_on_handler_disconnected(self, consumer: StatsConsumer, mock_handler_message: Mock) -> None:
+    def test_on_handler_disconnected(
+        self, consumer: StatsConsumer, mock_handler_message: Mock
+    ) -> None:
         """Test handler disconnected event."""
         consumer._on_handler_disconnected(mock_handler_message)
         consumer.stats_collector.on_handler_disconnected.assert_called_once_with("mqtt_primary")
 
     @pytest.mark.unit
-    def test_on_handler_publish_success(self, consumer: StatsConsumer, mock_handler_message: Mock) -> None:
+    def test_on_handler_publish_success(
+        self, consumer: StatsConsumer, mock_handler_message: Mock
+    ) -> None:
         """Test handler publish success event."""
         consumer._on_handler_publish_success(mock_handler_message)
         consumer.stats_collector.on_handler_publish_success.assert_called_once_with("mqtt_primary")
 
     @pytest.mark.unit
-    def test_on_handler_publish_failed(self, consumer: StatsConsumer, mock_handler_message: Mock) -> None:
+    def test_on_handler_publish_failed(
+        self, consumer: StatsConsumer, mock_handler_message: Mock
+    ) -> None:
         """Test handler publish failed event."""
         consumer._on_handler_publish_failed(mock_handler_message)
         consumer.stats_collector.on_handler_publish_failed.assert_called_once_with("mqtt_primary")
 
     @pytest.mark.unit
-    def test_on_handler_connection_error(self, consumer: StatsConsumer, mock_handler_message: Mock) -> None:
+    def test_on_handler_connection_error(
+        self, consumer: StatsConsumer, mock_handler_message: Mock
+    ) -> None:
         """Test handler connection error event."""
         consumer._on_handler_connection_error(mock_handler_message)
         consumer.stats_collector.on_handler_connection_error.assert_called_once_with("mqtt_primary")

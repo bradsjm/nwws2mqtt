@@ -20,7 +20,10 @@ class TestProductMessage:
     def test_product_message_creation(self):
         """Test ProductMessage creation with required fields."""
         message = ProductMessage(
-            source="NWWS-OI", afos="AFGAFC", product_id="AFGAFC.2025.05.27.120000", structured_data='{"test": "data"}'
+            source="NWWS-OI",
+            afos="AFGAFC",
+            product_id="AFGAFC.2025.05.27.120000",
+            structured_data='{"test": "data"}',
         )
 
         assert message.source == "NWWS-OI"
@@ -70,7 +73,10 @@ class TestStatsMessages:
     def test_stats_message_processing_message_with_values(self):
         """Test StatsMessageProcessingMessage with provided values."""
         message = StatsMessageProcessingMessage(
-            source="NWWS-OI", afos="AFGAFC", wmo="AFGAFC.2025.05.27.120000", error_type="parsing_error"
+            source="NWWS-OI",
+            afos="AFGAFC",
+            wmo="AFGAFC.2025.05.27.120000",
+            error_type="parsing_error",
         )
 
         assert message.source == "NWWS-OI"
@@ -102,16 +108,24 @@ class TestMessageBus:
             MessageBus.publish(Topics.PRODUCT_RECEIVED, data="test")
 
             mock_send.assert_called_once_with(Topics.PRODUCT_RECEIVED, data="test")
-            mock_logger.debug.assert_called_once_with("Published message", topic=Topics.PRODUCT_RECEIVED, kwargs_keys=["data"])
+            mock_logger.debug.assert_called_once_with(
+                "Published message", topic=Topics.PRODUCT_RECEIVED, kwargs_keys=["data"]
+            )
 
     def test_publish_with_multiple_kwargs(self, mock_logger):
         """Test publishing with multiple keyword arguments."""
         with patch("pubsub.pub.sendMessage") as mock_send:
-            MessageBus.publish(Topics.PRODUCT_PROCESSED, message="test_message", handler="mqtt", status="success")
+            MessageBus.publish(
+                Topics.PRODUCT_PROCESSED, message="test_message", handler="mqtt", status="success"
+            )
 
-            mock_send.assert_called_once_with(Topics.PRODUCT_PROCESSED, message="test_message", handler="mqtt", status="success")
+            mock_send.assert_called_once_with(
+                Topics.PRODUCT_PROCESSED, message="test_message", handler="mqtt", status="success"
+            )
             mock_logger.debug.assert_called_once_with(
-                "Published message", topic=Topics.PRODUCT_PROCESSED, kwargs_keys=["message", "handler", "status"]
+                "Published message",
+                topic=Topics.PRODUCT_PROCESSED,
+                kwargs_keys=["message", "handler", "status"],
             )
 
     def test_publish_failure(self, mock_logger):
@@ -130,7 +144,9 @@ class TestMessageBus:
 
             mock_sub.assert_called_once_with(mock_listener, Topics.PRODUCT_RECEIVED)
             mock_logger.debug.assert_called_once_with(
-                "Subscribed to topic", topic=Topics.PRODUCT_RECEIVED, listener=mock_listener.__name__
+                "Subscribed to topic",
+                topic=Topics.PRODUCT_RECEIVED,
+                listener=mock_listener.__name__,
             )
 
     def test_subscribe_failure(self, mock_logger, mock_listener):
@@ -149,7 +165,9 @@ class TestMessageBus:
 
             mock_unsub.assert_called_once_with(mock_listener, Topics.PRODUCT_RECEIVED)
             mock_logger.debug.assert_called_once_with(
-                "Unsubscribed from topic", topic=Topics.PRODUCT_RECEIVED, listener=mock_listener.__name__
+                "Unsubscribed from topic",
+                topic=Topics.PRODUCT_RECEIVED,
+                listener=mock_listener.__name__,
             )
 
     def test_unsubscribe_failure(self, mock_logger, mock_listener):
@@ -158,7 +176,9 @@ class TestMessageBus:
             MessageBus.unsubscribe(Topics.PRODUCT_RECEIVED, mock_listener)
 
             mock_logger.error.assert_called_once_with(
-                "Failed to unsubscribe from topic", topic=Topics.PRODUCT_RECEIVED, error="Test error"
+                "Failed to unsubscribe from topic",
+                topic=Topics.PRODUCT_RECEIVED,
+                error="Test error",
             )
 
     def test_get_topic_subscribers_success(self):
@@ -304,7 +324,7 @@ class TestMessageBusWithDataclasses:
             received_messages.append(message)
 
         MessageBus.subscribe(Topics.STATS_MESSAGE_PROCESSED, stats_listener)
-        MessageBus.publish(Topics.STATS_MESSAGE_PROCESSED, message=sample_stats_message)
+        MessageBus.publish(Topics.STATS_MESSAGE_PROCESSED)
 
         assert len(received_messages) == 1
         assert received_messages[0] == sample_stats_message

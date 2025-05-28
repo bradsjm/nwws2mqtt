@@ -325,8 +325,12 @@ class TestComplexStatisticsScenarios:
         app_stats.messages.processing_errors["timeout"] = 20
 
         # Add output handlers
-        mqtt_stats = OutputHandlerStats(handler_type="mqtt", total_published=470, total_failed=5, is_connected=True)
-        console_stats = OutputHandlerStats(handler_type="console", total_published=470, total_failed=0, is_connected=True)
+        mqtt_stats = OutputHandlerStats(
+            handler_type="mqtt", total_published=470, total_failed=5, is_connected=True
+        )
+        console_stats = OutputHandlerStats(
+            handler_type="console", total_published=470, total_failed=0, is_connected=True
+        )
 
         app_stats.output_handlers["mqtt_primary"] = mqtt_stats
         app_stats.output_handlers["console"] = console_stats
@@ -351,7 +355,9 @@ class TestComplexStatisticsScenarios:
         # Set up complex message stats
         app_stats.messages.total_received = 5000
         app_stats.messages.total_processed = 4800
-        app_stats.messages.wmo_codes.update({"FXUS61": 1500, "FXUS62": 1200, "WWUS75": 800, "URGENT": 300})
+        app_stats.messages.wmo_codes.update(
+            {"FXUS61": 1500, "FXUS62": 1200, "WWUS75": 800, "URGENT": 300}
+        )
 
         # Create snapshot
         timestamp = datetime.utcnow()

@@ -251,21 +251,29 @@ class TestMetricsUpdates:
 
         # Output handlers
         mqtt_handler = OutputHandlerStats(
-            handler_type="mqtt", total_published=470, total_failed=25, is_connected=True, connection_errors=2
+            handler_type="mqtt",
+            total_published=470,
+            total_failed=25,
+            is_connected=True,
+            connection_errors=2,
         )
         stats.output_handlers["mqtt_primary"] = mqtt_handler
 
         return stats
 
     @pytest.mark.unit
-    def test_update_metrics_success(self, exporter: PrometheusMetricsExporter, sample_stats: ApplicationStats) -> None:
+    def test_update_metrics_success(
+        self, exporter: PrometheusMetricsExporter, sample_stats: ApplicationStats
+    ) -> None:
         """Test successful metrics update."""
         exporter.stats_collector.get_stats.return_value = sample_stats
 
         with patch.object(exporter, "_update_application_metrics") as mock_app_update:
             with patch.object(exporter, "_update_connection_metrics") as mock_conn_update:
                 with patch.object(exporter, "_update_message_metrics") as mock_msg_update:
-                    with patch.object(exporter, "_update_output_handler_metrics") as mock_handler_update:
+                    with patch.object(
+                        exporter, "_update_output_handler_metrics"
+                    ) as mock_handler_update:
                         exporter._update_metrics()
 
         exporter.stats_collector.get_stats.assert_called_once()
@@ -283,7 +291,9 @@ class TestMetricsUpdates:
         exporter._update_metrics()
 
     @pytest.mark.unit
-    def test_update_application_metrics(self, exporter: PrometheusMetricsExporter, sample_stats: ApplicationStats) -> None:
+    def test_update_application_metrics(
+        self, exporter: PrometheusMetricsExporter, sample_stats: ApplicationStats
+    ) -> None:
         """Test application metrics update."""
         with patch.object(exporter.app_info, "info") as mock_info:
             with patch.object(exporter.app_uptime_seconds, "set") as mock_uptime:
@@ -325,7 +335,9 @@ class TestMetricsUpdates:
         }
 
         with patch.object(exporter.connection_total_connections, "inc") as mock_connections:
-            with patch.object(exporter.connection_total_disconnections, "inc") as mock_disconnections:
+            with patch.object(
+                exporter.connection_total_disconnections, "inc"
+            ) as mock_disconnections:
                 with patch.object(exporter.connection_reconnect_attempts, "inc") as mock_reconnects:
                     with patch.object(exporter.connection_errors, "inc") as mock_errors:
                         exporter._update_connection_metrics(sample_stats)
@@ -337,7 +349,9 @@ class TestMetricsUpdates:
         mock_errors.assert_called_once_with(1)  # 1 - 0
 
     @pytest.mark.unit
-    def test_update_message_metrics_first_time(self, exporter: PrometheusMetricsExporter, sample_stats: ApplicationStats) -> None:
+    def test_update_message_metrics_first_time(
+        self, exporter: PrometheusMetricsExporter, sample_stats: ApplicationStats
+    ) -> None:
         """Test message metrics update for first time."""
         with patch.object(exporter.messages_received_total, "inc") as mock_received:
             with patch.object(exporter.message_processing_success_rate, "set") as mock_success_rate:
@@ -355,12 +369,18 @@ class TestMetricsUpdates:
         assert exporter._last_message_values["total_received"] == 1000
 
     @pytest.mark.unit
-    def test_update_output_handler_metrics(self, exporter: PrometheusMetricsExporter, sample_stats: ApplicationStats) -> None:
+    def test_update_output_handler_metrics(
+        self, exporter: PrometheusMetricsExporter, sample_stats: ApplicationStats
+    ) -> None:
         """Test output handler metrics update."""
         with (
             patch.object(exporter.output_handler_status, "labels") as mock_status_labels,
-            patch.object(exporter.output_handler_published_total, "labels") as mock_published_labels,
-            patch.object(exporter.output_handler_success_rate, "labels") as mock_success_rate_labels,
+            patch.object(
+                exporter.output_handler_published_total, "labels"
+            ) as mock_published_labels,
+            patch.object(
+                exporter.output_handler_success_rate, "labels"
+            ) as mock_success_rate_labels,
         ):
             # Mock the labeled metric objects
             mock_status_metric = Mock()
@@ -375,8 +395,12 @@ class TestMetricsUpdates:
 
             # Verify labels were called with handler info
             mock_status_labels.assert_called_with(handler_name="mqtt_primary", handler_type="mqtt")
-            mock_published_labels.assert_called_with(handler_name="mqtt_primary", handler_type="mqtt")
-            mock_success_rate_labels.assert_called_with(handler_name="mqtt_primary", handler_type="mqtt")
+            mock_published_labels.assert_called_with(
+                handler_name="mqtt_primary", handler_type="mqtt"
+            )
+            mock_success_rate_labels.assert_called_with(
+                handler_name="mqtt_primary", handler_type="mqtt"
+            )
 
             # Verify metrics were set/incremented
             mock_status_metric.set.assert_called_once_with(1)
