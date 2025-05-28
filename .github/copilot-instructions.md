@@ -18,7 +18,7 @@
   - AVOID nested types like `dict[str, tuple[...]]`; prefer named types.
 
 ## Style & Formatting (Ruff Enforcement)
-- **PEP 8 Compliance:** Follow naming conventions (`snake_case` for functions/variables; `PascalCase` for classes) and format with 88 character line limit.
+- **PEP 8 Compliance:** Follow naming conventions (`snake_case` for functions/variables; `PascalCase` for classes).
 - **String Interpolation:** Use f-strings exclusively.
 - **Unused Variables:** Remove or prefix with underscore.
 
