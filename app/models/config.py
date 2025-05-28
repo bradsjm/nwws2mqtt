@@ -44,7 +44,8 @@ class Config:
             metrics_enabled=os.getenv("METRICS_ENABLED", "false").lower() in ("true", "1", "yes"),
             metrics_port=int(os.getenv("METRICS_PORT", "8080")),
             metrics_update_interval=int(os.getenv("METRICS_UPDATE_INTERVAL", "30")),
-            dashboard_enabled=os.getenv("DASHBOARD_ENABLED", "false").lower() in ("true", "1", "yes"),
+            dashboard_enabled=os.getenv("DASHBOARD_ENABLED", "false").lower()
+            in ("true", "1", "yes"),
             dashboard_port=int(os.getenv("DASHBOARD_PORT", "8081")),
             dashboard_host=os.getenv("DASHBOARD_HOST", "127.0.0.1"),
         )

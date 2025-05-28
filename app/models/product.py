@@ -20,11 +20,11 @@ class TextProductSegmentModel(BaseModel):
     vtec: list[VTECModel] = Field(
         description="List of VTEC entries found in this segment.",
         alias="vtecRecords",
-        default_factory=list,
+        default_factory=list[VTECModel],
     )
     ugcs: list[UGCModel] = Field(
         description="List of UGCs (Universal Geographic Codes) covered by this segment.",
-        default_factory=list,
+        default_factory=list[UGCModel],
         alias="ugcRecords",
     )
     ugcexpire: datetime.datetime | None = Field(
@@ -39,7 +39,7 @@ class TextProductSegmentModel(BaseModel):
     hvtec: list[HVTECModel] = Field(
         description="List of HVTEC entries found in this segment.",
         alias="hvtecRecords",
-        default_factory=list,
+        default_factory=list[HVTECModel],
     )
     tml_giswkt: str | None = Field(
         default=None,
@@ -91,7 +91,11 @@ class TextProductSegmentModel(BaseModel):
         description="Hail size direction/comparison (e.g., '>', '<=').",
         alias="hailDirectionTag",
     )
-    hailthreat: str | None = Field(default=None, description="Hail threat level.", alias="hailThreat")
+    hailthreat: str | None = Field(
+        default=None,
+        description="Hail threat level.",
+        alias="hailThreat",
+    )
     winddirtag: str | None = Field(
         default=None,
         description="Wind speed direction/comparison (e.g., '>', '<=').",
@@ -166,7 +170,7 @@ class TextProductModel(WMOProductBaseModel):
     segments: list[TextProductSegmentModel] = Field(
         description="List of parsed product segments.",
         alias="productSegments",
-        default_factory=list,
+        default_factory=list[TextProductSegmentModel],
     )
     geometry: str | None = Field(
         default=None,
