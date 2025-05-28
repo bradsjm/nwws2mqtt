@@ -2,7 +2,5 @@
     "recommendations": [
         "ms-python.python",
         "ms-python.debugpy",
-        "charliermarsh.ruff",
-        "ms-python.pylint",
     ]
 }
