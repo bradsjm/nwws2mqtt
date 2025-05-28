@@ -1,6 +1,12 @@
 """PubSub integration for decoupling producers and consumers."""
 
-from .message_bus import MessageBus, ProductMessage, StatsConnectionMessage, StatsHandlerMessage, StatsMessageProcessingMessage
+from .message_bus import (
+    MessageBus,
+    ProductMessage,
+    StatsConnectionMessage,
+    StatsHandlerMessage,
+    StatsMessageProcessingMessage,
+)
 from .topics import Topics
 
 __all__ = [
