@@ -19,7 +19,9 @@ dependencies = [
     "pyiem>=1.23.0",
     "pypubsub>=4.0.3",
     "python-dotenv>=1.1.0",
+    "pyventus>=0.7.1",
     "rich>=14.0.0",
+    "slixmpp>=1.10.0",
     "twisted[tls]>=24.11.0",
 ]
 
