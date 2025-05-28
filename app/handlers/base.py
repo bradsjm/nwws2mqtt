@@ -7,12 +7,12 @@ from loguru import logger
 
 from app.messaging import MessageBus, ProductMessage, StatsHandlerMessage, Topics
 from app.models import OutputConfig
+from app.models.product import TextProductModel
 from app.utils import LoggingConfig
 
 
 class OutputHandler(ABC):
-    """
-    Base class for output handlers.
+    """Base class for output handlers.
 
     Each handler subscribes directly to the pubsub system and manages
     its own lifecycle independently for better isolation and reliability.
@@ -62,7 +62,7 @@ class OutputHandler(ABC):
             self._is_started = False
             logger.info("handler stopped", handler=self._handler_name)
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error("Error stopping handler", handler=self._handler_name, error=str(e))
 
     def _on_product_received(self, message: ProductMessage) -> None:
@@ -75,7 +75,9 @@ class OutputHandler(ABC):
             try:
                 loop = asyncio.get_running_loop()
                 # We're in an async context, create task directly
-                loop.create_task(self._process_product_message(message))
+                task = loop.create_task(self._process_product_message(message))
+                # Add done callback to handle any exceptions
+                task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
             except RuntimeError:
                 # No running loop, schedule in a thread
                 import threading
@@ -85,7 +87,7 @@ class OutputHandler(ABC):
                     asyncio.set_event_loop(new_loop)
                     try:
                         new_loop.run_until_complete(self._process_product_message(message))
-                    except Exception as e:
+                    except (OSError, RuntimeError, ValueError, AttributeError) as e:
                         logger.error(
                             "Failed to process product message in thread",
                             handler=self._handler_name,
@@ -98,7 +100,7 @@ class OutputHandler(ABC):
                 thread = threading.Thread(target=run_async, daemon=True)
                 thread.start()
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError, AttributeError) as e:
             logger.error(
                 "Error handling product message",
                 handler=self._handler_name,
@@ -113,7 +115,7 @@ class OutputHandler(ABC):
                 message.source,
                 message.afos,
                 message.product_id,
-                message.structured_data,
+                message.text_product,
                 message.subject,
             )
 
@@ -123,7 +125,7 @@ class OutputHandler(ABC):
                 message=StatsHandlerMessage(handler_name=self._handler_name),
             )
 
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError, AttributeError) as e:
             logger.error(
                 "Failed to publish product message",
                 handler=self._handler_name,
@@ -147,7 +149,12 @@ class OutputHandler(ABC):
 
     @abstractmethod
     async def publish(
-        self, source: str, afos: str, product_id: str, structured_data: str, subject: str = ""
+        self,
+        source: str,
+        afos: str,
+        product_id: str,
+        text_product: TextProductModel,
+        subject: str = "",
     ) -> None:
         """Publish structured data to the output destination."""
 

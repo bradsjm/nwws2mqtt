@@ -1,7 +1,6 @@
 # pyright: basic
 """NWWS-OI XMPP client implementation."""
 
-import json
 import time
 from datetime import UTC, datetime
 
@@ -324,11 +323,24 @@ class NWWSXMPPClient:
             noaaport = f"{noaaport}\r\r\n"
         noaaport = f"{noaaport}\x03"
 
-        tp = TextProduct(noaaport, parse_segments=True, ugc_provider={})
-        source = tp.source or "unknown"  # type: ignore  # noqa: PGH003
-        afos = tp.afos or "unknown"  # type: ignore  # noqa: PGH003
-        wmo = tp.wmo or "unknown"  # type: ignore  # noqa: PGH003
-        product_id = tp.get_product_id()
+        try:
+            tp = TextProduct(noaaport, parse_segments=True, ugc_provider={})
+            source = tp.source or "unknown"  # type: ignore  # noqa: PGH003
+            afos = tp.afos or "unknown"  # type: ignore  # noqa: PGH003
+            wmo = tp.wmo or "unknown"  # type: ignore  # noqa: PGH003
+            product_id = tp.get_product_id()
+        except TextProductException as e:
+            logger.error("Failed to parse text product", error=str(e))
+            MessageBus.publish(
+                Topics.STATS_MESSAGE_FAILED,
+                message=StatsMessageProcessingMessage(
+                    source="unknown",
+                    afos="unknown",
+                    wmo="unknown",
+                    error_type=str(e),
+                ),
+            )
+            return
 
         if not product_id:
             logger.warning("Product has no ID, skipping", source=source, afos=afos, wmo=wmo)
@@ -349,9 +361,9 @@ class NWWSXMPPClient:
 
         # Output structured data
         try:
-            model = convert_text_product_to_model(tp)
-        except TextProductException as e:
-            logger.warning("Failed to parse text product", error=str(e))
+            text_product = convert_text_product_to_model(tp)
+        except (ValueError, TypeError) as e:
+            logger.warning("Failed to convert text product", error=str(e))
             MessageBus.publish(
                 Topics.STATS_MESSAGE_FAILED,
                 message=StatsMessageProcessingMessage(
@@ -363,34 +375,16 @@ class NWWSXMPPClient:
             )
             return
 
-        try:
-            model_json = json.dumps(
-                model.model_dump(mode="json", by_alias=True, exclude_defaults=True),
-                sort_keys=True,
-                indent=1,
-            )
-        except (TypeError, ValueError, RecursionError) as e:
-            logger.error(
-                "Failed to serialize product",
-                product_id=product_id,
-                error=str(e),
-            )
-            MessageBus.publish(Topics.STATS_MESSAGE_FAILED)
-            return
-
         # Publish product message to pubsub system
         product_message = ProductMessage(
             source=source,
             afos=afos[:3],
             product_id=product_id,
-            structured_data=model_json,
+            text_product=text_product,
             subject=subject,
         )
 
         MessageBus.publish(Topics.PRODUCT_RECEIVED, message=product_message)
-
-        # Record successful publishing
-        MessageBus.publish(Topics.STATS_MESSAGE_PUBLISHED)
 
     def _on_stream_error(self, failure) -> None:
         """Handle stream errors, such as authentication failures."""

@@ -9,6 +9,9 @@ from loguru import logger
 from paho.mqtt.packettypes import PacketTypes
 from paho.mqtt.properties import Properties
 
+from app.models.product import TextProductModel
+from app.utils.conversion import product_to_json
+
 from .base import OutputHandler
 
 
@@ -99,7 +102,7 @@ class MQTTOutputHandler(OutputHandler):
             except OSError as e:
                 logger.error("Error stopping MQTT handler", handler="mqtt", error=str(e))
 
-    async def publish(self, source: str, afos: str, product_id: str, structured_data: str, subject: str = "") -> None:
+    async def publish(self, source: str, afos: str, product_id: str, text_product: TextProductModel, subject: str = "") -> None:
         """Publish structured data to MQTT topic."""
         if not self.client or not self._connected:
             logger.warning("MQTT client not connected, skipping publish", handler="mqtt", subject=subject)
@@ -116,10 +119,12 @@ class MQTTOutputHandler(OutputHandler):
                 expiry_seconds = self.config.mqtt_message_expiry_minutes * 60
                 properties.MessageExpiryInterval = expiry_seconds
 
+            json_data = product_to_json(text_product)
+
             # Publish message
             result = self.client.publish(
                 topic,
-                structured_data,
+                json_data,
                 qos=self.config.mqtt_qos,
                 retain=self.config.mqtt_retain,
                 properties=properties,
@@ -137,11 +142,19 @@ class MQTTOutputHandler(OutputHandler):
                 )
             else:
                 error_msg = f"Failed to publish to MQTT: {result.rc}"
-                logger.warning(error_msg, handler="mqtt", return_code=result.rc)
+                logger.warning(
+                    error_msg,
+                    handler="mqtt",
+                    return_code=result.rc,
+                    topic=topic,
+                    source=source,
+                    afos=afos,
+                    product_id=product_id,
+                    subject=subject,
+                )
 
         except (ConnectionError, OSError, ValueError) as e:
             logger.error("Error publishing to MQTT", handler="mqtt", error=str(e))
-            raise
 
     @property
     def is_connected(self) -> bool:

@@ -7,6 +7,8 @@ from typing import Any
 from loguru import logger
 from pubsub import pub
 
+from app.models.product import TextProductModel
+
 
 @dataclass
 class ProductMessage:
@@ -15,7 +17,7 @@ class ProductMessage:
     source: str
     afos: str
     product_id: str
-    structured_data: str
+    text_product: TextProductModel
     subject: str = ""
     metadata: dict[str, Any] | None = None
 
