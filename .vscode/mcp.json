@@ -1,0 +1,16 @@
+{
+    "servers": {
+        "slixmpp Docs": {
+            "type": "sse",
+            "url": "https://gitmcp.io/poezio/slixmpp"
+        },
+        "pyventus Docs": {
+            "type": "sse",
+            "url": "https://mdapena.gitmcp.io/pyventus/latest/"
+        },
+        "pyIEM Docs": {
+            "type": "sse",
+            "url": "https://akrherz.gitmcp.io/pyIEM/"
+        }
+    }
+}
