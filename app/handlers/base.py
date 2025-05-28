@@ -109,18 +109,33 @@ class OutputHandler(ABC):
     async def _process_product_message(self, message: ProductMessage) -> None:
         """Process a product message asynchronously."""
         try:
-            await self.publish(message.source, message.afos, message.product_id, message.structured_data, message.subject)
+            await self.publish(
+                message.source,
+                message.afos,
+                message.product_id,
+                message.structured_data,
+                message.subject,
+            )
 
             # Publish success event
-            MessageBus.publish(Topics.STATS_HANDLER_PUBLISH_SUCCESS, message=StatsHandlerMessage(handler_name=self._handler_name))
+            MessageBus.publish(
+                Topics.STATS_HANDLER_PUBLISH_SUCCESS,
+                message=StatsHandlerMessage(handler_name=self._handler_name),
+            )
 
         except Exception as e:
             logger.error(
-                "Failed to publish product message", handler=self._handler_name, product_id=message.product_id, error=str(e)
+                "Failed to publish product message",
+                handler=self._handler_name,
+                product_id=message.product_id,
+                error=str(e),
             )
 
             # Publish failure event
-            MessageBus.publish(Topics.STATS_HANDLER_PUBLISH_FAILED, message=StatsHandlerMessage(handler_name=self._handler_name))
+            MessageBus.publish(
+                Topics.STATS_HANDLER_PUBLISH_FAILED,
+                message=StatsHandlerMessage(handler_name=self._handler_name),
+            )
 
     @abstractmethod
     async def _start_handler(self) -> None:
@@ -131,7 +146,9 @@ class OutputHandler(ABC):
         """Stop the specific handler implementation."""
 
     @abstractmethod
-    async def publish(self, source: str, afos: str, product_id: str, structured_data: str, subject: str = "") -> None:
+    async def publish(
+        self, source: str, afos: str, product_id: str, structured_data: str, subject: str = ""
+    ) -> None:
         """Publish structured data to the output destination."""
 
     @property

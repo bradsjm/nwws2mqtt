@@ -15,8 +15,7 @@ type HandlerFactory = type[OutputHandler]
 
 
 class HandlerRegistry:
-    """
-    Registry for output handlers.
+    """Registry for output handlers.
 
     Provides centralized configuration and monitoring without
     managing handler lifecycles directly.
@@ -63,11 +62,11 @@ class HandlerRegistry:
         logger.info("Starting handler registry")
 
         # Create and start handlers for enabled types
-        handlers_to_start = []
+        handlers_to_start: list[tuple[str, OutputHandler]] = []
         for handler_name in self.config.enabled_handlers:
-            handler_name = handler_name.lower()
+            normalized_handler_name = handler_name.lower()
 
-            if handler_name not in self._factories:
+            if normalized_handler_name not in self._factories:
                 logger.warning("Unknown handler type", handler=handler_name)
                 continue
 
@@ -89,14 +88,14 @@ class HandlerRegistry:
 
                 logger.info("Created handler instance", handler=handler_name)
 
-            except Exception as e:
+            except (TypeError, ValueError, ImportError, AttributeError) as e:
                 logger.error("Failed to create handler", handler=handler_name, error=str(e))
 
         # Start all handlers concurrently
         if handlers_to_start:
-            start_tasks = []
+            start_tasks: list[asyncio.Task[None]] = []
             for handler_name, handler in handlers_to_start:
-                start_tasks.append(self._start_handler(handler_name, handler))
+                start_tasks.append(asyncio.create_task(self._start_handler(handler_name, handler)))
 
             # Start handlers with error isolation
             await asyncio.gather(*start_tasks, return_exceptions=True)
@@ -114,19 +113,25 @@ class HandlerRegistry:
             await handler.start()
 
             if handler.is_connected:
-                MessageBus.publish(Topics.STATS_HANDLER_CONNECTED, message=StatsHandlerMessage(handler_name=handler_name))
+                MessageBus.publish(
+                    Topics.STATS_HANDLER_CONNECTED,
+                    message=StatsHandlerMessage(handler_name=handler_name),
+                )
                 logger.info("Handler started successfully", handler=handler_name)
             else:
                 logger.warning("Handler started but not connected", handler=handler_name)
 
-        except Exception as e:
+        except (ConnectionError, OSError, ValueError, RuntimeError) as e:
             logger.error("Failed to start handler", handler=handler_name, error=str(e))
 
             # Remove failed handler from active list
             with self._lock:
                 self._active_handlers.pop(handler_name, None)
 
-            MessageBus.publish(Topics.STATS_HANDLER_CONNECTION_ERROR, message=StatsHandlerMessage(handler_name=handler_name))
+            MessageBus.publish(
+                Topics.STATS_HANDLER_CONNECTION_ERROR,
+                message=StatsHandlerMessage(handler_name=handler_name),
+            )
 
     async def stop(self) -> None:
         """Stop all active handlers."""
@@ -137,10 +142,10 @@ class HandlerRegistry:
         self._is_running = False
 
         # Stop all handlers concurrently
-        stop_tasks = []
+        stop_tasks: list[asyncio.Task[None]] = []
         with self._lock:
             for handler_name, handler in self._active_handlers.items():
-                stop_tasks.append(self._stop_handler(handler_name, handler))
+                stop_tasks.append(asyncio.create_task(self._stop_handler(handler_name, handler)))
 
         if stop_tasks:
             await asyncio.gather(*stop_tasks, return_exceptions=True)
@@ -155,11 +160,14 @@ class HandlerRegistry:
         try:
             await handler.stop()
 
-            MessageBus.publish(Topics.STATS_HANDLER_DISCONNECTED, message=StatsHandlerMessage(handler_name=handler_name))
+            MessageBus.publish(
+                Topics.STATS_HANDLER_DISCONNECTED,
+                message=StatsHandlerMessage(handler_name=handler_name),
+            )
 
             logger.info("Handler stopped", handler=handler_name)
 
-        except Exception as e:
+        except (ConnectionError, OSError, RuntimeError) as e:
             logger.error("Error stopping handler", handler=handler_name, error=str(e))
 
     @property
