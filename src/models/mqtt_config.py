@@ -1,11 +1,11 @@
-"""Output configuration dataclass for NWWS-OI handlers."""
+"""Configuration for MQTT output."""
 
 import os
 from dataclasses import dataclass
 
 
 @dataclass
-class OutputConfig:
+class MqttConfig:
     """Configuration class for output handlers."""
 
     enabled_handlers: list[str]
@@ -22,7 +22,7 @@ class OutputConfig:
     mqtt_message_expiry_minutes: int = 60  # Message expiry time in minutes
 
     @classmethod
-    def from_env(cls) -> "OutputConfig":
+    def from_env(cls) -> "MqttConfig":
         """Create output config from environment variables."""
         handlers_str = os.getenv("OUTPUT_HANDLERS", "console")
         enabled_handlers = [h.strip() for h in handlers_str.split(",") if h.strip()]

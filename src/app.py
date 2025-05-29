@@ -7,15 +7,15 @@ import time
 import uuid
 from asyncio import CancelledError
 from collections.abc import Callable
-from dataclasses import dataclass
 from types import FrameType
 
 from dotenv import load_dotenv
 from loguru import logger
 
 from models import Config, XMPPConfig
+from models.events import WeatherWireEventData
 from pipeline import PipelineBuilder, PipelineConfig, PipelineManager
-from pipeline.types import PipelineEvent, PipelineEventMetadata, PipelineStage
+from pipeline.types import PipelineEventMetadata, PipelineStage
 from receiver import WeatherWire, WeatherWireEvent
 from utils import LoggingConfig
 
@@ -24,14 +24,6 @@ load_dotenv(override=True)
 
 # Type alias for signal handlers
 type SignalHandler = Callable[[int, FrameType | None], None]
-
-
-@dataclass
-class WeatherWireEventData(PipelineEvent):
-    """Pipeline event wrapper for WeatherWire events."""
-
-    weather_event: WeatherWireEvent
-    """The original weather wire event."""
 
 
 class WeatherWireApp:

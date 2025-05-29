@@ -3,7 +3,7 @@
 import json
 from typing import TYPE_CHECKING
 
-from models import HVTECModel, TextProductModel, TextProductSegmentModel, UGCModel, VTECModel
+from models.weather import HVTECModel, TextProductModel, TextProductSegmentModel, UGCModel, VTECModel
 
 if TYPE_CHECKING:
     from pyiem.nws.hvtec import HVTEC
@@ -43,9 +43,7 @@ def convert_hvtec_to_model(hvtec_obj: "HVTEC") -> HVTECModel:
     nwsli_id_val = ""
     nwsli_attr = getattr(hvtec_obj, "nwsli", None)
     if nwsli_attr is not None:
-        nwsli_id_val = (
-            getattr(nwsli_attr, "id", "") if hasattr(nwsli_attr, "id") else str(nwsli_attr)
-        )
+        nwsli_id_val = getattr(nwsli_attr, "id", "") if hasattr(nwsli_attr, "id") else str(nwsli_attr)
 
     return HVTECModel(
         line=getattr(hvtec_obj, "line", ""),
@@ -136,10 +134,7 @@ def convert_text_product_to_model(
             "afos": getattr(product_obj, "afos", None),
             "unixtext": getattr(product_obj, "unixtext", ""),
             "sections": list(getattr(product_obj, "sections", [])),
-            "segments": [
-                convert_text_product_segment_to_model(s)
-                for s in getattr(product_obj, "segments", [])
-            ],
+            "segments": [convert_text_product_segment_to_model(s) for s in getattr(product_obj, "segments", [])],
             "geometry": getattr(product_obj, "geometry", None),
             "product_id": product_id_val,
             "nicedate": product_obj.get_nicedate()  # type: ignore[union-attr]
@@ -148,9 +143,7 @@ def convert_text_product_to_model(
             "main_headline": product_obj.get_main_headline("")  # type: ignore[union-attr]
             if hasattr(product_obj, "get_main_headline")
             else "",  # type: ignore[union-attr]
-            "signature": product_obj.get_signature()
-            if hasattr(product_obj, "get_signature")
-            else None,
+            "signature": product_obj.get_signature() if hasattr(product_obj, "get_signature") else None,
             "channels": product_obj.get_channels()  # type: ignore[union-attr]
             if hasattr(product_obj, "get_channels") and getattr(product_obj, "afos", None)
             else [],

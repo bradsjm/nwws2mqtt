@@ -5,7 +5,7 @@ import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class WMOProductBaseModel(BaseModel):
+class WMOModel(BaseModel):
     """Base Pydantic model for WMO Product attributes."""
 
     text: str = Field(

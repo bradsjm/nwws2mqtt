@@ -1,3 +1,5 @@
+"""Configuration for XMPP client."""
+
 from dataclasses import dataclass
 
 

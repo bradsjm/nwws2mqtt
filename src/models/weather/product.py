@@ -4,10 +4,10 @@ import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .base import WMOProductBaseModel
 from .hvtec import HVTECModel
 from .ugc import UGCModel
 from .vtec import VTECModel
+from .wmo import WMOModel
 
 
 class TextProductSegmentModel(BaseModel):
@@ -150,7 +150,7 @@ class TextProductSegmentModel(BaseModel):
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
 
-class TextProductModel(WMOProductBaseModel):
+class TextProductModel(WMOModel):
     """Pydantic model for a Text Product."""
 
     afos: str | None = Field(
