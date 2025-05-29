@@ -1,8 +1,8 @@
 # pyright: strict
-"""Pipeline package for NWWS2MQTT application.
+"""Pipeline package.
 
 This package provides a flexible, extensible pipeline system for processing
-weather data from NWWS-OI through filters, transformers, and outputs.
+through filters, transformers, and outputs.
 """
 
 from .config import PipelineBuilder, PipelineConfig

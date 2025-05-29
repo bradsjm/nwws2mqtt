@@ -20,7 +20,12 @@ class NoaaPortTransformer(Transformer):
         if isinstance(event, NoaaPortEventData):
             product = convert_text_product_to_model(parser(text=event.noaaport, ugc_provider={}))
 
-            logger.info("Transformed NOAA Port to Text Product")
+            logger.debug(
+                "Transformed Raw Content to Text Product Model",
+                event_id=event.metadata.event_id,
+                product_id=event.id,
+                subject=event.subject,
+            )
 
             # Update metadata
             new_metadata = PipelineEventMetadata(

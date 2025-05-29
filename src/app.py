@@ -10,10 +10,13 @@ from types import FrameType
 from dotenv import load_dotenv
 from loguru import logger
 
+from filters import TestMessageFilter
 from models import Config, XMPPConfig
 from models.events import NoaaPortEventData
 from outputs import ConsoleOutput
+from outputs.mqtt import mqtt_factory_create
 from pipeline import PipelineBuilder, PipelineConfig, PipelineManager
+from pipeline.filters import FilterConfig
 from pipeline.outputs import OutputConfig
 from pipeline.transformers import TransformerConfig
 from pipeline.types import PipelineEventMetadata, PipelineStage
@@ -77,16 +80,25 @@ class WeatherWireApp:
         """Configure and initialize the pipeline system."""
         pipeline_config = PipelineConfig(
             pipeline_id="weather-wire-pipeline",
-            filters=[],
+            filters=[
+                FilterConfig(
+                    filter_type="test_message",
+                    filter_id="test-msg-filter",
+                ),
+            ],
             transformer=TransformerConfig(
                 transformer_id="noaaport1",
                 transformer_type="noaa_port",
             ),
             outputs=[
+                # OutputConfig(
+                #     output_type="console",
+                #     output_id="weather-wire-console",
+                #     config={"pretty": True},
+                # ),
                 OutputConfig(
-                    output_type="console",
-                    output_id="weather-wire-console",
-                    config={"pretty": True},
+                    output_type="mqtt",
+                    output_id="mqtt1",
                 ),
             ],
             enable_stats=True,
@@ -95,8 +107,10 @@ class WeatherWireApp:
 
         # Build the pipeline
         builder = PipelineBuilder()
+        builder.filter_registry.register("test_message", TestMessageFilter)
         builder.transformer_registry.register("noaa_port", NoaaPortTransformer)
         builder.output_registry.register("console", ConsoleOutput)
+        builder.output_registry.register("mqtt", mqtt_factory_create)
         pipeline = builder.build_pipeline(pipeline_config)
 
         # Add the pipeline to the manager
@@ -216,16 +230,11 @@ class WeatherWireApp:
         self._shutdown_event.set()
 
     async def _cleanup_services(self) -> None:
-        """Stop all application services in reverse order.
-
-        Stops the receiver first, then the pipeline manager to ensure
-        proper cleanup and no data loss.
-        """
-        # Stop receiver first
-        await self.receiver.stop()
-
-        # Stop pipeline manager
-        await self.pipeline_manager.stop()
+        """Stop all application services."""
+        await asyncio.gather(
+            self.receiver.stop(),
+            self.pipeline_manager.stop(),
+        )
 
 
 async def main() -> None:
