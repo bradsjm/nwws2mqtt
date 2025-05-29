@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import time
+import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, TypeVar
@@ -32,7 +33,7 @@ class PipelineStage(Enum):
 class PipelineEventMetadata:
     """Metadata for pipeline events."""
 
-    event_id: EventId
+    event_id: EventId = field(default=str(uuid.uuid4()))
     """Unique identifier for this event."""
 
     timestamp: Timestamp = field(default_factory=time.time)

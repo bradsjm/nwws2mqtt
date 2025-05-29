@@ -28,15 +28,17 @@ class WeatherWireMessage:
     noaaport: str
     """NOAAPort formatted text of the product message."""
     id: str
-    """Unique identifier for the product."""
+    """Unique identifier for the product (server process ID and sequence number)."""
     issue: str
     """Issue time of the product in ISO 8601 format."""
     ttaaii: str
-    """TTAAII code representing the product type and time."""
+    """TTAAII code representing the WMO product type and time."""
     cccc: str
     """CCCC code representing the issuing office or center."""
     awipsid: str
-    """AWIPS ID of the product, if available; otherwise 'NONE'."""
+    """The six character AWIPS ID, sometimes called AFOS PIL; if available otherwise 'NONE'."""
+    delay_stamp: str | None
+    """Delay stamp if the message was delayed, otherwise None."""
 
 
 class WeatherWire(slixmpp.ClientXMPP):
@@ -53,6 +55,7 @@ class WeatherWire(slixmpp.ClientXMPP):
         - Service Discovery (XEP-0030) for capability negotiation
         - Multi-User Chat (XEP-0045) for joining the NWWS room
         - XMPP Ping (XEP-0199) for connection keep-alive
+        - Delayed Delivery (XEP-0203) for handling delayed messages
         - Idle timeout monitoring to detect connection issues
 
         """
@@ -74,6 +77,7 @@ class WeatherWire(slixmpp.ClientXMPP):
         self.register_plugin("xep_0030")  # Service Discovery  # type: ignore[misc]
         self.register_plugin("xep_0045")  # Multi-User Chat  # type: ignore[misc]
         self.register_plugin("xep_0199")  # XMPP Ping  # type: ignore[misc]
+        self.register_plugin("xep_0203")  # Delayed Delivery # type: ignore[misc]
 
         # Add event handlers
         self.add_event_handler("session_start", self._on_session_start)
@@ -201,6 +205,8 @@ class WeatherWire(slixmpp.ClientXMPP):
         """Process group chat message containing weather data."""
         # Get the message subject from the body or subject field
         subject = str(msg.get("body", "")) or str(msg.get("subject", ""))
+        # Get delay stamp if available
+        delay_stamp: str | None = msg["delay"]["stamp"] if "delay" in msg else None
 
         # Check for NWWS-OI namespace in the message
         x = msg.xml.find("{nwws-oi}x")
@@ -238,6 +244,7 @@ class WeatherWire(slixmpp.ClientXMPP):
             ttaaii=ttaaii,
             cccc=cccc,
             awipsid=awipsid,
+            delay_stamp=delay_stamp,
         )
 
         # Call the callback with the event
@@ -249,6 +256,7 @@ class WeatherWire(slixmpp.ClientXMPP):
             ttaaii=ttaaii,
             cccc=cccc,
             awipsid=awipsid,
+            delay_stamp=delay_stamp,
         )
         await self.callback(event)
 

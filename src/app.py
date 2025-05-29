@@ -3,8 +3,6 @@
 import asyncio
 import signal
 import sys
-import time
-import uuid
 from asyncio import CancelledError
 from collections.abc import Callable
 from types import FrameType
@@ -16,8 +14,8 @@ from models import Config, XMPPConfig
 from models.events import NoaaPortEventData
 from outputs import ConsoleOutput
 from pipeline import PipelineBuilder, PipelineConfig, PipelineManager
-from pipeline.outputs import OutputConfig, output_registry
-from pipeline.transformers import TransformerConfig, transformer_registry
+from pipeline.outputs import OutputConfig
+from pipeline.transformers import TransformerConfig
 from pipeline.types import PipelineEventMetadata, PipelineStage
 from receiver import WeatherWire, WeatherWireMessage
 from transformers import NoaaPortTransformer
@@ -77,33 +75,28 @@ class WeatherWireApp:
 
     def _setup_pipeline(self) -> None:
         """Configure and initialize the pipeline system."""
-        # Create console output configuration
-        console_output = OutputConfig(
-            output_type="console",
-            output_id="weather-wire-console",
-            config={"pretty": True},  # Enable Rich's pretty JSON formatting
-        )
-
-        output_registry.register("console", ConsoleOutput)
-
-        transformer_registry.register("noaa_port", NoaaPortTransformer)
-
-        # Create pipeline configuration with console output
         pipeline_config = PipelineConfig(
             pipeline_id="weather-wire-pipeline",
             filters=[],
             transformer=TransformerConfig(
-                transformer_id="noaaport",
+                transformer_id="noaaport1",
                 transformer_type="noaa_port",
-                config={},
             ),
-            outputs=[console_output],  # Console output for weather wire events
+            outputs=[
+                OutputConfig(
+                    output_type="console",
+                    output_id="weather-wire-console",
+                    config={"pretty": True},
+                ),
+            ],
             enable_stats=True,
             enable_error_handling=True,
         )
 
         # Build the pipeline
         builder = PipelineBuilder()
+        builder.transformer_registry.register("noaa_port", NoaaPortTransformer)
+        builder.output_registry.register("console", ConsoleOutput)
         pipeline = builder.build_pipeline(pipeline_config)
 
         # Add the pipeline to the manager
@@ -122,13 +115,11 @@ class WeatherWireApp:
                 noaaport=event.noaaport,
                 subject=event.subject,
                 ttaaii=event.ttaaii,
+                delay_stamp=event.delay_stamp,
                 metadata=PipelineEventMetadata(
-                    event_id=str(uuid.uuid4()),
-                    timestamp=time.time(),
                     source="weather-wire-receiver",
                     stage=PipelineStage.INGEST,
                     trace_id=event.id,
-                    custom={"product_id": event.id, "subject": event.subject},
                 ),
             )
             await self.pipeline_manager.submit_event(pipeline_event)

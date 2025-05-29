@@ -24,3 +24,5 @@ class TextProductEventData(PipelineEvent):
     """Subject of the message, typically the product type or title."""
     ttaaii: str
     """TTAAII code representing the product type and time."""
+    delay_stamp: str | None
+    """Delay stamp if the message was delayed, otherwise None."""

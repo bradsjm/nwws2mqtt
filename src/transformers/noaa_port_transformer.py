@@ -41,6 +41,7 @@ class NoaaPortTransformer(Transformer):
                 product=product,
                 subject=event.subject,
                 ttaaii=event.ttaaii,
+                delay_stamp=event.delay_stamp,
             )
 
         """Pass through event if not NoaaPortEventData"""

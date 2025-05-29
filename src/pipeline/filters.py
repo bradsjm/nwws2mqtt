@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import re
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
@@ -216,7 +216,7 @@ class FilterConfig:
     filter_id: str
     """Unique identifier for the filter."""
 
-    config: dict[str, Any]
+    config: dict[str, Any] = field(default_factory=dict[str, Any])
     """Filter-specific configuration."""
 
 

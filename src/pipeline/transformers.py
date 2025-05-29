@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from loguru import logger
@@ -255,7 +255,7 @@ class TransformerConfig:
     transformer_id: str
     """Unique identifier for the transformer."""
 
-    config: dict[str, Any]
+    config: dict[str, Any] = field(default_factory=dict[str, Any])
     """Transformer-specific configuration."""
 
 
