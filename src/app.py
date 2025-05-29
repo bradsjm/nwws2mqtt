@@ -13,10 +13,14 @@ from dotenv import load_dotenv
 from loguru import logger
 
 from models import Config, XMPPConfig
-from models.events import WeatherWireEventData
+from models.events import NoaaPortEventData
+from outputs import ConsoleOutput
 from pipeline import PipelineBuilder, PipelineConfig, PipelineManager
+from pipeline.outputs import OutputConfig, output_registry
+from pipeline.transformers import TransformerConfig, transformer_registry
 from pipeline.types import PipelineEventMetadata, PipelineStage
-from receiver import WeatherWire, WeatherWireEvent
+from receiver import WeatherWire, WeatherWireMessage
+from transformers import NoaaPortTransformer
 from utils import LoggingConfig
 
 # Load environment variables from .env file
@@ -27,21 +31,10 @@ type SignalHandler = Callable[[int, FrameType | None], None]
 
 
 class WeatherWireApp:
-    """NWWS Weather Wire Application.
-
-    Supports async context manager for automatic resource management.
-    """
+    """NWWS Weather Wire Application."""
 
     def __init__(self, config: Config) -> None:
-        """Initialize the application with configuration.
-
-        Args:
-            config: Application configuration object
-
-        Raises:
-            ValueError: If configuration is invalid
-
-        """
+        """Initialize the application with configuration."""
         self._validate_config(config)
         self.config = config
         self.is_shutting_down = False
@@ -68,18 +61,10 @@ class WeatherWireApp:
         )
 
         # Create the Weather Wire receiver
-        self.receiver = WeatherWire(config=xmpp_config, callback=self._receive_weather_wire_event)
+        self.receiver = WeatherWire(config=xmpp_config, callback=self._receive_weather_message_feed)
 
     def _validate_config(self, config: Config) -> None:
-        """Validate critical configuration parameters.
-
-        Args:
-            config: Configuration object to validate
-
-        Raises:
-            ValueError: If configuration is invalid
-
-        """
+        """Validate critical configuration parameters."""
         if not config.username or not config.password:
             credentials_error = "XMPP credentials (username and password) are required"
             raise ValueError(credentials_error)
@@ -91,16 +76,28 @@ class WeatherWireApp:
             raise ValueError(port_error)
 
     def _setup_pipeline(self) -> None:
-        """Configure and initialize the pipeline system.
+        """Configure and initialize the pipeline system."""
+        # Create console output configuration
+        console_output = OutputConfig(
+            output_type="console",
+            output_id="weather-wire-console",
+            config={"pretty": True},  # Enable Rich's pretty JSON formatting
+        )
 
-        Creates an empty pipeline configuration and initializes the pipeline manager.
-        """
-        # Create an empty pipeline configuration
+        output_registry.register("console", ConsoleOutput)
+
+        transformer_registry.register("noaa_port", NoaaPortTransformer)
+
+        # Create pipeline configuration with console output
         pipeline_config = PipelineConfig(
             pipeline_id="weather-wire-pipeline",
-            filters=[],  # No filters initially
-            transformer=None,  # No transformer initially
-            outputs=[],  # No outputs initially - empty pipeline
+            filters=[],
+            transformer=TransformerConfig(
+                transformer_id="noaaport",
+                transformer_type="noaa_port",
+                config={},
+            ),
+            outputs=[console_output],  # Console output for weather wire events
             enable_stats=True,
             enable_error_handling=True,
         )
@@ -114,15 +111,17 @@ class WeatherWireApp:
 
         logger.info("Pipeline configured", pipeline_id=pipeline_config.pipeline_id)
 
-    async def _receive_weather_wire_event(self, event: WeatherWireEvent) -> None:
-        """Handle Weather Wire events by feeding them to the pipeline.
-
-        Args:
-            event: Weather wire event to process
-
-        """
+    async def _receive_weather_message_feed(self, event: WeatherWireMessage) -> None:
+        """Handle Weather Wire content by feeding to the pipeline."""
         try:
-            pipeline_event = WeatherWireEventData(
+            pipeline_event = NoaaPortEventData(
+                awipsid=event.awipsid,
+                cccc=event.cccc,
+                id=event.id,
+                issue=event.issue,
+                noaaport=event.noaaport,
+                subject=event.subject,
+                ttaaii=event.ttaaii,
                 metadata=PipelineEventMetadata(
                     event_id=str(uuid.uuid4()),
                     timestamp=time.time(),
@@ -131,29 +130,21 @@ class WeatherWireApp:
                     trace_id=event.id,
                     custom={"product_id": event.id, "subject": event.subject},
                 ),
-                weather_event=event,
             )
             await self.pipeline_manager.submit_event(pipeline_event)
             logger.debug(
                 "Weather wire event submitted to pipeline",
                 event_id=pipeline_event.metadata.event_id,
-                product_id=event.id,
-                subject=event.subject,
+                product_id=pipeline_event.id,
+                subject=pipeline_event.subject,
             )
         except (ValueError, TypeError, AttributeError) as e:
             self._log_processing_error(e, event, "Failed to process weather wire event")
         except Exception as e:  # noqa: BLE001 - Catch-all for unexpected errors
             self._log_processing_error(e, event, "Unexpected error processing weather wire event")
 
-    def _log_processing_error(self, error: Exception, event: WeatherWireEvent, message: str) -> None:
-        """Log processing errors with consistent format.
-
-        Args:
-            error: Exception that occurred
-            event: Weather wire event being processed
-            message: Error message to log
-
-        """
+    def _log_processing_error(self, error: Exception, event: WeatherWireMessage, message: str) -> None:
+        """Log processing errors with consistent format."""
         event_id = event.id if hasattr(event, "id") else "unknown"
         subject = event.subject if hasattr(event, "subject") else "unknown"
 

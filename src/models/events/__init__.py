@@ -1,5 +1,6 @@
 """Pipeline event data for events."""
 
-from .weather_wire_event_data import WeatherWireEventData
+from .noaa_port_event_data import NoaaPortEventData
+from .text_product_event_data import TextProductEventData
 
-__all__ = ["WeatherWireEventData"]
+__all__ = ["NoaaPortEventData", "TextProductEventData"]

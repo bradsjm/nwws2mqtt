@@ -20,8 +20,8 @@ IDLE_TIMEOUT = 5 * 60  # 5 minutes
 
 
 @dataclass
-class WeatherWireEvent:
-    """Event representing a text product received event."""
+class WeatherWireMessage:
+    """Event representing a received weathermessage."""
 
     subject: str
     """Subject of the message, typically the product type or title."""
@@ -42,7 +42,7 @@ class WeatherWireEvent:
 class WeatherWire(slixmpp.ClientXMPP):
     """NWWS-OI XMPP client using slixmpp."""
 
-    def __init__(self, config: XMPPConfig, callback: Callable[[WeatherWireEvent], Awaitable[None]]) -> None:
+    def __init__(self, config: XMPPConfig, callback: Callable[[WeatherWireMessage], Awaitable[None]]) -> None:
         """Initialize the XMPP client with configuration and callback.
 
         Args:
@@ -241,7 +241,7 @@ class WeatherWire(slixmpp.ClientXMPP):
         )
 
         # Call the callback with the event
-        event = WeatherWireEvent(
+        event = WeatherWireMessage(
             subject=subject,
             noaaport=noaaport,
             id=xid,
