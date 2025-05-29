@@ -132,7 +132,6 @@ def convert_text_product_to_model(
             "z": getattr(product_obj, "z", None),
             # TextProduct specific attributes
             "afos": getattr(product_obj, "afos", None),
-            "unixtext": getattr(product_obj, "unixtext", ""),
             "sections": list(getattr(product_obj, "sections", [])),
             "segments": [convert_text_product_segment_to_model(s) for s in getattr(product_obj, "segments", [])],
             "geometry": getattr(product_obj, "geometry", None),

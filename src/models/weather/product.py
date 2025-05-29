@@ -158,14 +158,10 @@ class TextProductModel(WMOModel):
         description="AFOS PIL (Product Identifier Line) for the product.",
         alias="afosPil",
     )
-    unixtext: str = Field(
-        description="The full product text with Unix line endings.",
-        alias="fullProductText",
-    )
     sections: list[str] = Field(
         description="List of text sections, typically split by double newlines.",
         alias="textSections",
-        default_factory=list,
+        default_factory=list[str],
     )
     segments: list[TextProductSegmentModel] = Field(
         description="List of parsed product segments.",
