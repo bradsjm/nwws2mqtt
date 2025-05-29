@@ -17,12 +17,9 @@ dependencies = [
     "psycopg[binary]>=3.2.9",
     "pydantic>=2.11.5",
     "pyiem>=1.23.0",
-    "pypubsub>=4.0.3",
     "python-dotenv>=1.1.0",
-    "pyventus>=0.7.1",
     "rich>=14.0.0",
     "slixmpp>=1.10.0",
-    "twisted[tls]>=24.11.0",
 ]
 
 [dependency-groups]
@@ -79,7 +76,7 @@ exclude = [
 ]
 pythonVersion = "3.13"
 pythonPlatform = "All"
-typeCheckingMode = "strict"
+typeCheckingMode = "standard"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -36,7 +36,8 @@
 - **Properties:** Use `@property` for managed attribute access.
 - **Efficiency:** Use comprehensions and generators for data transformation and large datasets.
 - **Output & Logging:** Use the `logging` module for output; never use `print()`.
-- **Design Patterns:** Apply idiomatic patterns (e.g., context managers, factories) to reduce complexity.
+- **Design Patterns:** Apply idiomatic patterns (e.g., context managers, factories) where it will reduce complexity or improve understandability.
+- **Inline Simple Functions:** Avoid creating functions that have only a single line of code; prefer to inline such logic directly.
 
 ## Error Handling
 - **Granular Exceptions:** Always catch specific exceptions (e.g., `except ValueError:`, `except requests.HTTPError:`) for external or I/O operations. AVOID bare except blocks.
