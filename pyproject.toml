@@ -61,8 +61,9 @@ indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
 
-[tool.pyright]
-include = ["src/nwws", "tests"]
+[tool.basedpyright]
+executionEnvironments = [{ root = "src", pythonVersion = "3.13" }]
+include = ["src"]
 exclude = [
     "**/__pycache__",
     ".git",
@@ -74,8 +75,6 @@ exclude = [
     "typings",
     "tests",
 ]
-pythonVersion = "3.13"
-pythonPlatform = "All"
 typeCheckingMode = "standard"
 
 [tool.pytest.ini_options]

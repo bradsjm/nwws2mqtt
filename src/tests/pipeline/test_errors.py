@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.pipeline.errors import (
+from nwws.pipeline.errors import (
     ErrorHandler,
     ErrorHandlingStrategy,
     FilterError,
@@ -14,7 +14,7 @@ from src.pipeline.errors import (
     PipelineErrorEvent,
     TransformerError,
 )
-from src.pipeline.types import PipelineEvent, PipelineEventMetadata, PipelineStage
+from nwws.pipeline.types import PipelineEvent, PipelineEventMetadata, PipelineStage
 
 
 class TestPipelineError:
