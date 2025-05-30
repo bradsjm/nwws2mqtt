@@ -13,6 +13,7 @@ from slixmpp import JID
 from slixmpp.stanza import Message
 
 from nwws.models import XMPPConfig
+from nwws.receiver.stats import WeatherWireStatsCollector
 
 # Configuration constants
 MUC_ROOM = "nwws@conference.nwws-oi.weather.gov"
@@ -44,12 +45,19 @@ class WeatherWireMessage:
 class WeatherWire(slixmpp.ClientXMPP):
     """NWWS-OI XMPP client using slixmpp."""
 
-    def __init__(self, config: XMPPConfig, callback: Callable[[WeatherWireMessage], Awaitable[None]]) -> None:
+    def __init__(
+        self,
+        config: XMPPConfig,
+        callback: Callable[[WeatherWireMessage], Awaitable[None]],
+        *,
+        stats_collector: WeatherWireStatsCollector | None = None,
+    ) -> None:
         """Initialize the XMPP client with configuration and callback.
 
         Args:
-        config: XMPP configuration containing username, password, server details
-        callback: Async function to call when a WeatherWireEvent is received
+            config: XMPP configuration containing username, password, server details
+            callback: Async function to call when a WeatherWireEvent is received
+            stats_collector: Optional stats collector for monitoring receiver metrics
 
         The client is configured with:
         - Service Discovery (XEP-0030) for capability negotiation
@@ -72,6 +80,7 @@ class WeatherWire(slixmpp.ClientXMPP):
         self.config = config
         self.callback = callback
         self.nickname = f"{datetime.now(UTC):%Y%m%d%H%M}"
+        self.stats_collector = stats_collector
 
         # Register plugins
         self.register_plugin("xep_0030")  # Service Discovery  # type: ignore[misc]
@@ -92,6 +101,7 @@ class WeatherWire(slixmpp.ClientXMPP):
         self.last_message_time: float = time.time()
         self.is_shutting_down: bool = False
         self._idle_monitor_task: asyncio.Task[object] | None = None
+        self._connection_start_time: float | None = None
 
         logger.info(
             "Initializing NWWS-OI XMPP client",
@@ -101,7 +111,16 @@ class WeatherWire(slixmpp.ClientXMPP):
 
     def start(self) -> asyncio.Future[bool]:
         """Connect to the XMPP server."""
-        logger.info("Connecting to NWWS-OI server", host=self.config.server, port=self.config.port)
+        logger.info(
+            "Connecting to NWWS-OI server",
+            host=self.config.server,
+            port=self.config.port,
+        )
+        self._connection_start_time = time.time()
+
+        if self.stats_collector:
+            self.stats_collector.record_connection_attempt()
+
         return super().connect(host=self.config.server, port=self.config.port)  # type: ignore  # noqa: PGH003
 
     async def _monitor_idle_timeout(self) -> None:
@@ -110,15 +129,23 @@ class WeatherWire(slixmpp.ClientXMPP):
             await asyncio.sleep(10)
             now = time.time()
             if now - self.last_message_time > IDLE_TIMEOUT:
+                idle_duration = now - self.last_message_time
                 logger.warning(
                     "No messages received in {timeout} seconds, reconnecting...",
                     timeout=IDLE_TIMEOUT,
                 )
+
+                if self.stats_collector:
+                    self.stats_collector.record_idle_timeout(idle_duration)
+
                 await self._force_reconnect()
                 break
 
     async def _force_reconnect(self) -> None:
         """Force a reconnect of the XMPP client."""
+        if self.stats_collector:
+            self.stats_collector.record_reconnection()
+
         await self.stop()
         await asyncio.sleep(2)
         self.is_shutting_down = False
@@ -128,6 +155,13 @@ class WeatherWire(slixmpp.ClientXMPP):
     async def _on_connected(self, _event: object) -> None:
         """Handle successful connection."""
         logger.info("Connected to NWWS-OI server")
+
+        if self.stats_collector:
+            self.stats_collector.update_connection_status(is_connected=True)
+
+            if self._connection_start_time:
+                duration_ms = (time.time() - self._connection_start_time) * 1000
+                self.stats_collector.record_connection_success(duration_ms)
 
     async def _on_session_start(self, _event: object) -> None:
         """Handle successful connection and authentication."""
@@ -157,13 +191,23 @@ class WeatherWire(slixmpp.ClientXMPP):
         """Handle authentication failure."""
         logger.error("Authentication failed for NWWS-OI client")
 
+        if self.stats_collector:
+            self.stats_collector.record_authentication_failure()
+
     async def _on_disconnected(self, reason: str | Exception) -> None:
         """Handle disconnection."""
         logger.warning("Disconnected from NWWS-OI server", reason=reason)
 
+        if self.stats_collector:
+            self.stats_collector.update_connection_status(is_connected=False)
+            self.stats_collector.record_disconnection(str(reason))
+
     async def _on_connection_failed(self, reason: str | Exception) -> None:
         """Handle connection failure."""
         logger.error("Connection to NWWS-OI server failed" + str(reason), reason=reason)
+
+        if self.stats_collector:
+            self.stats_collector.record_connection_failure(str(reason))
 
     async def _join_muc_room(self) -> None:
         """Join and subscribe to the MUC room with proper configuration."""
@@ -189,17 +233,42 @@ class WeatherWire(slixmpp.ClientXMPP):
 
     async def _on_groupchat_message(self, msg: Message) -> None:
         """Process incoming groupchat message."""
-        self.last_message_time = time.time()
+        message_start_time = time.time()
+        self.last_message_time = message_start_time
+
+        if self.stats_collector:
+            # Update the age of last message (should be near 0 for new messages)
+            self.stats_collector.update_last_message_age(0.0)
+
         if self.is_shutting_down:
             logger.info("Client is shutting down, ignoring message")
             return
 
         # Check if the message is from the expected MUC room
         if msg.get_from().bare != JID(MUC_ROOM).bare:
-            logger.debug(f"Message not from {MUC_ROOM} room, skipping", from_jid=msg["from"].bare)
+            logger.debug(
+                f"Message not from {MUC_ROOM} room, skipping",
+                from_jid=msg["from"].bare,
+            )
+            if self.stats_collector:
+                self.stats_collector.record_message_error("wrong_room")
             return
 
-        await self._nwws_message(msg)
+        try:
+            await self._nwws_message(msg)
+
+            if self.stats_collector:
+                duration_ms = (time.time() - message_start_time) * 1000
+                self.stats_collector.record_message_received(duration_ms)
+
+        except ValueError as e:
+            logger.error(
+                "Error processing NWWS message",
+                error=str(e),
+                msg_id=msg.get_id(),
+            )
+            if self.stats_collector:
+                self.stats_collector.record_message_error("processing_error")
 
     async def _nwws_message(self, msg: Message) -> None:
         """Process group chat message containing weather data."""
@@ -211,13 +280,23 @@ class WeatherWire(slixmpp.ClientXMPP):
         # Check for NWWS-OI namespace in the message
         x = msg.xml.find("{nwws-oi}x")
         if x is None:
-            logger.warning("No NWWS-OI namespace in group message, skipping", msg_id=msg.get_id())
+            logger.warning(
+                "No NWWS-OI namespace in group message, skipping",
+                msg_id=msg.get_id(),
+            )
+            if self.stats_collector:
+                self.stats_collector.record_message_error("missing_namespace")
             return
 
         # Get the message body which should contain the weather data
         body = (x.text or "").strip()
         if not body:
-            logger.warning("No body text in NWWS-OI namespace, skipping", msg_id=msg.get_id())
+            logger.warning(
+                "No body text in NWWS-OI namespace, skipping",
+                msg_id=msg.get_id(),
+            )
+            if self.stats_collector:
+                self.stats_collector.record_message_error("empty_body")
             return
 
         # Get the metadata from the NWWS-OI namespace
@@ -278,6 +357,10 @@ class WeatherWire(slixmpp.ClientXMPP):
 
         # Disconnect from server
         await self.disconnect()  # type: ignore[misc]
+
+        if self.stats_collector:
+            self.stats_collector.update_connection_status(is_connected=False)
+
         logger.info("Stopped NWWS-OI client")
 
     def _leave_muc_room(self) -> None:

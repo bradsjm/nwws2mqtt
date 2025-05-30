@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from loguru import logger
+
 from nwws.pipeline.filters import Filter
 
 if TYPE_CHECKING:
@@ -42,4 +44,14 @@ class TestMessageFilter(Filter):
         awipsid = getattr(event, "awipsid", "")
 
         # Reject test messages (case-insensitive comparison)
-        return not (isinstance(awipsid, str) and awipsid.upper() == "TSTMSG")
+        result = not (isinstance(awipsid, str) and awipsid.upper() == "TSTMSG")
+
+        if not result:
+            logger.debug(
+                "Filtering test message",
+                filter_id=self.filter_id,
+                event_id=event.metadata.event_id,
+                awipsid=awipsid,
+            )
+
+        return result

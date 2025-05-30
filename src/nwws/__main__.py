@@ -1,11 +1,14 @@
 """NWWS2MQTT - National Weather Service NWWS-OI to MQTT Bridge."""
 
 import asyncio
+import contextlib
 import signal
 import sys
+import time
 from asyncio import CancelledError
 from collections.abc import Callable
 from types import FrameType, TracebackType
+from typing import Any
 
 from dotenv import load_dotenv
 from loguru import logger
@@ -19,6 +22,7 @@ from nwws.pipeline.errors import ErrorHandler
 from nwws.pipeline.stats import PipelineStats, StatsCollector
 from nwws.pipeline.types import PipelineEventMetadata, PipelineStage
 from nwws.receiver import WeatherWire, WeatherWireMessage
+from nwws.receiver.stats import WeatherWireStatsCollector
 from nwws.transformers import NoaaPortTransformer
 from nwws.utils import LoggingConfig
 
@@ -38,6 +42,7 @@ class WeatherWireApp:
         self.config = config
         self.is_shutting_down = False
         self._shutdown_event = asyncio.Event()
+        self._start_time = time.time()
 
         # Setup enhanced logging
         LoggingConfig.configure(config.log_level, config.log_file)
@@ -47,20 +52,31 @@ class WeatherWireApp:
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
 
-        # Create Weather Wire receiver with XMPP configuration
+        # Create pipeline first to get shared stats
+        self._setup_pipeline()
+
+        # Create Weather Wire receiver with XMPP configuration and stats
         xmpp_config = XMPPConfig(
             username=config.username,
             password=config.password,
             server=config.server,
             port=config.port,
         )
+
+        # Create receiver stats collector using the same stats instance as pipeline
+        self.receiver_stats_collector = WeatherWireStatsCollector(
+            self.stats,
+            "weather-wire",
+        )
+
         self.receiver = WeatherWire(
             config=xmpp_config,
             callback=self._receive_weather_message_feed,
+            stats_collector=self.receiver_stats_collector,
         )
 
-        # Create pipeline
-        self._setup_pipeline()
+        # Initialize periodic stats update task
+        self._stats_update_task: asyncio.Task[None] | None = None
 
     def _validate_config(self, config: Config) -> None:
         """Validate critical configuration parameters."""
@@ -194,6 +210,9 @@ class WeatherWireApp:
         # Start weather wire receiver
         self.receiver.start()
 
+        # Start periodic stats updates
+        self._stats_update_task = asyncio.create_task(self._update_stats_periodically())
+
     def _signal_handler(self, signum: int, _frame: FrameType | None) -> None:
         """Handle shutdown signals gracefully.
 
@@ -222,10 +241,77 @@ class WeatherWireApp:
 
     async def _cleanup_services(self) -> None:
         """Stop all application services."""
+        # Cancel stats update task
+        if self._stats_update_task and not self._stats_update_task.done():
+            self._stats_update_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._stats_update_task
+
         await asyncio.gather(
             self.receiver.stop(),
             self.pipeline.stop(),
         )
+
+    async def _update_stats_periodically(self) -> None:
+        """Periodically update gauge metrics that need regular refresh."""
+        while not self.is_shutting_down:
+            try:
+                # Update last message age if receiver has stats collector
+                if hasattr(self.receiver, "last_message_time"):
+                    age_seconds = time.time() - self.receiver.last_message_time
+                    self.receiver_stats_collector.update_last_message_age(age_seconds)
+
+                # Update connection status
+                is_connected = self.receiver.is_client_connected()
+                self.receiver_stats_collector.update_connection_status(
+                    is_connected=is_connected,
+                )
+
+                # Wait before next update
+                await asyncio.sleep(30)  # Update every 30 seconds
+
+            except asyncio.CancelledError:
+                break
+            except (ValueError, TypeError, AttributeError) as e:
+                logger.error("Error updating periodic stats", error=str(e))
+                await asyncio.sleep(30)
+
+    def get_comprehensive_stats(self) -> dict[str, Any]:
+        """Get comprehensive statistics including pipeline and receiver metrics."""
+        pipeline_stats = self.pipeline.get_stats_summary()
+
+        # Add application-level metrics
+        uptime_seconds = time.time() - self._start_time
+
+        return {
+            "application": {
+                "uptime_seconds": uptime_seconds,
+                "is_running": not self.is_shutting_down,
+                "receiver_connected": self.receiver.is_client_connected(),
+                "pipeline_started": self.pipeline.is_started,
+            },
+            "pipeline": pipeline_stats,
+            "summary": {
+                "total_messages_received": self.stats.get_counter(
+                    "weather-wire.messages.received",
+                ),
+                "total_connection_attempts": self.stats.get_counter(
+                    "weather-wire.connection.attempts",
+                ),
+                "total_connection_failures": self.stats.get_counter(
+                    "weather-wire.connection.failures",
+                ),
+                "total_pipeline_processed": self.stats.get_counter(
+                    "weather-wire-pipeline.processed",
+                ),
+                "last_message_age_seconds": self.stats.get_gauge(
+                    "weather-wire.last_message_age_seconds",
+                ),
+                "connection_status": self.stats.get_gauge(
+                    "weather-wire.connection.status",
+                ),
+            },
+        }
 
 
 async def main() -> None:
