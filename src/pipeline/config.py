@@ -179,7 +179,7 @@ class PipelineBuilder:
 
         return pipeline
 
-    def build_manager(self, config: PipelineManagerConfig) -> PipelineManager:
+    async def build_manager(self, config: PipelineManagerConfig) -> PipelineManager:
         """Build a pipeline manager from configuration.
 
         Args:
@@ -198,7 +198,7 @@ class PipelineBuilder:
             # Build and add all pipelines
             for pipeline_config in config.pipelines:
                 pipeline = self.build_pipeline(pipeline_config)
-                manager.add_pipeline(pipeline)
+                await manager.add_pipeline(pipeline)
 
             logger.info(
                 "Pipeline manager built successfully",
@@ -642,7 +642,7 @@ def create_pipeline_from_file(config_path: str | Path) -> Pipeline:
     return builder.build_pipeline(config)
 
 
-def create_manager_from_file(config_path: str | Path) -> PipelineManager:
+async def create_manager_from_file(config_path: str | Path) -> PipelineManager:
     """Create a pipeline manager directly from a configuration file.
 
     Args:
@@ -657,4 +657,4 @@ def create_manager_from_file(config_path: str | Path) -> PipelineManager:
     """
     config = load_manager_config(config_path)
     builder = PipelineBuilder()
-    return builder.build_manager(config)
+    return await builder.build_manager(config)

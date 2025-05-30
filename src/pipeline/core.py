@@ -6,7 +6,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Self
 
 from loguru import logger
 
@@ -384,21 +384,22 @@ class PipelineManager:
 
     def __init__(self, config: PipelineManagerConfig | None = None) -> None:
         """Initialize the pipeline manager.
-        
+
         Args:
             config: Optional configuration for the pipeline manager.
+
         """
         from .config import PipelineManagerConfig
-        
+
         self.config = config or PipelineManagerConfig()
         self._pipelines: dict[str, Pipeline] = {}
         self._event_queue: asyncio.Queue[tuple[str | None, PipelineEvent]] = asyncio.Queue(
-            maxsize=self.config.max_queue_size
+            maxsize=self.config.max_queue_size,
         )
         self._processing_task: asyncio.Task[None] | None = None
         self._is_running = False
 
-    def add_pipeline(self, pipeline: Pipeline) -> None:
+    async def add_pipeline(self, pipeline: Pipeline) -> None:
         """Add a pipeline to the manager.
 
         Args:
@@ -406,6 +407,11 @@ class PipelineManager:
 
         """
         self._pipelines[pipeline.pipeline_id] = pipeline
+
+        # If manager is running, start the pipeline immediately
+        if self._is_running:
+            await pipeline.start()
+
         logger.info(
             "Pipeline added to manager",
             pipeline_id=pipeline.pipeline_id,
@@ -484,6 +490,31 @@ class PipelineManager:
 
         logger.info("Pipeline manager stopped")
 
+    async def __aenter__(self) -> Self:
+        """Enter async context manager."""
+        await self.start()
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object,
+    ) -> None:
+        """Exit async context manager and ensure cleanup."""
+        await self.stop()
+
+    def __del__(self) -> None:
+        """Clean up resources when the manager is garbage collected."""
+        if self._is_running and self._processing_task and not self._processing_task.done():
+            logger.warning(
+                "PipelineManager was garbage collected while still running. "
+                "Call stop() or use as async context manager to avoid resource leaks.",
+            )
+            # Try to cancel the task, but ignore errors if event loop is closed
+            with contextlib.suppress(RuntimeError):
+                self._processing_task.cancel()
+
     async def submit_event(self, pipeline_id: str, event: PipelineEvent) -> None:
         """Submit an event to a specific pipeline for processing.
 
@@ -502,15 +533,15 @@ class PipelineManager:
 
         try:
             await asyncio.wait_for(
-                self._event_queue.put((pipeline_id, event)), 
-                timeout=self.config.processing_timeout_seconds
+                self._event_queue.put((pipeline_id, event)),
+                timeout=self.config.processing_timeout_seconds,
             )
             logger.debug(
-                "Event submitted for processing", 
+                "Event submitted for processing",
                 event_id=event.metadata.event_id,
-                pipeline_id=pipeline_id
+                pipeline_id=pipeline_id,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(
                 "Event submission timeout",
                 event_id=event.metadata.event_id,
@@ -534,18 +565,18 @@ class PipelineManager:
 
         try:
             await asyncio.wait_for(
-                self._event_queue.put((None, event)), 
-                timeout=self.config.processing_timeout_seconds
+                self._event_queue.put((None, event)),
+                timeout=self.config.processing_timeout_seconds,
             )
             logger.debug("Event submitted to all pipelines", event_id=event.metadata.event_id)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(
                 "Event submission timeout",
                 event_id=event.metadata.event_id,
                 timeout=self.config.processing_timeout_seconds,
             )
 
-    async def _process_events(self) -> None:
+    async def _process_events(self) -> None:  # noqa: C901
         """Process events from the queue through specified or all pipelines."""
         while self._is_running:
             try:
@@ -555,11 +586,9 @@ class PipelineManager:
                 if pipeline_id is None:
                     # Process event through all pipelines concurrently
                     tasks = [
-                        asyncio.create_task(pipeline.process(event)) 
-                        for pipeline in self._pipelines.values() 
-                        if pipeline.is_started
+                        asyncio.create_task(pipeline.process(event)) for pipeline in self._pipelines.values() if pipeline.is_started
                     ]
-                    
+
                     if tasks:
                         # Wait for all pipelines to process the event
                         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -580,16 +609,16 @@ class PipelineManager:
                         try:
                             await asyncio.wait_for(
                                 pipeline.process(event),
-                                timeout=self.config.processing_timeout_seconds
+                                timeout=self.config.processing_timeout_seconds,
                             )
-                        except asyncio.TimeoutError:
+                        except TimeoutError:
                             logger.error(
                                 "Pipeline processing timeout",
                                 pipeline_id=pipeline_id,
                                 event_id=event.metadata.event_id,
                                 timeout=self.config.processing_timeout_seconds,
                             )
-                        except Exception as e:
+                        except (OSError, ValueError, RuntimeError, PipelineError) as e:
                             logger.error(
                                 "Pipeline processing error",
                                 pipeline_id=pipeline_id,

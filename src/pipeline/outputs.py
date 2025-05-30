@@ -395,7 +395,7 @@ class FileOutput(Output):
 class HttpOutput(Output):
     """Output that sends events to HTTP endpoints."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         output_id: str,
         url: str,

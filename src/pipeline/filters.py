@@ -282,8 +282,9 @@ class FunctionFilter(Filter):
                 event_id=event.metadata.event_id,
                 error=str(e),
             )
+            msg = f"Function filter {self.filter_id} failed: {e}"
             raise FilterError(
-                f"Function filter {self.filter_id} failed: {e}",
+                msg,
                 self.filter_id,
             ) from e
 

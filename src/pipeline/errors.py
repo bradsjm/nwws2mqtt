@@ -102,7 +102,7 @@ class PipelineErrorEvent:
 class ErrorHandler:
     """Handles and tracks pipeline errors."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         strategy: ErrorHandlingStrategy = ErrorHandlingStrategy.CONTINUE,
         *,
@@ -129,7 +129,7 @@ class ErrorHandler:
         self.backoff_multiplier = backoff_multiplier
         self.circuit_breaker_threshold = circuit_breaker_threshold
         self.circuit_breaker_timeout_seconds = circuit_breaker_timeout_seconds
-        
+
         self._error_counts: dict[str, int] = {}
         self._last_errors: dict[str, PipelineErrorEvent] = {}
         self._retry_counts: dict[str, int] = {}
@@ -211,7 +211,7 @@ class ErrorHandler:
             try:
                 if self._is_circuit_breaker_open(error_key):
                     error_msg = f"Circuit breaker is open for {error_key}"
-                    raise PipelineError(
+                    raise PipelineError(  # noqa: TRY301
                         error_msg,
                         stage,
                         stage_id,
@@ -229,13 +229,13 @@ class ErrorHandler:
                 if self.strategy == ErrorHandlingStrategy.CIRCUIT_BREAKER:
                     self._update_circuit_breaker(error_key, failed=False)
 
-                return result
+                return result  # noqa: TRY300
 
             except Exception as e:
                 self._retry_counts[error_key] = attempt + 1
 
                 if attempt < self.max_retries and await self.should_retry(stage, stage_id, e):
-                    delay = self.retry_delay_seconds * (self.backoff_multiplier ** attempt)
+                    delay = self.retry_delay_seconds * (self.backoff_multiplier**attempt)
                     logger.info(
                         "Retrying operation",
                         stage=stage.value,
@@ -252,6 +252,7 @@ class ErrorHandler:
                 if self.strategy == ErrorHandlingStrategy.CIRCUIT_BREAKER:
                     self._update_circuit_breaker(error_key, failed=True)
                 raise
+        return None
 
     def _is_circuit_breaker_open(self, error_key: str) -> bool:
         """Check if circuit breaker is open for the given error key."""
@@ -296,10 +297,7 @@ class ErrorHandler:
                     "Circuit breaker opened (half-open failure)",
                     error_key=error_key,
                 )
-            elif (
-                state["state"] == "closed"
-                and state["failure_count"] >= self.circuit_breaker_threshold
-            ):
+            elif state["state"] == "closed" and state["failure_count"] >= self.circuit_breaker_threshold:
                 # Too many failures, open the circuit breaker
                 state["state"] = "open"
                 state["opened_at"] = time.time()

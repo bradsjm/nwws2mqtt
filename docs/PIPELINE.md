@@ -196,7 +196,7 @@ from pipeline.config import create_pipeline_from_file, create_manager_from_file
 pipeline = create_pipeline_from_file("config/pipeline.yaml")
 
 # Create manager from configuration file
-manager = create_manager_from_file("config/manager.json")
+manager = await create_manager_from_file("config/manager.json")
 ```
 
 ### Using PipelineBuilder
@@ -540,7 +540,7 @@ Manages multiple pipelines with shared event processing.
 class PipelineManager:
     def __init__(self, config: PipelineManagerConfig | None = None) -> None:
 
-    def add_pipeline(self, pipeline: Pipeline) -> None:
+    async def add_pipeline(self, pipeline: Pipeline) -> None:
         """Add a pipeline to the manager."""
 
     async def start(self) -> None:
