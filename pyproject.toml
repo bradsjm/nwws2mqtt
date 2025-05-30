@@ -54,12 +54,14 @@ ignore = [
     "D203",    # Conflicts with D211 (no blank line before class docstring)
     "D213",    # Conflicts with D212 (multi-line summary on first line)
     "PLR2004", # Magic number literals
+    "COM812",  # Use of `print` in production code
 ]
 
 [tool.ruff.lint.pycodestyle]
 max-line-length = 100
 
 [tool.ruff.format]
+
 
 [tool.basedpyright]
 executionEnvironments = [{ root = "src", pythonVersion = "3.13" }]

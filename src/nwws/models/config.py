@@ -37,10 +37,12 @@ class Config:
             log_file=os.getenv("LOG_FILE"),
             mqtt_config=MqttConfig.from_env(),
             stats_interval=int(os.getenv("STATS_INTERVAL", "60")),
-            metrics_enabled=os.getenv("METRICS_ENABLED", "false").lower() in ("true", "1", "yes"),
+            metrics_enabled=os.getenv("METRICS_ENABLED", "false").lower()
+            in ("true", "1", "yes"),
             metrics_port=int(os.getenv("METRICS_PORT", "8080")),
             metrics_update_interval=int(os.getenv("METRICS_UPDATE_INTERVAL", "30")),
-            dashboard_enabled=os.getenv("DASHBOARD_ENABLED", "false").lower() in ("true", "1", "yes"),
+            dashboard_enabled=os.getenv("DASHBOARD_ENABLED", "false").lower()
+            in ("true", "1", "yes"),
             dashboard_port=int(os.getenv("DASHBOARD_PORT", "8081")),
             dashboard_host=os.getenv("DASHBOARD_HOST", "127.0.0.1"),
         )

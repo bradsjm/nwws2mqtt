@@ -35,7 +35,10 @@ class MqttConfig:
             mqtt_password=os.getenv("MQTT_PASSWORD"),
             mqtt_topic_prefix=os.getenv("MQTT_TOPIC_PREFIX", "nwws"),
             mqtt_qos=int(os.getenv("MQTT_QOS", "1")),
-            mqtt_retain=os.getenv("MQTT_RETAIN", "false").lower() in ("true", "1", "yes"),
+            mqtt_retain=os.getenv("MQTT_RETAIN", "false").lower()
+            in ("true", "1", "yes"),
             mqtt_client_id=os.getenv("MQTT_CLIENT_ID", "nwws-oi-client"),
-            mqtt_message_expiry_minutes=int(os.getenv("MQTT_MESSAGE_EXPIRY_MINUTES", "60")),
+            mqtt_message_expiry_minutes=int(
+                os.getenv("MQTT_MESSAGE_EXPIRY_MINUTES", "60")
+            ),
         )

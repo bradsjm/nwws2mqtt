@@ -239,16 +239,12 @@ class WeatherWireApp:
             self.pipeline.stop(),
         )
 
-
     def get_comprehensive_stats(self) -> dict[str, Any]:
         """Get comprehensive statistics including pipeline and receiver metrics."""
         pipeline_stats = self.pipeline.get_stats_summary()
 
         # Add application-level metrics
         uptime_seconds = time.time() - self._start_time
-
-        # Get delay statistics
-        delay_stats = self.receiver_stats_collector.get_delay_stats()
 
         return {
             "application": {
@@ -258,7 +254,6 @@ class WeatherWireApp:
                 "pipeline_started": self.pipeline.is_started,
             },
             "pipeline": pipeline_stats,
-            "delay_statistics": delay_stats,
             "summary": {
                 "total_messages_received": self.stats.get_counter(
                     "weather-wire.messages.received",

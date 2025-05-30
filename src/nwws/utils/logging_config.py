@@ -31,7 +31,7 @@ class LoggingConfig:
         logger.remove()
 
         # Configure console logging with custom formatter
-        def format_record(record) -> str:  # type: ignore  # noqa: ANN001, PGH003
+        def format_record(record) -> str:  # type: ignore  # noqa: PGH003
             """Format structured data."""
             # Format the basic message first
             basic_format = (
@@ -66,15 +66,21 @@ class LoggingConfig:
         # Only add file logging if log_file is specified
         if log_file:
 
-            def format_file_record(record) -> str:  # type: ignore  # noqa: ANN001, PGH003
+            def format_file_record(record) -> str:  # type: ignore  # noqa: PGH003
                 """File formatter without color codes."""
                 # Format the basic message first
-                basic_format = "{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} | {message}"
+                basic_format = (
+                    "{time:YYYY-MM-DD HH:mm:ss} | "
+                    "{level: <8} | {name}:{function}:{line} "
+                    "| {message}"
+                )
                 formatted_message = basic_format.format_map(record)  # type: ignore  # noqa: PGH003
 
                 # Append extra data
                 if record["extra"]:
-                    extra_str = " | ".join([f"{k}={v}" for k, v in record["extra"].items()])  # type: ignore  # noqa: PGH003
+                    extra_str = " | ".join(
+                        [f"{k}={v}" for k, v in record["extra"].items()]  # type: ignore  # noqa: PGH003
+                    )
                     formatted_message += f" | {extra_str}"
 
                 return formatted_message + "\n"

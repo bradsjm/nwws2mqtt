@@ -59,7 +59,9 @@ class PipelineEvent:
     metadata: PipelineEventMetadata
     """Event metadata for tracking and observability."""
 
-    def with_stage(self, stage: PipelineStage, source: str | None = None) -> PipelineEvent:
+    def with_stage(
+        self, stage: PipelineStage, source: str | None = None
+    ) -> PipelineEvent:
         """Create a copy of this event with updated stage information."""
         new_metadata = PipelineEventMetadata(
             event_id=self.metadata.event_id,

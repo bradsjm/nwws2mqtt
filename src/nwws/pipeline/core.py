@@ -304,7 +304,9 @@ class Pipeline:
         # Send to all outputs concurrently
         tasks: list[asyncio.Task[None]] = []
         for output in self.outputs:
-            task = asyncio.create_task(self._send_to_single_output(output, output_event))
+            task = asyncio.create_task(
+                self._send_to_single_output(output, output_event)
+            )
             tasks.append(task)
 
         if tasks:
@@ -324,7 +326,9 @@ class Pipeline:
                 # Re-raise the first error
                 raise errors[0]
 
-    async def _send_to_single_output(self, output: Output, event: PipelineEvent) -> None:
+    async def _send_to_single_output(
+        self, output: Output, event: PipelineEvent
+    ) -> None:
         """Send event to a single output with error handling."""
         start_time = time.time()
 
@@ -372,7 +376,9 @@ class Pipeline:
 
     def get_stats_summary(self) -> dict[str, Any] | None:
         """Get a summary of pipeline statistics."""
-        return self.stats_collector.stats.get_summary() if self.stats_collector else None
+        return (
+            self.stats_collector.stats.get_summary() if self.stats_collector else None
+        )
 
     def get_error_summary(self) -> dict[str, Any]:
         """Get a summary of pipeline errors."""
@@ -393,8 +399,10 @@ class PipelineManager:
 
         self.config = config or PipelineManagerConfig()
         self._pipelines: dict[str, Pipeline] = {}
-        self._event_queue: asyncio.Queue[tuple[str | None, PipelineEvent]] = asyncio.Queue(
-            maxsize=self.config.max_queue_size,
+        self._event_queue: asyncio.Queue[tuple[str | None, PipelineEvent]] = (
+            asyncio.Queue(
+                maxsize=self.config.max_queue_size,
+            )
         )
         self._processing_task: asyncio.Task[None] | None = None
         self._is_running = False
@@ -506,7 +514,11 @@ class PipelineManager:
 
     def __del__(self) -> None:
         """Clean up resources when the manager is garbage collected."""
-        if self._is_running and self._processing_task and not self._processing_task.done():
+        if (
+            self._is_running
+            and self._processing_task
+            and not self._processing_task.done()
+        ):
             logger.warning(
                 "PipelineManager was garbage collected while still running. "
                 "Call stop() or use as async context manager to avoid resource leaks.",
@@ -568,7 +580,9 @@ class PipelineManager:
                 self._event_queue.put((None, event)),
                 timeout=self.config.processing_timeout_seconds,
             )
-            logger.debug("Event submitted to all pipelines", event_id=event.metadata.event_id)
+            logger.debug(
+                "Event submitted to all pipelines", event_id=event.metadata.event_id
+            )
         except TimeoutError:
             logger.error(
                 "Event submission timeout",
@@ -581,12 +595,16 @@ class PipelineManager:
         while self._is_running:
             try:
                 # Wait for next event with timeout
-                pipeline_id, event = await asyncio.wait_for(self._event_queue.get(), timeout=1.0)
+                pipeline_id, event = await asyncio.wait_for(
+                    self._event_queue.get(), timeout=1.0
+                )
 
                 if pipeline_id is None:
                     # Process event through all pipelines concurrently
                     tasks = [
-                        asyncio.create_task(pipeline.process(event)) for pipeline in self._pipelines.values() if pipeline.is_started
+                        asyncio.create_task(pipeline.process(event))
+                        for pipeline in self._pipelines.values()
+                        if pipeline.is_started
                     ]
 
                     if tasks:
@@ -594,7 +612,11 @@ class PipelineManager:
                         results = await asyncio.gather(*tasks, return_exceptions=True)
 
                         # Log any errors
-                        errors = [result for result in results if isinstance(result, Exception)]
+                        errors = [
+                            result
+                            for result in results
+                            if isinstance(result, Exception)
+                        ]
                         if errors:
                             logger.warning(
                                 "Some pipelines failed to process event",

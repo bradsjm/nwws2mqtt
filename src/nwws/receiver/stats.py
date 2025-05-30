@@ -201,24 +201,3 @@ class WeatherWireStatsCollector:
             duration_ms=delay_ms,
             details={"delay_ms": delay_ms},
         )
-
-    def get_delay_stats(self) -> dict[str, float | int]:
-        """Get delay statistics summary."""
-        delay_count_metric = f"{self.receiver_id}.messages.delayed"
-        delay_time_metric = f"{self.receiver_id}.messages.delay_time"
-
-        delay_count = self.stats.get_counter(delay_count_metric)
-        avg_delay = self.stats.get_average_time(delay_time_metric)
-
-        # Get min/max from summary data instead of accessing private members
-        summary = self.stats.get_summary()
-        timer_data = summary["timers"].get(delay_time_metric, {})
-        min_delay = timer_data.get("min", 0.0)
-        max_delay = timer_data.get("max", 0.0)
-
-        return {
-            "delayed_message_count": delay_count,
-            "avg_delay_ms": avg_delay or 0.0,
-            "min_delay_ms": min_delay,
-            "max_delay_ms": max_delay,
-        }

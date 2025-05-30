@@ -21,7 +21,9 @@ class WMOModel(BaseModel):
         description="Issuing source/center identifier (e.g., KJAN).",
         alias="sourceId",
     )
-    wmo: str | None = Field(default=None, description="WMO TTAAii heading.", alias="wmoHeader")
+    wmo: str | None = Field(
+        default=None, description="WMO TTAAii heading.", alias="wmoHeader"
+    )
     ddhhmm: str | None = Field(
         default=None,
         description="Day-Hour-Minute group from the WMO header.",

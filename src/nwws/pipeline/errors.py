@@ -33,7 +33,12 @@ class ErrorHandlingStrategy(Enum):
 class PipelineError(Exception):
     """Base exception for pipeline-related errors."""
 
-    def __init__(self, message: str, stage: PipelineStage | None = None, stage_id: str | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        stage: PipelineStage | None = None,
+        stage_id: str | None = None,
+    ) -> None:
         """Initialize pipeline error with context."""
         super().__init__(message)
         self.stage = stage
@@ -234,8 +239,12 @@ class ErrorHandler:
             except Exception as e:
                 self._retry_counts[error_key] = attempt + 1
 
-                if attempt < self.max_retries and await self.should_retry(stage, stage_id, e):
-                    delay = self.retry_delay_seconds * (self.backoff_multiplier**attempt)
+                if attempt < self.max_retries and await self.should_retry(
+                    stage, stage_id, e
+                ):
+                    delay = self.retry_delay_seconds * (
+                        self.backoff_multiplier**attempt
+                    )
                     logger.info(
                         "Retrying operation",
                         stage=stage.value,
@@ -297,7 +306,10 @@ class ErrorHandler:
                     "Circuit breaker opened (half-open failure)",
                     error_key=error_key,
                 )
-            elif state["state"] == "closed" and state["failure_count"] >= self.circuit_breaker_threshold:
+            elif (
+                state["state"] == "closed"
+                and state["failure_count"] >= self.circuit_breaker_threshold
+            ):
                 # Too many failures, open the circuit breaker
                 state["state"] = "open"
                 state["opened_at"] = time.time()
@@ -322,7 +334,9 @@ class ErrorHandler:
         error_key = f"{stage.value}.{stage_id}"
         return self._error_counts.get(error_key, 0)
 
-    def get_last_error(self, stage: PipelineStage, stage_id: StageId) -> PipelineErrorEvent | None:
+    def get_last_error(
+        self, stage: PipelineStage, stage_id: StageId
+    ) -> PipelineErrorEvent | None:
         """Get the last error for a specific stage component."""
         error_key = f"{stage.value}.{stage_id}"
         return self._last_errors.get(error_key)

@@ -275,7 +275,9 @@ class ConditionalOutput(Output):
 class MulticastOutput(Output):
     """Output that sends events to multiple outputs simultaneously."""
 
-    def __init__(self, output_id: str, outputs: list[Output], *, fail_fast: bool = False) -> None:
+    def __init__(
+        self, output_id: str, outputs: list[Output], *, fail_fast: bool = False
+    ) -> None:
         """Initialize the multicast output.
 
         Args:
@@ -367,7 +369,10 @@ class FileOutput(Output):
     async def send(self, event: PipelineEvent) -> None:
         """Write the event to the file."""
         if aiofiles is None:
-            error_msg = f"FileOutput {self.output_id} requires aiofiles package. Install with: pip install aiofiles"
+            error_msg = (
+                f"FileOutput {self.output_id} requires aiofiles package. "
+                "Install with: pip install aiofiles"
+            )
             raise OutputError(
                 error_msg,
                 self.output_id,
@@ -438,7 +443,10 @@ class HttpOutput(Output):
     async def start(self) -> None:
         """Start the HTTP output and create session."""
         if aiohttp is None:
-            error_msg = f"HttpOutput {self.output_id} requires aiohttp package. Install with: pip install aiohttp"
+            error_msg = (
+                f"HttpOutput {self.output_id} requires aiohttp package. "
+                "Install with: pip install aiohttp"
+            )
             raise OutputError(
                 error_msg,
                 self.output_id,

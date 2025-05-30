@@ -128,7 +128,10 @@ class PipelineBuilder:
         """
         try:
             # Create filters
-            filters = [self.filter_registry.create(filter_config) for filter_config in config.filters]
+            filters = [
+                self.filter_registry.create(filter_config)
+                for filter_config in config.filters
+            ]
 
             # Create transformer
             transformer = None
@@ -136,7 +139,10 @@ class PipelineBuilder:
                 transformer = self.transformer_registry.create(config.transformer)
 
             # Create outputs
-            outputs = [self.output_registry.create(output_config) for output_config in config.outputs]
+            outputs = [
+                self.output_registry.create(output_config)
+                for output_config in config.outputs
+            ]
 
             # Create stats collector
             stats_collector = None
@@ -241,7 +247,9 @@ class ConfigValidator:
 
         # Validate transformer
         if config.transformer:
-            transformer_errors = ConfigValidator.validate_transformer_config(config.transformer)
+            transformer_errors = ConfigValidator.validate_transformer_config(
+                config.transformer
+            )
             errors.extend([f"Transformer: {error}" for error in transformer_errors])
 
         # Validate outputs
@@ -334,7 +342,9 @@ class ConfigValidator:
             errors.append("At least one pipeline must be configured")
         else:
             for i, pipeline_config in enumerate(config.pipelines):
-                pipeline_errors = ConfigValidator.validate_pipeline_config(pipeline_config)
+                pipeline_errors = ConfigValidator.validate_pipeline_config(
+                    pipeline_config
+                )
                 errors.extend([f"Pipeline {i}: {error}" for error in pipeline_errors])
 
         if config.max_queue_size <= 0:
@@ -456,7 +466,9 @@ def load_config_from_file(config_path: str | Path) -> dict[str, Any]:
         raise PipelineError(error_msg) from e
 
 
-def _parse_config_content(content: str, suffix: str, _config_path: Path) -> dict[str, Any]:
+def _parse_config_content(
+    content: str, suffix: str, _config_path: Path
+) -> dict[str, Any]:
     """Parse configuration content based on file extension.
 
     Args:
@@ -486,7 +498,10 @@ def _parse_config_content(content: str, suffix: str, _config_path: Path) -> dict
             raise PipelineError(error_msg)
         return tomllib.loads(content)  # type: ignore[return-value]
 
-    error_msg = f"Unsupported configuration file format: {suffix}. Supported formats: .json, .yaml, .yml, .toml"
+    error_msg = (
+        f"Unsupported configuration file format: {suffix}. "
+        "Supported formats: .json, .yaml, .yml, .toml"
+    )
     raise PipelineError(error_msg)
 
 
@@ -537,7 +552,9 @@ def config_from_dict(config_dict: dict[str, Any]) -> PipelineConfig:
         # Convert error handling strategy
         error_strategy = ErrorHandlingStrategy.CONTINUE
         if "error_handling_strategy" in config_dict:
-            error_strategy = ErrorHandlingStrategy(config_dict["error_handling_strategy"])
+            error_strategy = ErrorHandlingStrategy(
+                config_dict["error_handling_strategy"]
+            )
 
         return PipelineConfig(
             pipeline_id=config_dict["pipeline_id"],
@@ -580,7 +597,9 @@ def manager_config_from_dict(config_dict: dict[str, Any]) -> PipelineManagerConf
         return PipelineManagerConfig(
             pipelines=pipeline_configs,
             max_queue_size=config_dict.get("max_queue_size", 1000),
-            processing_timeout_seconds=config_dict.get("processing_timeout_seconds", 30.0),
+            processing_timeout_seconds=config_dict.get(
+                "processing_timeout_seconds", 30.0
+            ),
             enable_metrics=config_dict.get("enable_metrics", True),
             config=config_dict.get("config", {}),
         )
