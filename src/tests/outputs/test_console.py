@@ -6,8 +6,8 @@ from unittest.mock import Mock, patch
 class TestConsoleOutput:
     """Test cases for ConsoleOutput."""
 
-    @patch("src.outputs.console.Console")
-    def test_init_default_parameters(self) -> None:
+    @patch("nwws.outputs.console.Console")
+    def test_init_default_parameters(self, _mock_console_class: Mock) -> None:
         """Test ConsoleOutput initialization with default parameters."""
         from nwws.outputs.console import ConsoleOutput
         output = ConsoleOutput()
@@ -15,8 +15,8 @@ class TestConsoleOutput:
         assert output.output_id == "console"
         assert output.pretty is True
 
-    @patch("src.outputs.console.Console")
-    def test_init_custom_parameters(self) -> None:
+    @patch("nwws.outputs.console.Console")
+    def test_init_custom_parameters(self, _mock_console_class: Mock) -> None:
         """Test ConsoleOutput initialization with custom parameters."""
         from nwws.outputs.console import ConsoleOutput
         output = ConsoleOutput(output_id="custom-console", pretty=False)
@@ -24,7 +24,7 @@ class TestConsoleOutput:
         assert output.output_id == "custom-console"
         assert output.pretty is False
 
-    @patch("src.outputs.console.Console")
+    @patch("nwws.outputs.console.Console")
     async def test_send_text_product_event_pretty(
         self,
         mock_console_class: Mock,
@@ -41,7 +41,7 @@ class TestConsoleOutput:
         mock_event.product = mock_product
 
         # Manually call the actual logic since we're testing it
-        with patch("src.outputs.console.ConsoleOutput.__init__", return_value=None):
+        with patch("nwws.outputs.console.ConsoleOutput.__init__", return_value=None):
             from nwws.outputs.console import ConsoleOutput
             output = ConsoleOutput.__new__(ConsoleOutput)
             output.console = mock_console
@@ -55,7 +55,7 @@ class TestConsoleOutput:
         # Verify console.print was called
         mock_console.print.assert_called_once_with('{"test": "data"}')
 
-    @patch("src.outputs.console.Console")
+    @patch("nwws.outputs.console.Console")
     async def test_send_text_product_event_not_pretty(
         self,
         mock_console_class: Mock,
@@ -72,7 +72,7 @@ class TestConsoleOutput:
         mock_event.product = mock_product
 
         # Manually test the logic
-        with patch("src.outputs.console.ConsoleOutput.__init__", return_value=None):
+        with patch("nwws.outputs.console.ConsoleOutput.__init__", return_value=None):
             from nwws.outputs.console import ConsoleOutput
             output = ConsoleOutput.__new__(ConsoleOutput)
             output.console = mock_console
@@ -86,7 +86,7 @@ class TestConsoleOutput:
         # Verify console.print was called
         mock_console.print.assert_called_once_with('{"test": "data"}')
 
-    @patch("src.outputs.console.Console")
+    @patch("nwws.outputs.console.Console")
     async def test_send_non_text_product_event(
         self,
         mock_console_class: Mock,
@@ -100,7 +100,7 @@ class TestConsoleOutput:
         mock_event.__class__.__name__ = "PipelineEvent"
 
         # Manually test the logic
-        with patch("src.outputs.console.ConsoleOutput.__init__", return_value=None):
+        with patch("nwws.outputs.console.ConsoleOutput.__init__", return_value=None):
             from nwws.outputs.console import ConsoleOutput
             output = ConsoleOutput.__new__(ConsoleOutput)
             output.console = mock_console
@@ -112,7 +112,7 @@ class TestConsoleOutput:
         # Verify console.print was NOT called
         mock_console.print.assert_not_called()
 
-    @patch("src.outputs.console.Console")
+    @patch("nwws.outputs.console.Console")
     def test_console_is_created_on_init(self, mock_console_class: Mock) -> None:
         """Test that Console is created during initialization."""
         from nwws.outputs.console import ConsoleOutput
