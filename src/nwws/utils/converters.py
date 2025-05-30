@@ -1,8 +1,15 @@
+# pyright: standard
 """Converter functions for transforming pyiem objects to Pydantic models."""
 
 from typing import TYPE_CHECKING
 
-from nwws.models.weather import HVTECModel, TextProductModel, TextProductSegmentModel, UGCModel, VTECModel
+from nwws.models.weather import (
+    HVTECModel,
+    TextProductModel,
+    TextProductSegmentModel,
+    UGCModel,
+    VTECModel,
+)
 
 if TYPE_CHECKING:
     from pyiem.nws.hvtec import HVTEC
@@ -42,7 +49,11 @@ def convert_hvtec_to_model(hvtec_obj: "HVTEC") -> HVTECModel:
     nwsli_id_val = ""
     nwsli_attr = getattr(hvtec_obj, "nwsli", None)
     if nwsli_attr is not None:
-        nwsli_id_val = getattr(nwsli_attr, "id", "") if hasattr(nwsli_attr, "id") else str(nwsli_attr)
+        nwsli_id_val = (
+            getattr(nwsli_attr, "id", "")
+            if hasattr(nwsli_attr, "id")
+            else str(nwsli_attr)
+        )
 
     return HVTECModel(
         line=getattr(hvtec_obj, "line", ""),
@@ -67,7 +78,9 @@ def convert_text_product_segment_to_model(
 
     return TextProductSegmentModel(
         segmentText=getattr(segment_obj, "unixtext", ""),
-        ugcRecords=[convert_ugc_to_model(u) for u in getattr(segment_obj, "ugcs", []) if u],
+        ugcRecords=[
+            convert_ugc_to_model(u) for u in getattr(segment_obj, "ugcs", []) if u
+        ],
         ugcExpireTime=getattr(segment_obj, "ugcexpire", None),
         headlines=list(getattr(segment_obj, "headlines", [])),
         hvtecRecords=hvtec_list,
@@ -111,7 +124,7 @@ def convert_text_product_to_model(
                 getattr(product_obj, "afos", None),
             ],
         ) and hasattr(product_obj, "get_product_id"):
-            product_id_val = product_obj.get_product_id()  # type: ignore[union-attr]
+            product_id_val = product_obj.get_product_id()
     except (AttributeError, TypeError, ValueError):
         product_id_val = None
 
@@ -132,28 +145,36 @@ def convert_text_product_to_model(
             # TextProduct specific attributes
             "afos": getattr(product_obj, "afos", None),
             "sections": list(getattr(product_obj, "sections", [])),
-            "segments": [convert_text_product_segment_to_model(s) for s in getattr(product_obj, "segments", [])],
+            "segments": [
+                convert_text_product_segment_to_model(s)
+                for s in getattr(product_obj, "segments", [])
+            ],
             "geometry": getattr(product_obj, "geometry", None),
             "product_id": product_id_val,
-            "nicedate": product_obj.get_nicedate()  # type: ignore[union-attr]
+            "nicedate": product_obj.get_nicedate()
             if hasattr(product_obj, "get_nicedate")
-            else None,  # type: ignore[union-attr]
-            "main_headline": product_obj.get_main_headline("")  # type: ignore[union-attr]
+            else None,
+            "main_headline": product_obj.get_main_headline("")
             if hasattr(product_obj, "get_main_headline")
-            else "",  # type: ignore[union-attr]
-            "signature": product_obj.get_signature() if hasattr(product_obj, "get_signature") else None,
-            "channels": product_obj.get_channels()  # type: ignore[union-attr]
-            if hasattr(product_obj, "get_channels") and getattr(product_obj, "afos", None)
+            else "",
+            "signature": product_obj.get_signature()
+            if hasattr(product_obj, "get_signature")
+            else None,
+            "channels": product_obj.get_channels()
+            if hasattr(product_obj, "get_channels")
+            and getattr(product_obj, "afos", None)
             else [],
-            "is_correction": product_obj.is_correction()  # type: ignore[union-attr]
+            "is_correction": product_obj.is_correction()
             if hasattr(product_obj, "is_correction")
-            else None,  # type: ignore[union-attr]
-            "is_resent": product_obj.is_resent() if hasattr(product_obj, "is_resent") else None,  # type: ignore[union-attr]
-            "attn_wfo": product_obj.parse_attn_wfo()  # type: ignore[union-attr]
+            else None,
+            "is_resent": product_obj.is_resent()
+            if hasattr(product_obj, "is_resent")
+            else None,
+            "attn_wfo": product_obj.parse_attn_wfo()
             if hasattr(product_obj, "parse_attn_wfo")
-            else [],  # type: ignore[union-attr]
-            "attn_rfc": product_obj.parse_attn_rfc()  # type: ignore[union-attr]
+            else [],
+            "attn_rfc": product_obj.parse_attn_rfc()
             if hasattr(product_obj, "parse_attn_rfc")
-            else [],  # type: ignore[union-attr]
+            else [],
         },
     )

@@ -1,10 +1,16 @@
+# pyright: standard
 """Transforms NoaaPort raw text to product."""
 
 from loguru import logger
 from pyiem.nws.products import parser
 
 from nwws.models.events import NoaaPortEventData, TextProductEventData
-from nwws.pipeline import PipelineEvent, PipelineEventMetadata, PipelineStage, Transformer
+from nwws.pipeline import (
+    PipelineEvent,
+    PipelineEventMetadata,
+    PipelineStage,
+    Transformer,
+)
 from nwws.utils import convert_text_product_to_model
 
 
@@ -18,7 +24,9 @@ class NoaaPortTransformer(Transformer):
     def transform(self, event: PipelineEvent) -> PipelineEvent:
         """Handle incoming NOAA Port event and convert to a product."""
         if isinstance(event, NoaaPortEventData):
-            product = convert_text_product_to_model(parser(text=event.noaaport, ugc_provider={}))
+            product = convert_text_product_to_model(
+                parser(text=event.noaaport, ugc_provider={}),
+            )
 
             logger.debug(
                 "Transformed Raw Content to Text Product Model",

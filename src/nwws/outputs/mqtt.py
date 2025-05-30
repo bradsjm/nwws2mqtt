@@ -121,10 +121,16 @@ class MQTTOutput(Output):
 
             # Start cleanup task if retention is enabled
             if self.config.retain:
-                self._cleanup_task = asyncio.create_task(self._cleanup_expired_messages())
+                self._cleanup_task = asyncio.create_task(
+                    self._cleanup_expired_messages(),
+                )
 
         except (ConnectionError, TimeoutError, OSError) as e:
-            logger.error("Failed to start MQTT output", output_id=self.output_id, error=str(e))
+            logger.error(
+                "Failed to start MQTT output",
+                output_id=self.output_id,
+                error=str(e),
+            )
             if self._client:
                 self._client.loop_stop()
                 self._client = None
@@ -151,7 +157,11 @@ class MQTTOutput(Output):
                 self._connected = False
                 logger.info("MQTT output stopped", output_id=self.output_id)
             except OSError as e:
-                logger.error("Error stopping MQTT output", output_id=self.output_id, error=str(e))
+                logger.error(
+                    "Error stopping MQTT output",
+                    output_id=self.output_id,
+                    error=str(e),
+                )
 
         await super().stop()
 
@@ -181,7 +191,9 @@ class MQTTOutput(Output):
         try:
             # Create topic based on source, AFOS, and product ID
             # Using cccc as source and awipsid as afos for topic structure
-            topic = f"{self.config.topic_prefix}/{event.cccc}/{event.awipsid}/{event.id}"
+            topic = (
+                f"{self.config.topic_prefix}/{event.cccc}/{event.awipsid}/{event.id}"
+            )
 
             # Create properties for message expiry only if retain is enabled
             properties = None
@@ -190,7 +202,10 @@ class MQTTOutput(Output):
                 expiry_seconds = self.config.message_expiry_minutes * 60
                 properties.MessageExpiryInterval = expiry_seconds
 
-            payload = event.product.model_dump_json(exclude_defaults=True, by_alias=True)
+            payload = event.product.model_dump_json(
+                exclude_defaults=True,
+                by_alias=True,
+            )
 
             # Publish message
             result = self._client.publish(
@@ -235,7 +250,13 @@ class MQTTOutput(Output):
         """Return True if MQTT client is connected."""
         return self._connected
 
-    def _on_connect(self, _client: mqtt.Client, _userdata: object, _flags: dict[str, int], rc: int) -> None:
+    def _on_connect(
+        self,
+        _client: mqtt.Client,
+        _userdata: object,
+        _flags: dict[str, int],
+        rc: int,
+    ) -> None:
         """Handle MQTT connection."""
         if rc == 0:
             self._connected = True
@@ -248,7 +269,11 @@ class MQTTOutput(Output):
         """Handle MQTT disconnection."""
         self._connected = False
         if rc != 0:
-            logger.warning("Unexpected MQTT disconnection", output_id=self.output_id, return_code=rc)
+            logger.warning(
+                "Unexpected MQTT disconnection",
+                output_id=self.output_id,
+                return_code=rc,
+            )
         else:
             logger.info("Disconnected from MQTT broker", output_id=self.output_id)
 
@@ -302,7 +327,11 @@ class MQTTOutput(Output):
             except asyncio.CancelledError:
                 break
             except (ConnectionError, OSError) as e:
-                logger.error("Error in cleanup task", output_id=self.output_id, error=str(e))
+                logger.error(
+                    "Error in cleanup task",
+                    output_id=self.output_id,
+                    error=str(e),
+                )
 
     async def _cleanup_all_messages(self) -> None:
         """Remove all tracked retained messages."""
@@ -320,7 +349,11 @@ class MQTTOutput(Output):
                 # Publish empty retained message to remove it
                 result = self._client.publish(topic, "", qos=0, retain=True)
                 if result.rc == mqtt.MQTT_ERR_SUCCESS:
-                    logger.debug("Removed retained message from topic", output_id=self.output_id, topic=topic)
+                    logger.debug(
+                        "Removed retained message from topic",
+                        output_id=self.output_id,
+                        topic=topic,
+                    )
                 else:
                     logger.warning(
                         "Failed to remove retained message from topic",

@@ -19,5 +19,9 @@ class ConsoleOutput(Output):
     async def send(self, event: PipelineEvent) -> None:
         """Send the event to console as JSON."""
         if isinstance(event, TextProductEventData):
-            json = event.product.model_dump_json(indent=2 if self.pretty else None, exclude_defaults=True, by_alias=True)
+            json = event.product.model_dump_json(
+                indent=2 if self.pretty else None,
+                exclude_defaults=True,
+                by_alias=True,
+            )
             self.console.print(json)

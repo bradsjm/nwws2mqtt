@@ -1,4 +1,4 @@
-# pyright: strict
+# pyright: standard
 """Tests for MQTTOutput."""
 
 from unittest.mock import Mock, patch

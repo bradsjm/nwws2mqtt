@@ -5,7 +5,7 @@ import signal
 import sys
 from asyncio import CancelledError
 from collections.abc import Callable
-from types import FrameType
+from types import FrameType, TracebackType
 
 from dotenv import load_dotenv
 from loguru import logger
@@ -54,7 +54,10 @@ class WeatherWireApp:
             server=config.server,
             port=config.port,
         )
-        self.receiver = WeatherWire(config=xmpp_config, callback=self._receive_weather_message_feed)
+        self.receiver = WeatherWire(
+            config=xmpp_config,
+            callback=self._receive_weather_message_feed,
+        )
 
         # Create pipeline
         self._setup_pipeline()
@@ -68,7 +71,9 @@ class WeatherWireApp:
             server_error = "XMPP server is required"
             raise ValueError(server_error)
         if config.port <= 0 or config.port > 65535:
-            port_error = f"Invalid port number: {config.port}. Must be between 1 and 65535"
+            port_error = (
+                f"Invalid port number: {config.port}. Must be between 1 and 65535"
+            )
             raise ValueError(port_error)
 
     def _setup_pipeline(self) -> None:
@@ -115,9 +120,18 @@ class WeatherWireApp:
         except (ValueError, TypeError, AttributeError) as e:
             self._log_processing_error(e, event, "Failed to process weather wire event")
         except Exception as e:  # noqa: BLE001 - Catch-all for unexpected errors
-            self._log_processing_error(e, event, "Unexpected error processing weather wire event")
+            self._log_processing_error(
+                e,
+                event,
+                "Unexpected error processing weather wire event",
+            )
 
-    def _log_processing_error(self, error: Exception, event: WeatherWireMessage, message: str) -> None:
+    def _log_processing_error(
+        self,
+        error: Exception,
+        event: WeatherWireMessage,
+        message: str,
+    ) -> None:
         """Log processing errors with consistent format."""
         event_id = event.id if hasattr(event, "id") else "unknown"
         subject = event.subject if hasattr(event, "subject") else "unknown"
@@ -151,7 +165,12 @@ class WeatherWireApp:
         logger.info("Started NWWS-OI application services")
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         """Async context manager exit with cleanup.
 
         Args:
@@ -183,7 +202,10 @@ class WeatherWireApp:
             _frame: Frame object (unused)
 
         """
-        logger.info("Received shutdown signal, initiating graceful shutdown", signal=signum)
+        logger.info(
+            "Received shutdown signal, initiating graceful shutdown",
+            signal=signum,
+        )
         self.shutdown()
 
     def shutdown(self) -> None:
