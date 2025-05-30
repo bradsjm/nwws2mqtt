@@ -3,8 +3,8 @@
 
 from rich.console import Console
 
-from models.events import TextProductEventData
-from pipeline import Output, PipelineEvent
+from nwws.models.events import TextProductEventData
+from nwws.pipeline import Output, PipelineEvent
 
 
 class ConsoleOutput(Output):

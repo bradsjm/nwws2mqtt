@@ -10,12 +10,12 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 
-from src.pipeline.errors import ErrorHandler, ErrorHandlingStrategy
-from src.pipeline.filters import Filter
-from src.pipeline.outputs import Output
-from src.pipeline.stats import StatsCollector
-from src.pipeline.transformers import Transformer
-from src.pipeline.types import PipelineEvent, PipelineEventMetadata, PipelineStage
+from nwws.pipeline.errors import ErrorHandler, ErrorHandlingStrategy
+from nwws.pipeline.filters import Filter
+from nwws.pipeline.outputs import Output
+from nwws.pipeline.stats import StatsCollector
+from nwws.pipeline.transformers import Transformer
+from nwws.pipeline.types import PipelineEvent, PipelineEventMetadata, PipelineStage
 
 
 @pytest.fixture
@@ -94,7 +94,6 @@ def retry_error_handler() -> ErrorHandler:
     )
 
 
-@pytest.fixture
 @pytest.fixture
 def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
     """Create event loop for async tests."""

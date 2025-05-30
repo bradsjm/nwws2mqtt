@@ -2,8 +2,8 @@
 
 from dataclasses import dataclass
 
-from models.weather.product import TextProductModel
-from pipeline import PipelineEvent
+from nwws.models.weather.product import TextProductModel
+from nwws.pipeline import PipelineEvent
 
 
 @dataclass

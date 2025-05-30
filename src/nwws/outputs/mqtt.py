@@ -14,8 +14,8 @@ from loguru import logger
 from paho.mqtt.packettypes import PacketTypes
 from paho.mqtt.properties import Properties
 
-from models.events import TextProductEventData
-from pipeline import Output, PipelineEvent
+from nwws.models.events import TextProductEventData
+from nwws.pipeline import Output, PipelineEvent
 
 if TYPE_CHECKING:
     from models.mqtt_config import MqttConfig

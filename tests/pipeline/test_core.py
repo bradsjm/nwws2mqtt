@@ -7,9 +7,9 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from src.pipeline.core import Pipeline, PipelineManager
-from src.pipeline.errors import ErrorHandler, PipelineError
-from src.pipeline.types import PipelineEvent, PipelineEventMetadata
+from nwws.pipeline.core import Pipeline, PipelineManager
+from nwws.pipeline.errors import ErrorHandler, PipelineError
+from nwws.pipeline.types import PipelineEvent, PipelineEventMetadata
 
 
 class TestPipeline:

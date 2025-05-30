@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from pipeline import PipelineEvent
+from nwws.pipeline import PipelineEvent
 
 
 @dataclass

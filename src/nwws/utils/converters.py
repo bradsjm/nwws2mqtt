@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING
 
-from models.weather import HVTECModel, TextProductModel, TextProductSegmentModel, UGCModel, VTECModel
+from nwws.models.weather import HVTECModel, TextProductModel, TextProductSegmentModel, UGCModel, VTECModel
 
 if TYPE_CHECKING:
     from pyiem.nws.hvtec import HVTEC

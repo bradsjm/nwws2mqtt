@@ -12,7 +12,7 @@ from loguru import logger
 from slixmpp import JID
 from slixmpp.stanza import Message
 
-from models import XMPPConfig
+from nwws.models import XMPPConfig
 
 # Configuration constants
 MUC_ROOM = "nwws@conference.nwws-oi.weather.gov"

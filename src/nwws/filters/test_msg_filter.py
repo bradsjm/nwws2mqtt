@@ -5,10 +5,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pipeline.filters import Filter
+from nwws.pipeline.filters import Filter
 
 if TYPE_CHECKING:
-    from pipeline.types import PipelineEvent
+    from nwws.pipeline.types import PipelineEvent
 
 
 class TestMessageFilter(Filter):
