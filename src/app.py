@@ -13,12 +13,10 @@ from loguru import logger
 from filters import TestMessageFilter
 from models import Config, XMPPConfig
 from models.events import NoaaPortEventData
-from outputs import ConsoleOutput
 from outputs.mqtt import mqtt_factory_create
-from pipeline import PipelineBuilder, PipelineConfig, PipelineManager
-from pipeline.filters import FilterConfig
-from pipeline.outputs import OutputConfig
-from pipeline.transformers import TransformerConfig
+from pipeline import Pipeline
+from pipeline.errors import ErrorHandler
+from pipeline.stats import PipelineStats, StatsCollector
 from pipeline.types import PipelineEventMetadata, PipelineStage
 from receiver import WeatherWire, WeatherWireMessage
 from transformers import NoaaPortTransformer
@@ -49,20 +47,17 @@ class WeatherWireApp:
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
 
-        # Create pipeline manager and initialize it
-        self.pipeline_manager = PipelineManager()
-        self._setup_pipeline()
-
-        # Create XMPP client
+        # Create Weather Wire receiver with XMPP configuration
         xmpp_config = XMPPConfig(
             username=config.username,
             password=config.password,
             server=config.server,
             port=config.port,
         )
-
-        # Create the Weather Wire receiver
         self.receiver = WeatherWire(config=xmpp_config, callback=self._receive_weather_message_feed)
+
+        # Create pipeline
+        self._setup_pipeline()
 
     def _validate_config(self, config: Config) -> None:
         """Validate critical configuration parameters."""
@@ -78,45 +73,19 @@ class WeatherWireApp:
 
     def _setup_pipeline(self) -> None:
         """Configure and initialize the pipeline system."""
-        pipeline_config = PipelineConfig(
+        self.stats: PipelineStats = PipelineStats()
+        stats_collector = StatsCollector(self.stats)
+        error_handler = ErrorHandler()
+        self.pipeline: Pipeline = Pipeline(
             pipeline_id="weather-wire-pipeline",
-            filters=[
-                FilterConfig(
-                    filter_type="test_message",
-                    filter_id="test-msg-filter",
-                ),
-            ],
-            transformer=TransformerConfig(
-                transformer_id="noaaport1",
-                transformer_type="noaa_port",
-            ),
-            outputs=[
-                # OutputConfig(
-                #     output_type="console",
-                #     output_id="weather-wire-console",
-                #     config={"pretty": True},
-                # ),
-                OutputConfig(
-                    output_type="mqtt",
-                    output_id="mqtt1",
-                ),
-            ],
-            enable_stats=True,
-            enable_error_handling=True,
+            filters=[TestMessageFilter(filter_id="test-msg-filter")],
+            transformer=NoaaPortTransformer(transformer_id="noaaport1"),
+            outputs=[mqtt_factory_create(output_id="mqtt-server")],
+            stats_collector=stats_collector,
+            error_handler=error_handler,
         )
 
-        # Build the pipeline
-        builder = PipelineBuilder()
-        builder.filter_registry.register("test_message", TestMessageFilter)
-        builder.transformer_registry.register("noaa_port", NoaaPortTransformer)
-        builder.output_registry.register("console", ConsoleOutput)
-        builder.output_registry.register("mqtt", mqtt_factory_create)
-        pipeline = builder.build_pipeline(pipeline_config)
-
-        # Add the pipeline to the manager
-        self.pipeline_manager.add_pipeline(pipeline)
-
-        logger.info("Pipeline configured", pipeline_id=pipeline_config.pipeline_id)
+        logger.info("Pipeline configured", pipeline_id=self.pipeline.pipeline_id)
 
     async def _receive_weather_message_feed(self, event: WeatherWireMessage) -> None:
         """Handle Weather Wire content by feeding to the pipeline."""
@@ -136,7 +105,7 @@ class WeatherWireApp:
                     trace_id=event.id,
                 ),
             )
-            await self.pipeline_manager.submit_event(pipeline_event)
+            await self.pipeline.process(pipeline_event)
             logger.debug(
                 "Weather wire event submitted to pipeline",
                 event_id=pipeline_event.metadata.event_id,
@@ -198,10 +167,10 @@ class WeatherWireApp:
     async def _start_services(self) -> None:
         """Start all application services in the correct order.
 
-        Starts the pipeline manager first, then the weather wire receiver.
+        Starts the pipeline first, then the weather wire receiver.
         """
-        # Start pipeline manager first
-        await self.pipeline_manager.start()
+        # Start pipeline first
+        await self.pipeline.start()
 
         # Start weather wire receiver
         self.receiver.start()
@@ -233,7 +202,7 @@ class WeatherWireApp:
         """Stop all application services."""
         await asyncio.gather(
             self.receiver.stop(),
-            self.pipeline_manager.stop(),
+            self.pipeline.stop(),
         )
 
 
