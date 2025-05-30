@@ -10,7 +10,7 @@ class HVTECModel(BaseModel):
 
     line: str = Field(description="The raw HVTEC line string.")
     nwsli_id: str = Field(
-        description="NWSLI (National Weather Service Location Identifier) for the hydrologic point.",
+        description="NWSLI (National Weather Service Location Identifier) for hydrologic point.",
         alias="nwsliId",
     )
     severity: str = Field(description="HVTEC severity code.")

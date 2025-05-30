@@ -138,7 +138,7 @@ class TextProductSegmentModel(BaseModel):
     )
     is_pds: bool = Field(
         default=False,
-        description="Flag indicating if this segment represents a Particularly Dangerous Situation (PDS).",
+        description="Flag indicating segment represents a Particularly Dangerous Situation (PDS).",
         alias="isPDS",
     )
     bullets: list[str] = Field(
