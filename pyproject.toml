@@ -10,6 +10,7 @@ description = "Provides a gateway from NWWS OI feed to MQTT server"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "fastapi>=0.115.12",
     "loguru>=0.7.0",
     "paho-mqtt>=2.1.0",
     "psycopg[binary]>=3.2.9",

@@ -2,26 +2,21 @@
 """Configuration-based pipeline example."""
 
 import asyncio
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-# Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
-from pipeline import (
+from nwws.pipeline import (
+    PipelineBuilder,
     PipelineEvent,
     PipelineEventMetadata,
     create_pipeline_from_file,
-    load_pipeline_config,
-    PipelineBuilder,
 )
 
 
 @dataclass
 class LogEvent(PipelineEvent):
     """Example log event."""
-    
+
     text: str
     priority: str = "normal"
     level: str = "INFO"
@@ -30,10 +25,10 @@ class LogEvent(PipelineEvent):
 async def main():
     """Run the configuration-based pipeline example."""
     print("=== Configuration-Based Pipeline Example ===\n")
-    
+
     # Example 1: Load from configuration file
     config_file = Path(__file__).parent / "pipeline_config.yaml"
-    
+
     if config_file.exists():
         print("Loading pipeline from YAML configuration file...")
         try:
@@ -48,12 +43,17 @@ async def main():
     else:
         print("Config file not found, creating pipeline programmatically...")
         pipeline = None
-    
+
     # Example 2: Create from dict configuration
     if not pipeline:
-        from pipeline import PipelineConfig, FilterConfig, TransformerConfig, OutputConfig
-        from pipeline.errors import ErrorHandlingStrategy
-        
+        from nwws.pipeline import (
+            FilterConfig,
+            OutputConfig,
+            PipelineConfig,
+            TransformerConfig,
+        )
+        from nwws.pipeline.errors import ErrorHandlingStrategy
+
         config = PipelineConfig(
             pipeline_id="programmatic-pipeline",
             filters=[
@@ -64,61 +64,58 @@ async def main():
                         "attribute_name": "level",
                         "allowed_values": {"INFO", "WARNING", "ERROR"},
                         "case_sensitive": True,
-                    }
+                    },
                 )
             ],
             transformer=TransformerConfig(
-                transformer_type="passthrough",
-                transformer_id="pass-through"
+                transformer_type="passthrough", transformer_id="pass-through"
             ),
             outputs=[
                 OutputConfig(
-                    output_type="log",
-                    output_id="console",
-                    config={"log_level": "info"}
+                    output_type="log", output_id="console", config={"log_level": "info"}
                 )
             ],
             error_handling_strategy=ErrorHandlingStrategy.CONTINUE,
             enable_stats=True,
         )
-        
+
         builder = PipelineBuilder()
         pipeline = builder.build_pipeline(config)
         print("Pipeline created from programmatic configuration!")
-    
+
     # Start and test the pipeline
     await pipeline.start()
-    
+
     # Create test events
     events = [
         LogEvent(
             metadata=PipelineEventMetadata(source="app"),
             text="INFO: Application started successfully",
             priority="normal",
-            level="INFO"
+            level="INFO",
         ),
         LogEvent(
             metadata=PipelineEventMetadata(source="app"),
             text="WARNING: Low memory detected",
             priority="high",
-            level="WARNING"
+            level="WARNING",
         ),
         LogEvent(
             metadata=PipelineEventMetadata(source="app"),
             text="DEBUG: Verbose debugging information",
             priority="low",
-            level="DEBUG"  # This may be filtered out
+            level="DEBUG",  # This may be filtered out
         ),
         LogEvent(
             metadata=PipelineEventMetadata(source="system"),
             text="ERROR: Database connection failed",
             priority="critical",
-            level="ERROR"
+            level="ERROR",
         ),
     ]
-    
+
     print(f"\nProcessing {len(events)} events through the pipeline:\n")
-    
+
     for i, event in enumerate(events, 1):
         print(f"Event {i}: [{event.level}] {event.text}")
         try:
@@ -130,24 +127,24 @@ async def main():
         except Exception as e:
             print(f"  ✗ Error: {e}")
         print()
-    
+
     # Display statistics
     stats = pipeline.get_stats_summary()
     if stats:
         print("Pipeline Statistics:")
-        counters = stats.get('counters', {})
+        counters = stats.get("counters", {})
         if counters:
             print("- Event counts:")
             for metric, count in counters.items():
                 print(f"  {metric}: {count}")
-        
-        timers = stats.get('timers', {})
+
+        timers = stats.get("timers", {})
         if timers:
             print("- Processing times:")
             for metric, timer_data in timers.items():
-                avg_time = timer_data.get('avg', 0)
+                avg_time = timer_data.get("avg", 0)
                 print(f"  {metric}: {avg_time:.2f}ms average")
-    
+
     # Stop the pipeline
     await pipeline.stop()
     print("\nPipeline stopped.")
