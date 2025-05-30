@@ -14,7 +14,7 @@ from .core import Pipeline, PipelineManager
 from .errors import ErrorHandler, ErrorHandlingStrategy, PipelineError
 from .filters import FilterConfig, FilterRegistry
 from .outputs import OutputConfig, OutputRegistry
-from .stats import PipelineStats, StatsCollector
+from .stats import PipelineStatsCollector
 from .transformers import TransformerConfig, TransformerRegistry
 
 # Optional dependencies for YAML support
@@ -147,8 +147,12 @@ class PipelineBuilder:
             # Create stats collector
             stats_collector = None
             if config.enable_stats:
-                stats = PipelineStats()
-                stats_collector = StatsCollector(stats)
+                from nwws.metrics import MetricRegistry
+
+                registry = MetricRegistry()
+                stats_collector = PipelineStatsCollector(
+                    registry, f"pipeline_{config.pipeline_id}"
+                )
 
             # Create error handler
             error_handler = None

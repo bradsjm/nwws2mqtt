@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from .config import PipelineManagerConfig
     from .filters import Filter
     from .outputs import Output
-    from .stats import StatsCollector
+    from .stats import PipelineStatsCollector
     from .transformers import Transformer
 
 
@@ -30,7 +30,7 @@ class Pipeline:
         filters: list[Filter] | None = None,
         transformer: Transformer | None = None,
         outputs: list[Output] | None = None,
-        stats_collector: StatsCollector | None = None,
+        stats_collector: PipelineStatsCollector | None = None,
         error_handler: ErrorHandler | None = None,
     ) -> None:
         """Initialize the pipeline with components.
@@ -40,7 +40,7 @@ class Pipeline:
             filters: List of filters to apply to events.
             transformer: Transformer to convert events.
             outputs: List of outputs to send events to.
-            stats_collector: Statistics collector for metrics.
+            stats_collector: Pipeline statistics collector for metrics.
             error_handler: Error handler for pipeline errors.
 
         """
@@ -376,9 +376,7 @@ class Pipeline:
 
     def get_stats_summary(self) -> dict[str, Any] | None:
         """Get a summary of pipeline statistics."""
-        return (
-            self.stats_collector.stats.get_summary() if self.stats_collector else None
-        )
+        return self.stats_collector.get_summary() if self.stats_collector else None
 
     def get_error_summary(self) -> dict[str, Any]:
         """Get a summary of pipeline errors."""

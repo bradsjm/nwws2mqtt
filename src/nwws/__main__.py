@@ -13,12 +13,13 @@ from dotenv import load_dotenv
 from loguru import logger
 
 from nwws.filters import TestMessageFilter
+from nwws.metrics import MetricRegistry
 from nwws.models import Config, XMPPConfig
 from nwws.models.events import NoaaPortEventData
 from nwws.outputs.mqtt import mqtt_factory_create
 from nwws.pipeline import Pipeline
 from nwws.pipeline.errors import ErrorHandler
-from nwws.pipeline.stats import PipelineStats, StatsCollector
+from nwws.pipeline.stats import PipelineStatsCollector
 from nwws.pipeline.types import PipelineEventMetadata, PipelineStage
 from nwws.receiver import WeatherWire, WeatherWireMessage
 from nwws.receiver.stats import WeatherWireStatsCollector
@@ -62,10 +63,10 @@ class WeatherWireApp:
             port=config.port,
         )
 
-        # Create receiver stats collector using the same stats instance as pipeline
+        # Create receiver stats collector using the same metric registry as pipeline
         self.receiver_stats_collector = WeatherWireStatsCollector(
-            self.stats,
-            "weather-wire",
+            self.metric_registry,
+            "weather_wire",
         )
 
         self.receiver = WeatherWire(
@@ -90,15 +91,18 @@ class WeatherWireApp:
 
     def _setup_pipeline(self) -> None:
         """Configure and initialize the pipeline system."""
-        self.stats: PipelineStats = PipelineStats()
-        stats_collector = StatsCollector(self.stats)
+        # Create shared metric registry for both pipeline and receiver
+        self.metric_registry = MetricRegistry()
+        self.pipeline_stats_collector = PipelineStatsCollector(
+            self.metric_registry, "weather_wire_pipeline"
+        )
         error_handler = ErrorHandler()
         self.pipeline: Pipeline = Pipeline(
             pipeline_id="weather-wire-pipeline",
             filters=[TestMessageFilter(filter_id="test-msg-filter")],
             transformer=NoaaPortTransformer(transformer_id="noaaport1"),
             outputs=[mqtt_factory_create(output_id="mqtt-server")],
-            stats_collector=stats_collector,
+            stats_collector=self.pipeline_stats_collector,
             error_handler=error_handler,
         )
 
@@ -241,10 +245,11 @@ class WeatherWireApp:
 
     def get_comprehensive_stats(self) -> dict[str, Any]:
         """Get comprehensive statistics including pipeline and receiver metrics."""
-        pipeline_stats = self.pipeline.get_stats_summary()
-
         # Add application-level metrics
         uptime_seconds = time.time() - self._start_time
+
+        # Get key metrics from the new metrics system
+        receiver_labels = {"receiver": "weather_wire"}
 
         return {
             "application": {
@@ -253,28 +258,43 @@ class WeatherWireApp:
                 "receiver_connected": self.receiver.is_client_connected(),
                 "pipeline_started": self.pipeline.is_started,
             },
-            "pipeline": pipeline_stats,
+            "metrics": self.metric_registry.get_registry_summary(),
             "summary": {
-                "total_messages_received": self.stats.get_counter(
-                    "weather-wire.messages.received",
+                "total_messages_received": self.metric_registry.get_metric_value(
+                    "weather_wire_operation_results_total",
+                    labels={
+                        **receiver_labels,
+                        "operation": "message_processing",
+                        "result": "success",
+                    },
+                )
+                or 0,
+                "total_delayed_messages": self.metric_registry.get_metric_value(
+                    "weather_wire_delayed_messages_total",
+                    labels=receiver_labels,
+                )
+                or 0,
+                "total_connection_attempts": self.metric_registry.get_metric_value(
+                    "weather_wire_connection_attempts_total",
+                    labels=receiver_labels,
+                )
+                or 0,
+                "total_connection_failures": self.metric_registry.get_metric_value(
+                    "weather_wire_operation_results_total",
+                    labels={
+                        **receiver_labels,
+                        "operation": "connection",
+                        "result": "failure",
+                    },
+                )
+                or 0,
+                "last_message_age_seconds": self.metric_registry.get_metric_value(
+                    "weather_wire_last_message_age_seconds",
+                    labels=receiver_labels,
                 ),
-                "total_delayed_messages": self.stats.get_counter(
-                    "weather-wire.messages.delayed",
-                ),
-                "total_connection_attempts": self.stats.get_counter(
-                    "weather-wire.connection.attempts",
-                ),
-                "total_connection_failures": self.stats.get_counter(
-                    "weather-wire.connection.failures",
-                ),
-                "total_pipeline_processed": self.stats.get_counter(
-                    "weather-wire-pipeline.processed",
-                ),
-                "last_message_age_seconds": self.stats.get_gauge(
-                    "weather-wire.last_message_age_seconds",
-                ),
-                "connection_status": self.stats.get_gauge(
-                    "weather-wire.connection.status",
+                "connection_status": self.metric_registry.get_metric_value(
+                    "weather_wire_component_status",
+                    labels={**receiver_labels, "component": "connection"},
                 ),
             },
         }

@@ -1,5 +1,5 @@
 # pyright: strict
-"""Pipeline statistics and metrics collection."""
+"""Pipeline statistics and metrics collection using the new metrics system."""
 
 from __future__ import annotations
 
@@ -7,7 +7,11 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from nwws.metrics import MetricsCollector
+
 if TYPE_CHECKING:
+    from nwws.metrics import MetricRegistry
+
     from .types import EventId, PipelineStage, StageId, Timestamp
 
 
@@ -43,82 +47,14 @@ class PipelineStatsEvent:
     """Additional metric details."""
 
 
-class PipelineStats:
-    """Pipeline statistics collector and aggregator."""
+class PipelineStatsCollector:
+    """Pipeline statistics collector using the new metrics system."""
 
-    def __init__(self) -> None:
-        """Initialize the stats collector."""
-        self._counters: dict[str, int] = {}
-        self._timers: dict[str, list[float]] = {}
-        self._gauges: dict[str, float] = {}
-        self._errors: dict[str, int] = {}
-
-    def increment(self, metric: str, value: int = 1) -> None:
-        """Increment a counter metric."""
-        self._counters[metric] = self._counters.get(metric, 0) + value
-
-    def record_time(self, metric: str, duration_ms: float) -> None:
-        """Record a timing metric."""
-        if metric not in self._timers:
-            self._timers[metric] = []
-        self._timers[metric].append(duration_ms)
-
-    def set_gauge(self, metric: str, value: float) -> None:
-        """Set a gauge metric value."""
-        self._gauges[metric] = value
-
-    def record_error(self, metric: str) -> None:
-        """Record an error for the given metric."""
-        self._errors[metric] = self._errors.get(metric, 0) + 1
-
-    def get_counter(self, metric: str) -> int:
-        """Get the current value of a counter."""
-        return self._counters.get(metric, 0)
-
-    def get_average_time(self, metric: str) -> float | None:
-        """Get the average time for a timing metric."""
-        times = self._timers.get(metric, [])
-        return sum(times) / len(times) if times else None
-
-    def get_gauge(self, metric: str) -> float | None:
-        """Get the current value of a gauge."""
-        return self._gauges.get(metric)
-
-    def get_error_count(self, metric: str) -> int:
-        """Get the error count for a metric."""
-        return self._errors.get(metric, 0)
-
-    def get_summary(self) -> dict[str, Any]:
-        """Get a summary of all collected statistics."""
-        return {
-            "counters": self._counters.copy(),
-            "timers": {
-                metric: {
-                    "count": len(times),
-                    "avg": sum(times) / len(times) if times else 0,
-                    "min": min(times) if times else 0,
-                    "max": max(times) if times else 0,
-                }
-                for metric, times in self._timers.items()
-            },
-            "gauges": self._gauges.copy(),
-            "errors": self._errors.copy(),
-        }
-
-    def reset(self) -> None:
-        """Reset all statistics."""
-        self._counters.clear()
-        self._timers.clear()
-        self._gauges.clear()
-        self._errors.clear()
-
-
-class StatsCollector:
-    """Utility class for collecting and emitting pipeline statistics."""
-
-    def __init__(self, stats: PipelineStats) -> None:
-        """Initialize with a stats instance."""
-        self.stats = stats
+    def __init__(self, registry: MetricRegistry, pipeline_id: str = "pipeline") -> None:
+        """Initialize the pipeline stats collector."""
+        self.registry = registry
+        self.collector = MetricsCollector(registry, prefix=pipeline_id)
+        self.pipeline_id = pipeline_id
 
     def record_processing_time(
         self,
@@ -130,19 +66,20 @@ class StatsCollector:
         success: bool = True,
     ) -> PipelineStatsEvent:
         """Record processing time for a stage."""
-        metric_name = f"{stage.value}.{stage_id}.processing_time"
-        self.stats.record_time(metric_name, duration_ms)
+        labels = {"stage": stage.value, "stage_id": stage_id}
 
-        if success:
-            self.stats.increment(f"{stage.value}.{stage_id}.success")
-        else:
-            self.stats.record_error(f"{stage.value}.{stage_id}")
+        self.collector.record_operation(
+            f"{stage.value}_{stage_id}",
+            success=success,
+            duration_ms=duration_ms,
+            labels=labels,
+        )
 
         return PipelineStatsEvent(
             event_id=event_id,
             stage=stage,
             stage_id=stage_id,
-            metric_name=metric_name,
+            metric_name=f"{stage.value}_{stage_id}_processing_time",
             metric_value=duration_ms,
             duration_ms=duration_ms,
             success=success,
@@ -155,15 +92,22 @@ class StatsCollector:
         stage_id: StageId,
     ) -> PipelineStatsEvent:
         """Record throughput metric for a stage."""
-        metric_name = f"{stage.value}.{stage_id}.throughput"
-        self.stats.increment(metric_name)
+        labels = {"stage": stage.value, "stage_id": stage_id}
+
+        self.collector.increment_counter(
+            "throughput_total",
+            labels=labels,
+            help_text="Total number of events processed",
+        )
+
+        current_value = self.collector.get_metric_value("throughput_total", labels) or 0
 
         return PipelineStatsEvent(
             event_id=event_id,
             stage=stage,
             stage_id=stage_id,
-            metric_name=metric_name,
-            metric_value=self.stats.get_counter(metric_name),
+            metric_name=f"{stage.value}_{stage_id}_throughput",
+            metric_value=current_value,
         )
 
     def record_queue_size(
@@ -173,13 +117,54 @@ class StatsCollector:
         size: int,
     ) -> PipelineStatsEvent:
         """Record queue size gauge metric."""
-        metric_name = f"{stage.value}.{stage_id}.queue_size"
-        self.stats.set_gauge(metric_name, float(size))
+        labels = {"stage": stage.value, "stage_id": stage_id}
+
+        self.collector.set_gauge(
+            "queue_size",
+            size,
+            labels=labels,
+            help_text="Current queue size for stage",
+        )
 
         return PipelineStatsEvent(
             event_id="",  # Queue size is not tied to a specific event
             stage=stage,
             stage_id=stage_id,
-            metric_name=metric_name,
+            metric_name=f"{stage.value}_{stage_id}_queue_size",
             metric_value=size,
         )
+
+    def record_error(
+        self,
+        stage: PipelineStage,
+        stage_id: StageId,
+        error_type: str,
+        operation: str = "",
+    ) -> None:
+        """Record an error for a specific stage."""
+        labels = {"stage": stage.value, "stage_id": stage_id}
+
+        self.collector.record_error(
+            error_type,
+            operation=operation or f"{stage.value}_{stage_id}",
+            labels=labels,
+        )
+
+    def update_stage_status(
+        self,
+        stage: PipelineStage,
+        stage_id: StageId,
+        status: str,
+    ) -> None:
+        """Update the status of a pipeline stage."""
+        labels = {"stage": stage.value, "stage_id": stage_id}
+
+        self.collector.update_status(
+            f"{stage.value}_{stage_id}",
+            status,
+            labels=labels,
+        )
+
+    def get_summary(self) -> dict[str, Any]:
+        """Get a summary of all pipeline statistics."""
+        return self.registry.get_registry_summary()

@@ -24,7 +24,7 @@ from .errors import (
 )
 from .filters import Filter, FilterRegistry
 from .outputs import Output, OutputRegistry
-from .stats import PipelineStats, PipelineStatsEvent
+from .stats import PipelineStatsCollector, PipelineStatsEvent
 from .transformers import Transformer, TransformerRegistry
 from .types import PipelineEvent, PipelineEventMetadata, PipelineStage
 
@@ -60,5 +60,5 @@ __all__ = [  # noqa: RUF022
     # Stats and errors
     "ErrorHandler",
     "PipelineError",
-    "PipelineStats",
+    "PipelineStatsCollector",
 ]

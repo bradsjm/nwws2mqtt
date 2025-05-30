@@ -10,12 +10,25 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 
+from nwws.metrics.collectors import MetricsCollector
+from nwws.metrics.registry import MetricRegistry
 from nwws.pipeline.errors import ErrorHandler, ErrorHandlingStrategy
 from nwws.pipeline.filters import Filter
 from nwws.pipeline.outputs import Output
-from nwws.pipeline.stats import StatsCollector
 from nwws.pipeline.transformers import Transformer
 from nwws.pipeline.types import PipelineEvent, PipelineEventMetadata, PipelineStage
+
+
+@pytest.fixture
+def metric_registry() -> MetricRegistry:
+    """Create a new metric registry for testing."""
+    return MetricRegistry()
+
+
+@pytest.fixture
+def metrics_collector(metric_registry: MetricRegistry) -> MetricsCollector:
+    """Create a metrics collector for testing."""
+    return MetricsCollector(registry=metric_registry, prefix="test")
 
 
 @pytest.fixture
@@ -68,14 +81,17 @@ def mock_output() -> MagicMock:
 
 
 @pytest.fixture
-def mock_stats_collector() -> Mock:
-    """Create mock stats collector."""
-    stats_mock = Mock(spec=StatsCollector)
-    stats_mock.record_processing_time = Mock()
-    stats_mock.record_throughput = Mock()
-    stats_mock.stats = Mock()
-    stats_mock.stats.get_summary = Mock(return_value={"processed": 10})
-    return stats_mock
+def metrics_mock() -> Mock:
+    """Create mock metrics collector."""
+    collector_mock = Mock(spec=MetricsCollector)
+    collector_mock.record_operation = Mock()
+    collector_mock.record_duration_ms = Mock()
+    collector_mock.record_error = Mock()
+    collector_mock.increment_counter = Mock()
+    collector_mock.set_gauge = Mock()
+    collector_mock.observe_histogram = Mock()
+    collector_mock.update_status = Mock()
+    return collector_mock
 
 
 @pytest.fixture
