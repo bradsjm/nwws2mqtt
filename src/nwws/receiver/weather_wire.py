@@ -101,6 +101,7 @@ class WeatherWire(slixmpp.ClientXMPP):
         self.last_message_time: float = time.time()
         self.is_shutting_down: bool = False
         self._idle_monitor_task: asyncio.Task[object] | None = None
+        self._stats_update_task: asyncio.Task[None] | None = None
         self._connection_start_time: float | None = None
 
         logger.info(
@@ -172,6 +173,15 @@ class WeatherWire(slixmpp.ClientXMPP):
             self._idle_monitor_task = asyncio.create_task(self._monitor_idle_timeout())
             logger.info("Idle timeout monitoring enabled", timeout=IDLE_TIMEOUT)
 
+        # Start periodic stats updates if stats collector is available
+        if self.stats_collector and (
+            self._stats_update_task is None or self._stats_update_task.done()
+        ):
+            self._stats_update_task = asyncio.create_task(
+                self._update_stats_periodically(),
+            )
+            logger.info("Periodic stats updates enabled")
+
         # Send initial presence
         self.send_presence()
         await self.get_roster()  # type: ignore[misc]
@@ -186,6 +196,11 @@ class WeatherWire(slixmpp.ClientXMPP):
         if self._idle_monitor_task is not None:
             self._idle_monitor_task.cancel()
             self._idle_monitor_task = None
+
+        # Stop stats update task on session end
+        if self._stats_update_task is not None:
+            self._stats_update_task.cancel()
+            self._stats_update_task = None
 
     async def _on_failed_auth(self, _event: object) -> None:
         """Handle authentication failure."""
@@ -352,6 +367,11 @@ class WeatherWire(slixmpp.ClientXMPP):
             self._idle_monitor_task.cancel()
             self._idle_monitor_task = None
 
+        # Cancel stats update task if running
+        if self._stats_update_task is not None:
+            self._stats_update_task.cancel()
+            self._stats_update_task = None
+
         # Leave MUC room gracefully
         self._leave_muc_room()
 
@@ -368,6 +388,30 @@ class WeatherWire(slixmpp.ClientXMPP):
         muc_room_jid = JID(MUC_ROOM)
         self.plugin["xep_0045"].leave_muc(muc_room_jid, self.nickname)
         logger.info("Unsubscribing from MUC room", room=MUC_ROOM)
+
+    async def _update_stats_periodically(self) -> None:
+        """Periodically update gauge metrics that need regular refresh."""
+        while not self.is_shutting_down:
+            try:
+                if self.stats_collector:
+                    # Update last message age
+                    age_seconds = time.time() - self.last_message_time
+                    self.stats_collector.update_last_message_age(age_seconds)
+
+                    # Update connection status
+                    is_connected = self.is_client_connected()
+                    self.stats_collector.update_connection_status(
+                        is_connected=is_connected,
+                    )
+
+                # Wait before next update
+                await asyncio.sleep(30)  # Update every 30 seconds
+
+            except asyncio.CancelledError:
+                break
+            except (ValueError, TypeError, AttributeError) as e:
+                logger.error("Error updating periodic stats", error=str(e))
+                await asyncio.sleep(30)
 
     def is_client_connected(self) -> bool:
         """Check if the XMPP client is connected."""

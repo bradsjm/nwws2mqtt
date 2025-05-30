@@ -1,7 +1,6 @@
 """NWWS2MQTT - National Weather Service NWWS-OI to MQTT Bridge."""
 
 import asyncio
-import contextlib
 import signal
 import sys
 import time
@@ -74,9 +73,6 @@ class WeatherWireApp:
             callback=self._receive_weather_message_feed,
             stats_collector=self.receiver_stats_collector,
         )
-
-        # Initialize periodic stats update task
-        self._stats_update_task: asyncio.Task[None] | None = None
 
     def _validate_config(self, config: Config) -> None:
         """Validate critical configuration parameters."""
@@ -210,9 +206,6 @@ class WeatherWireApp:
         # Start weather wire receiver
         self.receiver.start()
 
-        # Start periodic stats updates
-        self._stats_update_task = asyncio.create_task(self._update_stats_periodically())
-
     def _signal_handler(self, signum: int, _frame: FrameType | None) -> None:
         """Handle shutdown signals gracefully.
 
@@ -241,40 +234,11 @@ class WeatherWireApp:
 
     async def _cleanup_services(self) -> None:
         """Stop all application services."""
-        # Cancel stats update task
-        if self._stats_update_task and not self._stats_update_task.done():
-            self._stats_update_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._stats_update_task
-
         await asyncio.gather(
             self.receiver.stop(),
             self.pipeline.stop(),
         )
 
-    async def _update_stats_periodically(self) -> None:
-        """Periodically update gauge metrics that need regular refresh."""
-        while not self.is_shutting_down:
-            try:
-                # Update last message age if receiver has stats collector
-                if hasattr(self.receiver, "last_message_time"):
-                    age_seconds = time.time() - self.receiver.last_message_time
-                    self.receiver_stats_collector.update_last_message_age(age_seconds)
-
-                # Update connection status
-                is_connected = self.receiver.is_client_connected()
-                self.receiver_stats_collector.update_connection_status(
-                    is_connected=is_connected,
-                )
-
-                # Wait before next update
-                await asyncio.sleep(30)  # Update every 30 seconds
-
-            except asyncio.CancelledError:
-                break
-            except (ValueError, TypeError, AttributeError) as e:
-                logger.error("Error updating periodic stats", error=str(e))
-                await asyncio.sleep(30)
 
     def get_comprehensive_stats(self) -> dict[str, Any]:
         """Get comprehensive statistics including pipeline and receiver metrics."""
