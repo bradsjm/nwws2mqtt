@@ -206,6 +206,88 @@ class CompositeFilter(Filter):
         return any(f.should_process(event) for f in self.filters)
 
 
+class PropertyFilter(Filter):
+    """Filter events based on property values (alias for AttributeFilter)."""
+
+    def __init__(
+        self,
+        filter_id: str,
+        property_name: str,
+        allowed_values: set[Any],
+        *,
+        case_sensitive: bool = True,
+    ) -> None:
+        """Initialize the property filter.
+
+        Args:
+            filter_id: Unique identifier for this filter.
+            property_name: Name of the property to check.
+            allowed_values: Set of allowed values for the property.
+            case_sensitive: Whether string comparisons should be case-sensitive.
+
+        """
+        super().__init__(filter_id)
+        self.property_name = property_name
+        self.allowed_values = allowed_values
+        self.case_sensitive = case_sensitive
+
+    def should_process(self, event: PipelineEvent) -> bool:
+        """Check if the event's property value is in the allowed set."""
+        if not hasattr(event, self.property_name):
+            logger.warning(
+                "Property not found in event",
+                filter_id=self.filter_id,
+                property=self.property_name,
+                event_type=type(event).__name__,
+            )
+            return False
+
+        value = getattr(event, self.property_name)
+
+        if not self.case_sensitive and isinstance(value, str):
+            value = value.lower()
+            comparison_set = {str(v).lower() for v in self.allowed_values}
+        else:
+            comparison_set = self.allowed_values
+
+        return value in comparison_set
+
+
+class FunctionFilter(Filter):
+    """Filter events using a custom function."""
+
+    def __init__(
+        self,
+        filter_id: str,
+        filter_function: Callable[[PipelineEvent], bool],
+    ) -> None:
+        """Initialize the function filter.
+
+        Args:
+            filter_id: Unique identifier for this filter.
+            filter_function: Function that takes an event and returns bool.
+
+        """
+        super().__init__(filter_id)
+        self.filter_function = filter_function
+
+    def should_process(self, event: PipelineEvent) -> bool:
+        """Apply the custom filter function."""
+        try:
+            return self.filter_function(event)
+        except Exception as e:
+            logger.error(
+                "Function filter error",
+                filter_id=self.filter_id,
+                event_id=event.metadata.event_id,
+                error=str(e),
+            )
+            raise FilterError(
+                f"Function filter {self.filter_id} failed: {e}",
+                self.filter_id,
+            ) from e
+
+
 @dataclass
 class FilterConfig:
     """Configuration for a filter."""
@@ -276,8 +358,10 @@ class FilterRegistry:
         """Register built-in filter types."""
         self.register("passthrough", PassThroughFilter)
         self.register("attribute", AttributeFilter)
+        self.register("property", PropertyFilter)
         self.register("regex", RegexFilter)
         self.register("composite", CompositeFilter)
+        self.register("function", FunctionFilter)
 
 
 # Global filter registry instance

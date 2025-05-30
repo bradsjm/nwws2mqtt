@@ -43,25 +43,89 @@ INGEST → FILTER → TRANSFORM → OUTPUT
 
 ```python
 import asyncio
+from dataclasses import dataclass
 from pipeline import Pipeline, PipelineEvent, PipelineEventMetadata
 
 # Create a simple event
+@dataclass
 class TextEvent(PipelineEvent):
-    def __init__(self, text: str):
-        super().__init__(PipelineEventMetadata(source="user"))
-        self.text = text
+    text: str
 
 # Create and run a pipeline
 async def main():
     pipeline = Pipeline("my-pipeline")
     await pipeline.start()
 
-    event = TextEvent("Hello, Pipeline!")
+    event = TextEvent(
+        metadata=PipelineEventMetadata(source="user"),
+        text="Hello, Pipeline!"
+    )
     await pipeline.process(event)
 
     await pipeline.stop()
 
 asyncio.run(main())
+```
+</edits>
+
+<edits>
+
+<old_text>
+### Using Components
+
+```python
+from pipeline import Filter, Transformer, Output
+from pipeline.types import PipelineEvent
+
+# Custom filter
+class TextLengthFilter(Filter):
+    def __init__(self, min_length: int):
+        super().__init__("text-length-filter")
+        self.min_length = min_length
+
+    def should_process(self, event: PipelineEvent) -> bool:
+        if hasattr(event, 'text'):
+            return len(event.text) >= self.min_length
+        return True
+
+# Custom transformer
+class UppercaseTransformer(Transformer):
+    def __init__(self):
+        super().__init__("uppercase-transformer")
+
+    def transform(self, event: PipelineEvent) -> PipelineEvent:
+        if hasattr(event, 'text'):
+            event.text = event.text.upper()
+        return event
+
+# Custom output
+class LogOutput(Output):
+    def __init__(self):
+        super().__init__("log-output")
+
+    async def send(self, event: PipelineEvent) -> None:
+        print(f"Output: {getattr(event, 'text', 'Unknown event')}")
+
+# Build pipeline with components
+async def main():
+    pipeline = Pipeline(
+        pipeline_id="text-processor",
+        filters=[TextLengthFilter(min_length=5)],
+        transformer=UppercaseTransformer(),
+        outputs=[LogOutput()]
+    )
+
+    await pipeline.start()
+
+    # This will be processed (length >= 5)
+    event1 = TextEvent("Hello, World!")
+    await pipeline.process(event1)
+
+    # This will be filtered out (length < 5)
+    event2 = TextEvent("Hi")
+    await pipeline.process(event2)
+
+    await pipeline.stop()
 ```
 
 ### Using Components
@@ -123,10 +187,22 @@ async def main():
 
 ## Configuration-Based Setup
 
+### Loading from Configuration Files
+
+```python
+from pipeline.config import create_pipeline_from_file, create_manager_from_file
+
+# Create pipeline from JSON/YAML/TOML file
+pipeline = create_pipeline_from_file("config/pipeline.yaml")
+
+# Create manager from configuration file
+manager = create_manager_from_file("config/manager.json")
+```
+
 ### Using PipelineBuilder
 
 ```python
-from pipeline import PipelineBuilder, PipelineConfig
+from pipeline import PipelineBuilder, PipelineConfig, ErrorHandlingStrategy
 from pipeline.filters import FilterConfig
 from pipeline.transformers import TransformerConfig
 from pipeline.outputs import OutputConfig
@@ -135,13 +211,17 @@ from pipeline.outputs import OutputConfig
 config = PipelineConfig(
     pipeline_id="configured-pipeline",
     filters=[
-        FilterConfig(type="text-length", config={"min_length": 10})
+        FilterConfig(filter_type="attribute", filter_id="length-filter", 
+                    config={"attribute_name": "text", "allowed_values": {"long_text"}})
     ],
-    transformer=TransformerConfig(type="uppercase"),
+    transformer=TransformerConfig(transformer_type="passthrough", transformer_id="pass"),
     outputs=[
-        OutputConfig(type="log"),
-        OutputConfig(type="file", config={"filename": "output.txt"})
-    ]
+        OutputConfig(output_type="log", output_id="console"),
+        OutputConfig(output_type="file", output_id="file-out", 
+                    config={"filename": "output.txt"})
+    ],
+    error_handling_strategy=ErrorHandlingStrategy.RETRY,
+    max_retries=3
 )
 
 # Build pipeline from config
@@ -172,7 +252,159 @@ await manager.start()
 await manager.submit_event("pipeline-1", event1)
 await manager.submit_event("pipeline-2", event2)
 
+# Or submit to all pipelines
+await manager.submit_event_to_all(event3)
+
 await manager.stop()
+```
+
+### Configuration File Examples
+
+#### JSON Configuration
+
+```json
+{
+  "pipeline_id": "example-pipeline",
+  "filters": [
+    {
+      "filter_type": "regex",
+      "filter_id": "text-filter",
+      "config": {
+        "attribute_name": "message",
+        "pattern": "^(WARNING|ERROR)",
+        "match_mode": "search"
+      }
+    }
+  ],
+  "transformer": {
+    "transformer_type": "property",
+    "transformer_id": "uppercase",
+    "config": {
+      "property_transforms": {
+        "message": "str.upper"
+      }
+    }
+  },
+  "outputs": [
+    {
+      "output_type": "log",
+      "output_id": "console",
+      "config": {
+        "log_level": "info"
+      }
+    },
+    {
+      "output_type": "file",
+      "output_id": "file-logger",
+      "config": {
+        "filename": "logs/pipeline.log",
+        "mode": "a"
+      }
+    }
+  ],
+  "enable_stats": true,
+  "enable_error_handling": true,
+  "error_handling_strategy": "retry",
+  "max_retries": 3,
+  "retry_delay_seconds": 1.0
+}
+```
+
+#### YAML Configuration
+
+```yaml
+pipeline_id: "example-pipeline"
+filters:
+  - filter_type: "attribute"
+    filter_id: "priority-filter"
+    config:
+      attribute_name: "priority"
+      allowed_values: ["high", "critical"]
+      case_sensitive: false
+
+transformer:
+  transformer_type: "attribute_mapper"
+  transformer_id: "event-mapper"
+  config:
+    output_event_type: "AlertEvent"
+    attribute_mapping:
+      alert_message: "message"
+      severity: "priority"
+    default_values:
+      timestamp: "now"
+
+outputs:
+  - output_type: "http"
+    output_id: "webhook"
+    config:
+      url: "https://api.example.com/alerts"
+      method: "POST"
+      headers:
+        Content-Type: "application/json"
+        Authorization: "Bearer token123"
+      timeout: 30.0
+
+enable_stats: true
+enable_error_handling: true
+error_handling_strategy: "circuit_breaker"
+max_retries: 5
+retry_delay_seconds: 2.0
+```
+
+#### Pipeline Manager Configuration
+
+```json
+{
+  "pipelines": [
+    {
+      "pipeline_id": "alerts-pipeline",
+      "filters": [
+        {
+          "filter_type": "attribute",
+          "filter_id": "alert-filter",
+          "config": {
+            "attribute_name": "type",
+            "allowed_values": ["alert", "warning", "error"]
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "output_type": "log",
+          "output_id": "alert-logger",
+          "config": {
+            "log_level": "warning"
+          }
+        }
+      ]
+    },
+    {
+      "pipeline_id": "metrics-pipeline",
+      "filters": [
+        {
+          "filter_type": "attribute",
+          "filter_id": "metric-filter",
+          "config": {
+            "attribute_name": "type",
+            "allowed_values": ["metric", "gauge", "counter"]
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "output_type": "file",
+          "output_id": "metrics-file",
+          "config": {
+            "filename": "metrics/pipeline-metrics.log"
+          }
+        }
+      ]
+    }
+  ],
+  "max_queue_size": 5000,
+  "processing_timeout_seconds": 60.0,
+  "enable_metrics": true
+}
 ```
 
 ## Advanced Features
@@ -214,15 +446,16 @@ print(f"Average processing time: {stats.avg_processing_time_ms}ms")
 
 ### Error Handling
 
-Robust error handling with configurable strategies:
-
 ```python
 from pipeline.errors import ErrorHandler, ErrorHandlingStrategy
 
 error_handler = ErrorHandler(
-    strategy=ErrorHandlingStrategy.CONTINUE,
+    strategy=ErrorHandlingStrategy.RETRY,
     max_retries=3,
-    retry_delay_seconds=1.0
+    retry_delay_seconds=1.0,
+    backoff_multiplier=2.0,
+    circuit_breaker_threshold=5,
+    circuit_breaker_timeout_seconds=60.0
 )
 
 pipeline = Pipeline(
@@ -315,6 +548,9 @@ class PipelineManager:
 
     async def submit_event(self, pipeline_id: str, event: PipelineEvent) -> None:
         """Submit an event to a specific pipeline."""
+
+    async def submit_event_to_all(self, event: PipelineEvent) -> None:
+        """Submit an event to all pipelines."""
 ```
 
 ### Component Interfaces
@@ -358,26 +594,36 @@ class Output(ABC):
         """Stop the output."""
 ```
 
-## Built-in Components
+### Built-in Components
 
 ### Filters
 
+- **PassThroughFilter**: Allow all events to pass through
+- **AttributeFilter**: Filter events based on attribute values
+- **PropertyFilter**: Filter events based on property values (alias for AttributeFilter)
 - **RegexFilter**: Filter events based on regex patterns
-- **PropertyFilter**: Filter events based on property values
+- **CompositeFilter**: Combine multiple filters with logical operations
 - **FunctionFilter**: Filter events using custom functions
 
 ### Transformers
 
-- **PropertyTransformer**: Transform specific event properties
+- **PassThroughTransformer**: Pass events through unchanged
+- **AttributeMapperTransformer**: Map attributes from input to output event
+- **ChainTransformer**: Chain multiple transformers together
+- **ConditionalTransformer**: Apply different transformations based on conditions
+- **AttributeTransformer**: Modify specific attributes of an event
+- **PropertyTransformer**: Transform specific event properties (alias for AttributeTransformer)
 - **FunctionTransformer**: Transform events using custom functions
-- **ChainTransformer**: Chain multiple transformers
 
 ### Outputs
 
 - **LogOutput**: Send events to logger
-- **FileOutput**: Write events to files
-- **HttpOutput**: Send events to HTTP endpoints
+- **FileOutput**: Write events to files (requires aiofiles package)
+- **HttpOutput**: Send events to HTTP endpoints (requires aiohttp package)
 - **FunctionOutput**: Process events with custom functions
+- **BatchOutput**: Batch events and send them in groups
+- **ConditionalOutput**: Send events to different outputs based on conditions
+- **MulticastOutput**: Send events to multiple outputs simultaneously
 
 ## Best Practices
 
@@ -411,12 +657,26 @@ class Output(ABC):
 
 ## Error Handling
 
-The pipeline system provides comprehensive error handling:
+The pipeline system provides comprehensive error handling with multiple strategies:
 
-- **Automatic retries** with configurable backoff
-- **Circuit breaker patterns** for external dependencies
-- **Error event propagation** for monitoring
-- **Graceful degradation** strategies
+- **FAIL_FAST**: Stop processing immediately on first error
+- **CONTINUE**: Log error and continue processing (default)
+- **RETRY**: Automatic retries with configurable exponential backoff
+- **CIRCUIT_BREAKER**: Circuit breaker patterns for external dependencies
+- **Error event propagation** for monitoring and observability
+- **Graceful degradation** strategies for resilient processing
+
+### Error Handling Strategies
+
+```python
+from pipeline.errors import ErrorHandlingStrategy
+
+# Available strategies
+ErrorHandlingStrategy.FAIL_FAST        # Stop on first error
+ErrorHandlingStrategy.CONTINUE         # Log and continue
+ErrorHandlingStrategy.RETRY            # Retry with backoff
+ErrorHandlingStrategy.CIRCUIT_BREAKER  # Circuit breaker pattern
+```
 
 ## Observability
 
@@ -426,6 +686,29 @@ Built-in observability features include:
 - **Performance metrics** collection
 - **Error rate monitoring**
 - **Pipeline health checks**
+
+## Examples
+
+### Complete Working Example
+
+See the `examples/` directory for complete working examples:
+
+- `simple_pipeline_example.py` - Basic pipeline with custom components
+- `config_pipeline_example.py` - Configuration-based pipeline setup
+- `pipeline_config.yaml` - Example YAML configuration file
+
+### Running Examples
+
+```bash
+# From the project root
+cd examples/
+
+# Run the simple example
+python simple_pipeline_example.py
+
+# Run the configuration example
+python config_pipeline_example.py
+```
 
 ## Extension Points
 
@@ -438,6 +721,26 @@ The pipeline system is designed for extensibility:
 5. **Custom error handlers** for specialized error handling
 6. **Custom statistics collectors** for metrics
 
+## Dependencies
+
+### Required
+- Python 3.12+
+- loguru
+
+### Optional
+- `aiofiles` - For FileOutput functionality
+- `aiohttp` - For HttpOutput functionality  
+- `pyyaml` - For YAML configuration file support
+- `tomli` - For TOML configuration file support (Python < 3.11)
+
+Install optional dependencies:
+```bash
+pip install aiofiles aiohttp pyyaml tomli
+```
+
 ## License
 
 The majority of the pipeline package was written by Claude 4 using prompts written by Jonathan Bradshaw and is licensed under the Apache License 2.0.
+</edits>
+
+</edits>

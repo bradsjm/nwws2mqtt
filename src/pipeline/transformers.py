@@ -245,6 +245,87 @@ class AttributeTransformer(Transformer):
             ) from e
 
 
+class PropertyTransformer(Transformer):
+    """Transformer that modifies specific properties of an event (alias for AttributeTransformer)."""
+
+    def __init__(
+        self,
+        transformer_id: str,
+        property_transforms: dict[str, Callable[[Any], Any]],
+    ) -> None:
+        """Initialize the property transformer.
+
+        Args:
+            transformer_id: Unique identifier for this transformer.
+            property_transforms: Mapping of property names to transformation functions.
+
+        """
+        super().__init__(transformer_id)
+        self.property_transforms = property_transforms
+
+    def transform(self, event: PipelineEvent) -> PipelineEvent:
+        """Transform specific properties of the event."""
+        # Create a copy of the event
+        event_dict = event.__dict__.copy()
+
+        for prop_name, transform_func in self.property_transforms.items():
+            if hasattr(event, prop_name):
+                try:
+                    current_value = getattr(event, prop_name)
+                    new_value = transform_func(current_value)
+                    event_dict[prop_name] = new_value
+                except (ValueError, TypeError, AttributeError) as e:
+                    logger.warning(
+                        "Failed to transform property",
+                        transformer_id=self.transformer_id,
+                        property=prop_name,
+                        error=str(e),
+                    )
+
+        # Create new event instance with modified properties
+        try:
+            return type(event)(**event_dict)
+        except TypeError as e:
+            msg = f"Failed to create modified event: {e}"
+            raise TransformerError(
+                msg,
+                self.transformer_id,
+            ) from e
+
+
+class FunctionTransformer(Transformer):
+    """Transformer that uses a custom function to transform events."""
+
+    def __init__(
+        self,
+        transformer_id: str,
+        transform_function: Callable[[PipelineEvent], PipelineEvent],
+    ) -> None:
+        """Initialize the function transformer.
+
+        Args:
+            transformer_id: Unique identifier for this transformer.
+            transform_function: Function that takes an event and returns a transformed event.
+
+        """
+        super().__init__(transformer_id)
+        self.transform_function = transform_function
+
+    def transform(self, event: PipelineEvent) -> PipelineEvent:
+        """Apply the custom transformation function."""
+        try:
+            return self.transform_function(event)
+        except Exception as e:
+            logger.error(
+                "Function transformer error",
+                transformer_id=self.transformer_id,
+                event_id=event.metadata.event_id,
+                error=str(e),
+            )
+            msg = f"Function transformer {self.transformer_id} failed: {e}"
+            raise TransformerError(msg, self.transformer_id) from e
+
+
 @dataclass
 class TransformerConfig:
     """Configuration for a transformer."""
@@ -318,6 +399,8 @@ class TransformerRegistry:
         self.register("chain", ChainTransformer)
         self.register("conditional", ConditionalTransformer)
         self.register("attribute", AttributeTransformer)
+        self.register("property", PropertyTransformer)
+        self.register("function", FunctionTransformer)
 
 
 # Global transformer registry instance

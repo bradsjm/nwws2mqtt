@@ -5,9 +5,18 @@ This package provides a flexible, extensible pipeline system for processing
 through filters, transformers, and outputs.
 """
 
-from .config import PipelineBuilder, PipelineConfig
+from .config import (
+    PipelineBuilder,
+    PipelineConfig,
+    PipelineManagerConfig,
+    create_manager_from_file,
+    create_pipeline_from_file,
+    load_config_from_file,
+    load_manager_config,
+    load_pipeline_config,
+)
 from .core import Pipeline, PipelineManager
-from .errors import PipelineError, PipelineErrorEvent
+from .errors import ErrorHandler, ErrorHandlingStrategy, PipelineError, PipelineErrorEvent
 from .filters import Filter, FilterRegistry
 from .outputs import Output, OutputRegistry
 from .stats import PipelineStats, PipelineStatsEvent
@@ -24,7 +33,15 @@ __all__ = [  # noqa: RUF022
     "PipelineBuilder",
     "PipelineConfig",
     "PipelineManager",
+    "PipelineManagerConfig",
+    # Configuration loading utilities
+    "create_manager_from_file",
+    "create_pipeline_from_file",
+    "load_config_from_file",
+    "load_manager_config",
+    "load_pipeline_config",
     # Enums
+    "ErrorHandlingStrategy",
     "PipelineStage",
     # Event types
     "PipelineEvent",
@@ -36,6 +53,7 @@ __all__ = [  # noqa: RUF022
     "OutputRegistry",
     "TransformerRegistry",
     # Stats and errors
+    "ErrorHandler",
     "PipelineError",
     "PipelineStats",
 ]

@@ -3,17 +3,33 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from loguru import logger
 
 from .core import Pipeline, PipelineManager
-from .errors import ErrorHandler, PipelineError
+from .errors import ErrorHandler, ErrorHandlingStrategy, PipelineError
 from .filters import FilterConfig, FilterRegistry
 from .outputs import OutputConfig, OutputRegistry
 from .stats import PipelineStats, StatsCollector
 from .transformers import TransformerConfig, TransformerRegistry
+
+# Optional dependencies for YAML support
+try:
+    import yaml
+except ImportError:
+    yaml = None
+
+try:
+    import tomllib
+except ImportError:
+    try:
+        import tomli as tomllib  # type: ignore[import-untyped]
+    except ImportError:
+        tomllib = None
 
 
 @dataclass
@@ -37,6 +53,15 @@ class PipelineConfig:
 
     enable_error_handling: bool = True
     """Whether to enable error handling."""
+
+    error_handling_strategy: ErrorHandlingStrategy = ErrorHandlingStrategy.CONTINUE
+    """Error handling strategy to use."""
+
+    max_retries: int = 3
+    """Maximum number of retries for error handling."""
+
+    retry_delay_seconds: float = 1.0
+    """Base delay between retries."""
 
     config: dict[str, Any] = field(default_factory=dict)
     """Additional pipeline-specific configuration."""
@@ -122,7 +147,11 @@ class PipelineBuilder:
             # Create error handler
             error_handler = None
             if config.enable_error_handling:
-                error_handler = ErrorHandler()
+                error_handler = ErrorHandler(
+                    strategy=config.error_handling_strategy,
+                    max_retries=config.max_retries,
+                    retry_delay_seconds=config.retry_delay_seconds,
+                )
 
             # Create pipeline
             pipeline = Pipeline(
@@ -387,3 +416,245 @@ def create_simple_pipeline(
     # Build and return pipeline
     builder = PipelineBuilder()
     return builder.build_pipeline(pipeline_config)
+
+
+def load_config_from_file(config_path: str | Path) -> dict[str, Any]:
+    """Load configuration from a file.
+
+    Supports JSON, YAML, and TOML formats based on file extension.
+
+    Args:
+        config_path: Path to the configuration file.
+
+    Returns:
+        Loaded configuration dictionary.
+
+    Raises:
+        PipelineError: If file cannot be loaded or parsed.
+
+    """
+    config_path = Path(config_path)
+
+    if not config_path.exists():
+        error_msg = f"Configuration file not found: {config_path}"
+        raise PipelineError(error_msg)
+
+    # Read file content
+    try:
+        with config_path.open("r", encoding="utf-8") as f:
+            content = f.read()
+    except (OSError, UnicodeDecodeError) as e:
+        error_msg = f"Failed to read configuration file {config_path}: {e}"
+        raise PipelineError(error_msg) from e
+
+    # Parse content based on file extension
+    try:
+        suffix = config_path.suffix.lower()
+        return _parse_config_content(content, suffix, config_path)
+    except (json.JSONDecodeError, Exception) as e:
+        error_msg = f"Failed to parse configuration file {config_path}: {e}"
+        raise PipelineError(error_msg) from e
+
+
+def _parse_config_content(content: str, suffix: str, _config_path: Path) -> dict[str, Any]:
+    """Parse configuration content based on file extension.
+
+    Args:
+        content: File content to parse.
+        suffix: File extension.
+        config_path: Path to the configuration file (for error messages).
+
+    Returns:
+        Parsed configuration dictionary.
+
+    Raises:
+        PipelineError: If format is unsupported or parsing fails.
+
+    """
+    if suffix == ".json":
+        return json.loads(content)
+
+    if suffix in (".yaml", ".yml"):
+        if yaml is None:
+            error_msg = "YAML support not available. Install with: pip install pyyaml"
+            raise PipelineError(error_msg)
+        return yaml.safe_load(content)
+
+    if suffix == ".toml":
+        if tomllib is None:
+            error_msg = "TOML support not available. Install with: pip install tomli"
+            raise PipelineError(error_msg)
+        return tomllib.loads(content)  # type: ignore[return-value]
+
+    error_msg = f"Unsupported configuration file format: {suffix}. Supported formats: .json, .yaml, .yml, .toml"
+    raise PipelineError(error_msg)
+
+
+def config_from_dict(config_dict: dict[str, Any]) -> PipelineConfig:
+    """Create a PipelineConfig from a dictionary.
+
+    Args:
+        config_dict: Dictionary containing pipeline configuration.
+
+    Returns:
+        PipelineConfig instance.
+
+    Raises:
+        PipelineError: If configuration is invalid.
+
+    """
+    try:
+        # Convert filter configs
+        filter_configs: list[FilterConfig] = []
+        for filter_dict in config_dict.get("filters", []):
+            filter_config = FilterConfig(
+                filter_type=filter_dict["filter_type"],
+                filter_id=filter_dict["filter_id"],
+                config=filter_dict.get("config", {}),
+            )
+            filter_configs.append(filter_config)
+
+        # Convert transformer config
+        transformer_config = None
+        if "transformer" in config_dict:
+            transformer_dict = config_dict["transformer"]
+            transformer_config = TransformerConfig(
+                transformer_type=transformer_dict["transformer_type"],
+                transformer_id=transformer_dict["transformer_id"],
+                config=transformer_dict.get("config", {}),
+            )
+
+        # Convert output configs
+        output_configs: list[OutputConfig] = []
+        for output_dict in config_dict.get("outputs", []):
+            output_config = OutputConfig(
+                output_type=output_dict["output_type"],
+                output_id=output_dict["output_id"],
+                config=output_dict.get("config", {}),
+            )
+            output_configs.append(output_config)
+
+        # Convert error handling strategy
+        error_strategy = ErrorHandlingStrategy.CONTINUE
+        if "error_handling_strategy" in config_dict:
+            error_strategy = ErrorHandlingStrategy(config_dict["error_handling_strategy"])
+
+        return PipelineConfig(
+            pipeline_id=config_dict["pipeline_id"],
+            filters=filter_configs,
+            transformer=transformer_config,
+            outputs=output_configs,
+            enable_stats=config_dict.get("enable_stats", True),
+            enable_error_handling=config_dict.get("enable_error_handling", True),
+            error_handling_strategy=error_strategy,
+            max_retries=config_dict.get("max_retries", 3),
+            retry_delay_seconds=config_dict.get("retry_delay_seconds", 1.0),
+            config=config_dict.get("config", {}),
+        )
+
+    except (KeyError, ValueError, TypeError) as e:
+        error_msg = f"Invalid pipeline configuration: {e}"
+        raise PipelineError(error_msg) from e
+
+
+def manager_config_from_dict(config_dict: dict[str, Any]) -> PipelineManagerConfig:
+    """Create a PipelineManagerConfig from a dictionary.
+
+    Args:
+        config_dict: Dictionary containing manager configuration.
+
+    Returns:
+        PipelineManagerConfig instance.
+
+    Raises:
+        PipelineError: If configuration is invalid.
+
+    """
+    try:
+        # Convert pipeline configs
+        pipeline_configs: list[PipelineConfig] = []
+        for pipeline_dict in config_dict.get("pipelines", []):
+            pipeline_config = config_from_dict(pipeline_dict)
+            pipeline_configs.append(pipeline_config)
+
+        return PipelineManagerConfig(
+            pipelines=pipeline_configs,
+            max_queue_size=config_dict.get("max_queue_size", 1000),
+            processing_timeout_seconds=config_dict.get("processing_timeout_seconds", 30.0),
+            enable_metrics=config_dict.get("enable_metrics", True),
+            config=config_dict.get("config", {}),
+        )
+
+    except (KeyError, ValueError, TypeError) as e:
+        error_msg = f"Invalid manager configuration: {e}"
+        raise PipelineError(error_msg) from e
+
+
+def load_pipeline_config(config_path: str | Path) -> PipelineConfig:
+    """Load a pipeline configuration from file.
+
+    Args:
+        config_path: Path to the configuration file.
+
+    Returns:
+        PipelineConfig instance.
+
+    Raises:
+        PipelineError: If configuration cannot be loaded.
+
+    """
+    config_dict = load_config_from_file(config_path)
+    return config_from_dict(config_dict)
+
+
+def load_manager_config(config_path: str | Path) -> PipelineManagerConfig:
+    """Load a pipeline manager configuration from file.
+
+    Args:
+        config_path: Path to the configuration file.
+
+    Returns:
+        PipelineManagerConfig instance.
+
+    Raises:
+        PipelineError: If configuration cannot be loaded.
+
+    """
+    config_dict = load_config_from_file(config_path)
+    return manager_config_from_dict(config_dict)
+
+
+def create_pipeline_from_file(config_path: str | Path) -> Pipeline:
+    """Create a pipeline directly from a configuration file.
+
+    Args:
+        config_path: Path to the configuration file.
+
+    Returns:
+        Configured Pipeline instance.
+
+    Raises:
+        PipelineError: If pipeline cannot be created.
+
+    """
+    config = load_pipeline_config(config_path)
+    builder = PipelineBuilder()
+    return builder.build_pipeline(config)
+
+
+def create_manager_from_file(config_path: str | Path) -> PipelineManager:
+    """Create a pipeline manager directly from a configuration file.
+
+    Args:
+        config_path: Path to the configuration file.
+
+    Returns:
+        Configured PipelineManager instance.
+
+    Raises:
+        PipelineError: If manager cannot be created.
+
+    """
+    config = load_manager_config(config_path)
+    builder = PipelineBuilder()
+    return builder.build_manager(config)

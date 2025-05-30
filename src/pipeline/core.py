@@ -14,6 +14,7 @@ from .errors import ErrorHandler, PipelineError
 from .types import PipelineEvent, PipelineStage
 
 if TYPE_CHECKING:
+    from .config import PipelineManagerConfig
     from .filters import Filter
     from .outputs import Output
     from .stats import StatsCollector
@@ -381,10 +382,19 @@ class Pipeline:
 class PipelineManager:
     """Manages multiple pipelines and event routing."""
 
-    def __init__(self) -> None:
-        """Initialize the pipeline manager."""
+    def __init__(self, config: PipelineManagerConfig | None = None) -> None:
+        """Initialize the pipeline manager.
+        
+        Args:
+            config: Optional configuration for the pipeline manager.
+        """
+        from .config import PipelineManagerConfig
+        
+        self.config = config or PipelineManagerConfig()
         self._pipelines: dict[str, Pipeline] = {}
-        self._event_queue: asyncio.Queue[PipelineEvent] = asyncio.Queue()
+        self._event_queue: asyncio.Queue[tuple[str | None, PipelineEvent]] = asyncio.Queue(
+            maxsize=self.config.max_queue_size
+        )
         self._processing_task: asyncio.Task[None] | None = None
         self._is_running = False
 
@@ -474,8 +484,42 @@ class PipelineManager:
 
         logger.info("Pipeline manager stopped")
 
-    async def submit_event(self, event: PipelineEvent) -> None:
-        """Submit an event for processing.
+    async def submit_event(self, pipeline_id: str, event: PipelineEvent) -> None:
+        """Submit an event to a specific pipeline for processing.
+
+        Args:
+            pipeline_id: ID of the pipeline to process the event.
+            event: The event to process.
+
+        """
+        if not self._is_running:
+            logger.warning(
+                "Pipeline manager not running, dropping event",
+                event_id=event.metadata.event_id,
+                pipeline_id=pipeline_id,
+            )
+            return
+
+        try:
+            await asyncio.wait_for(
+                self._event_queue.put((pipeline_id, event)), 
+                timeout=self.config.processing_timeout_seconds
+            )
+            logger.debug(
+                "Event submitted for processing", 
+                event_id=event.metadata.event_id,
+                pipeline_id=pipeline_id
+            )
+        except asyncio.TimeoutError:
+            logger.error(
+                "Event submission timeout",
+                event_id=event.metadata.event_id,
+                pipeline_id=pipeline_id,
+                timeout=self.config.processing_timeout_seconds,
+            )
+
+    async def submit_event_to_all(self, event: PipelineEvent) -> None:
+        """Submit an event to all pipelines for processing.
 
         Args:
             event: The event to process.
@@ -488,33 +532,75 @@ class PipelineManager:
             )
             return
 
-        await self._event_queue.put(event)
-        logger.debug("Event submitted for processing", event_id=event.metadata.event_id)
+        try:
+            await asyncio.wait_for(
+                self._event_queue.put((None, event)), 
+                timeout=self.config.processing_timeout_seconds
+            )
+            logger.debug("Event submitted to all pipelines", event_id=event.metadata.event_id)
+        except asyncio.TimeoutError:
+            logger.error(
+                "Event submission timeout",
+                event_id=event.metadata.event_id,
+                timeout=self.config.processing_timeout_seconds,
+            )
 
     async def _process_events(self) -> None:
-        """Process events from the queue through all pipelines."""
+        """Process events from the queue through specified or all pipelines."""
         while self._is_running:
             try:
                 # Wait for next event with timeout
-                event = await asyncio.wait_for(self._event_queue.get(), timeout=1.0)
+                pipeline_id, event = await asyncio.wait_for(self._event_queue.get(), timeout=1.0)
 
-                # Process event through all pipelines concurrently
-                tasks = [
-                    asyncio.create_task(pipeline.process(event)) for pipeline in self._pipelines.values() if pipeline.is_started
-                ]
+                if pipeline_id is None:
+                    # Process event through all pipelines concurrently
+                    tasks = [
+                        asyncio.create_task(pipeline.process(event)) 
+                        for pipeline in self._pipelines.values() 
+                        if pipeline.is_started
+                    ]
+                    
+                    if tasks:
+                        # Wait for all pipelines to process the event
+                        results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                if tasks:
-                    # Wait for all pipelines to process the event
-                    results = await asyncio.gather(*tasks, return_exceptions=True)
-
-                    # Log any errors
-                    errors = [result for result in results if isinstance(result, Exception)]
-                    if errors:
+                        # Log any errors
+                        errors = [result for result in results if isinstance(result, Exception)]
+                        if errors:
+                            logger.warning(
+                                "Some pipelines failed to process event",
+                                event_id=event.metadata.event_id,
+                                error_count=len(errors),
+                                total_pipelines=len(tasks),
+                            )
+                else:
+                    # Process event through specific pipeline
+                    pipeline = self._pipelines.get(pipeline_id)
+                    if pipeline and pipeline.is_started:
+                        try:
+                            await asyncio.wait_for(
+                                pipeline.process(event),
+                                timeout=self.config.processing_timeout_seconds
+                            )
+                        except asyncio.TimeoutError:
+                            logger.error(
+                                "Pipeline processing timeout",
+                                pipeline_id=pipeline_id,
+                                event_id=event.metadata.event_id,
+                                timeout=self.config.processing_timeout_seconds,
+                            )
+                        except Exception as e:
+                            logger.error(
+                                "Pipeline processing error",
+                                pipeline_id=pipeline_id,
+                                event_id=event.metadata.event_id,
+                                error=str(e),
+                            )
+                    else:
                         logger.warning(
-                            "Some pipelines failed to process event",
+                            "Pipeline not found or not started",
+                            pipeline_id=pipeline_id,
                             event_id=event.metadata.event_id,
-                            error_count=len(errors),
-                            total_pipelines=len(tasks),
                         )
 
                 # Mark task as done

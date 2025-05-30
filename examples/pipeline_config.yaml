@@ -1,0 +1,48 @@
+pipeline_id: "example-pipeline"
+
+filters:
+  - filter_type: "attribute"
+    filter_id: "priority-filter"
+    config:
+      attribute_name: "priority"
+      allowed_values: ["high", "critical", "normal"]
+      case_sensitive: false
+
+  - filter_type: "regex"
+    filter_id: "text-filter"
+    config:
+      attribute_name: "text"
+      pattern: "^(WARNING|ERROR|INFO)"
+      match_mode: "search"
+      flags: 2  # re.IGNORECASE
+
+transformer:
+  transformer_type: "attribute"
+  transformer_id: "text-processor"
+  config:
+    attribute_transforms:
+      text: "str.strip"
+
+outputs:
+  - output_type: "log"
+    output_id: "console-logger"
+    config:
+      log_level: "info"
+
+  - output_type: "file"
+    output_id: "file-logger"
+    config:
+      filename: "logs/pipeline-events.log"
+      mode: "a"
+      encoding: "utf-8"
+
+enable_stats: true
+enable_error_handling: true
+error_handling_strategy: "retry"
+max_retries: 3
+retry_delay_seconds: 1.0
+
+config:
+  description: "Example pipeline configuration"
+  environment: "development"
+  created_by: "pipeline-example"

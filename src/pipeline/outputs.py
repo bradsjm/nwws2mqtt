@@ -7,14 +7,28 @@ import asyncio
 import contextlib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
+
+# Optional dependencies
+try:
+    import aiofiles
+except ImportError:
+    aiofiles = None
+
+try:
+    import aiohttp
+except ImportError:
+    aiohttp = None
 
 from .errors import OutputError
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from aiohttp import ClientSession
 
     from .types import PipelineEvent
 
@@ -313,6 +327,208 @@ class MulticastOutput(Output):
             )
 
 
+class FileOutput(Output):
+    """Output that writes events to a file."""
+
+    def __init__(
+        self,
+        output_id: str,
+        filename: str | Path,
+        mode: str = "a",
+        encoding: str = "utf-8",
+        formatter: Callable[[PipelineEvent], str] | None = None,
+    ) -> None:
+        """Initialize the file output.
+
+        Args:
+            output_id: Unique identifier for this output.
+            filename: Path to the output file.
+            mode: File opening mode (default: append).
+            encoding: File encoding (default: utf-8).
+            formatter: Function to format events as strings.
+
+        """
+        super().__init__(output_id)
+        self.filename = Path(filename)
+        self.mode = mode
+        self.encoding = encoding
+        self.formatter = formatter or self._default_formatter
+
+    def _default_formatter(self, event: PipelineEvent) -> str:
+        """Format event as string."""
+        return f"{event.metadata.timestamp}: {type(event).__name__}({event.metadata.event_id})\n"
+
+    async def start(self) -> None:
+        """Start the file output and ensure directory exists."""
+        await super().start()
+        # Ensure parent directory exists
+        self.filename.parent.mkdir(parents=True, exist_ok=True)
+
+    async def send(self, event: PipelineEvent) -> None:
+        """Write the event to the file."""
+        if aiofiles is None:
+            error_msg = f"FileOutput {self.output_id} requires aiofiles package. Install with: pip install aiofiles"
+            raise OutputError(
+                error_msg,
+                self.output_id,
+            )
+
+        try:
+            formatted_event = self.formatter(event)
+            async with aiofiles.open(  # type: ignore[misc]
+                str(self.filename),
+                mode=self.mode,  # type: ignore[arg-type]
+                encoding=self.encoding,
+            ) as f:  # type: ignore[misc]
+                await f.write(formatted_event)  # type: ignore[misc]
+        except (OSError, ValueError) as e:
+            logger.error(
+                "Failed to write to file",
+                output_id=self.output_id,
+                filename=str(self.filename),
+                error=str(e),
+            )
+            error_msg = f"File output {self.output_id} failed: {e}"
+            raise OutputError(error_msg, self.output_id) from e
+
+
+class HttpOutput(Output):
+    """Output that sends events to HTTP endpoints."""
+
+    def __init__(
+        self,
+        output_id: str,
+        url: str,
+        method: str = "POST",
+        headers: dict[str, str] | None = None,
+        timeout: float = 30.0,
+        formatter: Callable[[PipelineEvent], dict[str, Any]] | None = None,
+    ) -> None:
+        """Initialize the HTTP output.
+
+        Args:
+            output_id: Unique identifier for this output.
+            url: HTTP endpoint URL.
+            method: HTTP method (GET, POST, PUT, etc.).
+            headers: HTTP headers to include.
+            timeout: Request timeout in seconds.
+            formatter: Function to format events as JSON-serializable dicts.
+
+        """
+        super().__init__(output_id)
+        self.url = url
+        self.method = method.upper()
+        self.headers = headers or {}
+        self.timeout = timeout
+        self.formatter = formatter or self._default_formatter
+        self._session: ClientSession | None = None
+
+    def _default_formatter(self, event: PipelineEvent) -> dict[str, Any]:
+        """Format event as dictionary."""
+        return {
+            "event_id": event.metadata.event_id,
+            "timestamp": event.metadata.timestamp,
+            "source": event.metadata.source,
+            "stage": event.metadata.stage.value,
+            "event_type": type(event).__name__,
+            "trace_id": event.metadata.trace_id,
+            "custom": event.metadata.custom,
+        }
+
+    async def start(self) -> None:
+        """Start the HTTP output and create session."""
+        if aiohttp is None:
+            error_msg = f"HttpOutput {self.output_id} requires aiohttp package. Install with: pip install aiohttp"
+            raise OutputError(
+                error_msg,
+                self.output_id,
+            )
+
+        await super().start()
+        timeout = aiohttp.ClientTimeout(total=self.timeout)
+        self._session = aiohttp.ClientSession(timeout=timeout)
+
+    async def stop(self) -> None:
+        """Stop the HTTP output and close session."""
+        if self._session:
+            await self._session.close()
+            self._session = None
+        await super().stop()
+
+    async def send(self, event: PipelineEvent) -> None:
+        """Send the event to the HTTP endpoint."""
+        if not self._session:
+            error_msg = f"HTTP output {self.output_id} not started"
+            raise OutputError(error_msg, self.output_id)
+
+        try:
+            data = self.formatter(event)
+
+            async with self._session.request(
+                self.method,
+                self.url,
+                json=data,
+                headers=self.headers,
+            ) as response:
+                response.raise_for_status()
+
+                logger.debug(
+                    "HTTP request successful",
+                    output_id=self.output_id,
+                    url=self.url,
+                    status=response.status,
+                    event_id=event.metadata.event_id,
+                )
+
+        except Exception as e:
+            logger.error(
+                "HTTP request failed",
+                output_id=self.output_id,
+                url=self.url,
+                error=str(e),
+                event_id=event.metadata.event_id,
+            )
+            error_msg = f"HTTP output {self.output_id} failed: {e}"
+            raise OutputError(error_msg, self.output_id) from e
+
+
+class FunctionOutput(Output):
+    """Output that processes events using a custom function."""
+
+    def __init__(
+        self,
+        output_id: str,
+        output_function: Callable[[PipelineEvent], Any],
+    ) -> None:
+        """Initialize the function output.
+
+        Args:
+            output_id: Unique identifier for this output.
+            output_function: Function to process events (can be sync or async).
+
+        """
+        super().__init__(output_id)
+        self.output_function = output_function
+        self._is_async = asyncio.iscoroutinefunction(output_function)
+
+    async def send(self, event: PipelineEvent) -> None:
+        """Process the event using the custom function."""
+        try:
+            if self._is_async:
+                await self.output_function(event)  # type: ignore[misc]
+            else:
+                self.output_function(event)
+        except Exception as e:
+            logger.error(
+                "Function output error",
+                output_id=self.output_id,
+                event_id=event.metadata.event_id,
+                error=str(e),
+            )
+            error_msg = f"Function output {self.output_id} failed: {e}"
+            raise OutputError(error_msg, self.output_id) from e
+
+
 @dataclass
 class OutputConfig:
     """Configuration for an output."""
@@ -382,6 +598,9 @@ class OutputRegistry:
     def _register_builtin_outputs(self) -> None:
         """Register built-in output types."""
         self.register("log", LogOutput)
+        self.register("file", FileOutput)
+        self.register("http", HttpOutput)
+        self.register("function", FunctionOutput)
         self.register("batch", BatchOutput)
         self.register("conditional", ConditionalOutput)
         self.register("multicast", MulticastOutput)

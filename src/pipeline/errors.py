@@ -3,11 +3,31 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any
 
+from loguru import logger
+
 from .types import EventId, PipelineEvent, PipelineStage, StageId, Timestamp
+
+
+class ErrorHandlingStrategy(Enum):
+    """Strategy for handling errors in pipeline processing."""
+
+    FAIL_FAST = "fail_fast"
+    """Stop processing immediately on first error."""
+
+    CONTINUE = "continue"
+    """Log error and continue processing."""
+
+    RETRY = "retry"
+    """Retry the operation with backoff."""
+
+    CIRCUIT_BREAKER = "circuit_breaker"
+    """Use circuit breaker pattern for external dependencies."""
 
 
 class PipelineError(Exception):
@@ -82,10 +102,38 @@ class PipelineErrorEvent:
 class ErrorHandler:
     """Handles and tracks pipeline errors."""
 
-    def __init__(self) -> None:
-        """Initialize the error handler."""
+    def __init__(
+        self,
+        strategy: ErrorHandlingStrategy = ErrorHandlingStrategy.CONTINUE,
+        *,
+        max_retries: int = 3,
+        retry_delay_seconds: float = 1.0,
+        backoff_multiplier: float = 2.0,
+        circuit_breaker_threshold: int = 5,
+        circuit_breaker_timeout_seconds: float = 60.0,
+    ) -> None:
+        """Initialize the error handler.
+
+        Args:
+            strategy: Error handling strategy to use.
+            max_retries: Maximum number of retries for RETRY strategy.
+            retry_delay_seconds: Base delay between retries.
+            backoff_multiplier: Multiplier for exponential backoff.
+            circuit_breaker_threshold: Number of failures to trigger circuit breaker.
+            circuit_breaker_timeout_seconds: Time to wait before resetting circuit breaker.
+
+        """
+        self.strategy = strategy
+        self.max_retries = max_retries
+        self.retry_delay_seconds = retry_delay_seconds
+        self.backoff_multiplier = backoff_multiplier
+        self.circuit_breaker_threshold = circuit_breaker_threshold
+        self.circuit_breaker_timeout_seconds = circuit_breaker_timeout_seconds
+        
         self._error_counts: dict[str, int] = {}
         self._last_errors: dict[str, PipelineErrorEvent] = {}
+        self._retry_counts: dict[str, int] = {}
+        self._circuit_breaker_states: dict[str, dict[str, Any]] = {}
 
     def handle_error(  # noqa: PLR0913
         self,
@@ -115,7 +163,161 @@ class ErrorHandler:
         )
 
         self._last_errors[error_key] = error_event
+
+        # Update circuit breaker state if using that strategy
+        if self.strategy == ErrorHandlingStrategy.CIRCUIT_BREAKER:
+            self._update_circuit_breaker(error_key, failed=True)
+
         return error_event
+
+    async def should_retry(
+        self,
+        stage: PipelineStage,
+        stage_id: StageId,
+        exception: Exception,
+    ) -> bool:
+        """Determine if an operation should be retried."""
+        if self.strategy != ErrorHandlingStrategy.RETRY:
+            return False
+
+        error_key = f"{stage.value}.{stage_id}"
+        retry_count = self._retry_counts.get(error_key, 0)
+
+        if retry_count >= self.max_retries:
+            logger.warning(
+                "Max retries exceeded",
+                stage=stage.value,
+                stage_id=stage_id,
+                retry_count=retry_count,
+                max_retries=self.max_retries,
+            )
+            return False
+
+        # Only retry on certain types of exceptions
+        return isinstance(exception, (OSError, ConnectionError, TimeoutError))
+
+    async def execute_with_retry(
+        self,
+        stage: PipelineStage,
+        stage_id: StageId,
+        operation: Any,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        """Execute an operation with retry logic."""
+        error_key = f"{stage.value}.{stage_id}"
+
+        for attempt in range(self.max_retries + 1):
+            try:
+                if self._is_circuit_breaker_open(error_key):
+                    error_msg = f"Circuit breaker is open for {error_key}"
+                    raise PipelineError(
+                        error_msg,
+                        stage,
+                        stage_id,
+                    )
+
+                if asyncio.iscoroutinefunction(operation):
+                    result = await operation(*args, **kwargs)  # type: ignore[misc]
+                else:
+                    result = operation(*args, **kwargs)
+
+                # Reset retry count on success
+                self._retry_counts[error_key] = 0
+
+                # Update circuit breaker on success
+                if self.strategy == ErrorHandlingStrategy.CIRCUIT_BREAKER:
+                    self._update_circuit_breaker(error_key, failed=False)
+
+                return result
+
+            except Exception as e:
+                self._retry_counts[error_key] = attempt + 1
+
+                if attempt < self.max_retries and await self.should_retry(stage, stage_id, e):
+                    delay = self.retry_delay_seconds * (self.backoff_multiplier ** attempt)
+                    logger.info(
+                        "Retrying operation",
+                        stage=stage.value,
+                        stage_id=stage_id,
+                        attempt=attempt + 1,
+                        max_retries=self.max_retries,
+                        delay=delay,
+                        error=str(e),
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+
+                # Final failure
+                if self.strategy == ErrorHandlingStrategy.CIRCUIT_BREAKER:
+                    self._update_circuit_breaker(error_key, failed=True)
+                raise
+
+    def _is_circuit_breaker_open(self, error_key: str) -> bool:
+        """Check if circuit breaker is open for the given error key."""
+        if error_key not in self._circuit_breaker_states:
+            return False
+
+        state = self._circuit_breaker_states[error_key]
+
+        if state["state"] == "open":
+            # Check if timeout has passed
+            if time.time() - state["opened_at"] > self.circuit_breaker_timeout_seconds:
+                # Move to half-open state
+                state["state"] = "half_open"
+                logger.info(
+                    "Circuit breaker moving to half-open",
+                    error_key=error_key,
+                )
+                return False
+            return True
+
+        return False
+
+    def _update_circuit_breaker(self, error_key: str, *, failed: bool) -> None:
+        """Update circuit breaker state."""
+        if error_key not in self._circuit_breaker_states:
+            self._circuit_breaker_states[error_key] = {
+                "state": "closed",  # closed, open, half_open
+                "failure_count": 0,
+                "opened_at": 0.0,
+            }
+
+        state = self._circuit_breaker_states[error_key]
+
+        if failed:
+            state["failure_count"] += 1
+
+            if state["state"] == "half_open":
+                # Failed in half-open state, go back to open
+                state["state"] = "open"
+                state["opened_at"] = time.time()
+                logger.warning(
+                    "Circuit breaker opened (half-open failure)",
+                    error_key=error_key,
+                )
+            elif (
+                state["state"] == "closed"
+                and state["failure_count"] >= self.circuit_breaker_threshold
+            ):
+                # Too many failures, open the circuit breaker
+                state["state"] = "open"
+                state["opened_at"] = time.time()
+                logger.warning(
+                    "Circuit breaker opened (threshold exceeded)",
+                    error_key=error_key,
+                    failure_count=state["failure_count"],
+                    threshold=self.circuit_breaker_threshold,
+                )
+        else:
+            # Success - reset failure count and close circuit breaker
+            state["failure_count"] = 0
+            if state["state"] in ("open", "half_open"):
+                state["state"] = "closed"
+                logger.info(
+                    "Circuit breaker closed (success)",
+                    error_key=error_key,
+                )
 
     def get_error_count(self, stage: PipelineStage, stage_id: StageId) -> int:
         """Get the error count for a specific stage component."""
@@ -135,7 +337,17 @@ class ErrorHandler:
         """Get a summary of all errors."""
         return {
             "total_errors": self.get_total_errors(),
+            "strategy": self.strategy.value,
             "errors_by_stage": self._error_counts.copy(),
+            "retry_counts": self._retry_counts.copy(),
+            "circuit_breaker_states": {
+                key: {
+                    "state": state["state"],
+                    "failure_count": state["failure_count"],
+                    "is_open": self._is_circuit_breaker_open(key),
+                }
+                for key, state in self._circuit_breaker_states.items()
+            },
             "last_errors": {
                 key: {
                     "error_type": error.error_type,
@@ -151,3 +363,5 @@ class ErrorHandler:
         """Reset all error tracking."""
         self._error_counts.clear()
         self._last_errors.clear()
+        self._retry_counts.clear()
+        self._circuit_breaker_states.clear()
