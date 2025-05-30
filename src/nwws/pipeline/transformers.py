@@ -246,7 +246,7 @@ class AttributeTransformer(Transformer):
 
 
 class PropertyTransformer(Transformer):
-    """Transformer that modifies specific properties of an event (alias for AttributeTransformer)."""
+    """Transformer that modifies specific properties of an event."""
 
     def __init__(
         self,
@@ -348,7 +348,11 @@ class TransformerRegistry:
         self._transformer_factories: dict[str, Callable[..., Transformer]] = {}
         self._register_builtin_transformers()
 
-    def register(self, transformer_type: str, factory: Callable[..., Transformer]) -> None:
+    def register(
+        self,
+        transformer_type: str,
+        factory: Callable[..., Transformer],
+    ) -> None:
         """Register a transformer factory.
 
         Args:

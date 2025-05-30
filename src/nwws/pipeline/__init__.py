@@ -16,7 +16,12 @@ from .config import (
     load_pipeline_config,
 )
 from .core import Pipeline, PipelineManager
-from .errors import ErrorHandler, ErrorHandlingStrategy, PipelineError, PipelineErrorEvent
+from .errors import (
+    ErrorHandler,
+    ErrorHandlingStrategy,
+    PipelineError,
+    PipelineErrorEvent,
+)
 from .filters import Filter, FilterRegistry
 from .outputs import Output, OutputRegistry
 from .stats import PipelineStats, PipelineStatsEvent
