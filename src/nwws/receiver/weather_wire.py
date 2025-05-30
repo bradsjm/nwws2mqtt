@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import slixmpp
+from dateutil import parser as date_parser
 from loguru import logger
 from slixmpp import JID
 from slixmpp.stanza import Message
@@ -260,7 +261,7 @@ class WeatherWire(slixmpp.ClientXMPP):
             return
 
         # Check if the message is from the expected MUC room
-        if msg.get_from().bare != JID(MUC_ROOM).bare:
+        if msg.get_mucroom() != JID(MUC_ROOM).bare:
             logger.debug(
                 f"Message not from {MUC_ROOM} room, skipping",
                 from_jid=msg["from"].bare,
@@ -330,6 +331,12 @@ class WeatherWire(slixmpp.ClientXMPP):
             noaaport = f"{noaaport}\r\r\n"
         noaaport = f"{noaaport}\x03"
 
+        # Calculate and record delay if present
+        if delay_stamp and self.stats_collector:
+            delay_ms = self._calculate_delay_ms(delay_stamp)
+            if delay_ms is not None:
+                self.stats_collector.record_delayed_message(delay_ms)
+
         logger.info(
             "received",
             subject=subject,
@@ -388,6 +395,42 @@ class WeatherWire(slixmpp.ClientXMPP):
         muc_room_jid = JID(MUC_ROOM)
         self.plugin["xep_0045"].leave_muc(muc_room_jid, self.nickname)
         logger.info("Unsubscribing from MUC room", room=MUC_ROOM)
+
+    def _calculate_delay_ms(self, delay_stamp: str) -> float | None:
+        """Calculate delay in milliseconds from delay stamp.
+
+        Args:
+            delay_stamp: ISO 8601 timestamp string like "2025-05-30 15:14:15.872000+00:00"
+
+        Returns:
+            Delay in milliseconds or None if parsing fails.
+
+        """
+        try:
+            # Parse the delay timestamp
+            delay_time = date_parser.isoparse(delay_stamp)
+
+            # Get current time in UTC
+            current_time = datetime.now(UTC)
+
+            # Calculate delay
+            delay_delta = current_time - delay_time
+
+            # Convert to milliseconds
+            delay_ms = delay_delta.total_seconds() * 1000
+
+            # Return positive delay only (ignore future timestamps)
+            if delay_ms > 0:
+                return delay_ms
+
+        except (ValueError, TypeError, OverflowError) as e:
+            logger.warning(
+                "Failed to parse delay timestamp",
+                delay_stamp=delay_stamp,
+                error=str(e),
+            )
+
+        return None
 
     async def _update_stats_periodically(self) -> None:
         """Periodically update gauge metrics that need regular refresh."""

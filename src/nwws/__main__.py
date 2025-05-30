@@ -247,6 +247,9 @@ class WeatherWireApp:
         # Add application-level metrics
         uptime_seconds = time.time() - self._start_time
 
+        # Get delay statistics
+        delay_stats = self.receiver_stats_collector.get_delay_stats()
+
         return {
             "application": {
                 "uptime_seconds": uptime_seconds,
@@ -255,9 +258,13 @@ class WeatherWireApp:
                 "pipeline_started": self.pipeline.is_started,
             },
             "pipeline": pipeline_stats,
+            "delay_statistics": delay_stats,
             "summary": {
                 "total_messages_received": self.stats.get_counter(
                     "weather-wire.messages.received",
+                ),
+                "total_delayed_messages": self.stats.get_counter(
+                    "weather-wire.messages.delayed",
                 ),
                 "total_connection_attempts": self.stats.get_counter(
                     "weather-wire.connection.attempts",
