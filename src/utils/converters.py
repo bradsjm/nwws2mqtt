@@ -1,6 +1,5 @@
 """Converter functions for transforming pyiem objects to Pydantic models."""
 
-import json
 from typing import TYPE_CHECKING
 
 from models.weather import HVTECModel, TextProductModel, TextProductSegmentModel, UGCModel, VTECModel
@@ -91,7 +90,7 @@ def convert_text_product_segment_to_model(
         squallTag=getattr(segment_obj, "squalltag", None),
         floodTags=dict(getattr(segment_obj, "flood_tags", {})),
         isEmergency=getattr(segment_obj, "is_emergency", False),
-        isPds=getattr(segment_obj, "is_pds", False),
+        isPDS=getattr(segment_obj, "is_pds", False),
         bulletPoints=list(getattr(segment_obj, "bullets", [])),
     )
 
@@ -157,21 +156,4 @@ def convert_text_product_to_model(
             if hasattr(product_obj, "parse_attn_rfc")
             else [],  # type: ignore[union-attr]
         },
-    )
-
-
-def product_to_json(text_product: TextProductModel) -> str | None:
-    """Convert a product model to JSON format for storage or transmission.
-
-    Args:
-        text_product: The product model instance to convert.
-
-    Returns:
-        str: JSON representation of the product model.
-
-    """
-    return json.dumps(
-        text_product.model_dump(mode="json", by_alias=True, exclude_defaults=True),
-        sort_keys=True,
-        separators=(",", ":"),
     )

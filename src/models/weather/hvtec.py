@@ -15,17 +15,17 @@ class HVTECModel(BaseModel):
     )
     severity: str = Field(description="HVTEC severity code.")
     cause: str = Field(description="HVTEC cause code.")
-    beginTS: datetime.datetime | None = Field(
+    beginTS: datetime.datetime | None = Field(  # noqa: N815
         default=None,
         description="Begin timestamp for the hydrologic event (UTC).",
         alias="beginTimestamp",
     )
-    crestTS: datetime.datetime | None = Field(
+    crestTS: datetime.datetime | None = Field(  # noqa: N815
         default=None,
         description="Crest timestamp for the hydrologic event (UTC).",
         alias="crestTimestamp",
     )
-    endTS: datetime.datetime | None = Field(
+    endTS: datetime.datetime | None = Field(  # noqa: N815
         default=None,
         description="End timestamp for the hydrologic event (UTC).",
         alias="endTimestamp",
