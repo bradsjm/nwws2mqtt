@@ -248,7 +248,7 @@ def health():
         "weather_wire_component_status",
         labels={"component": "connection"}
     )
-    
+
     if connection_status == 1.0:
         return {"status": "healthy"}
     else:
@@ -283,19 +283,3 @@ Key metrics to alert on:
 - `weather_wire_operation_results_total{result="failure"}` - Error rates
 - `weather_wire_last_message_age_seconds` - Data freshness
 - `pipeline_queue_size` - Processing backlog
-
-## Migration Guide
-
-### From Old Stats System
-
-The new metrics system maintains backward compatibility through adapter methods in `PipelineStats` and `WeatherWireStatsCollector`. Existing code continues to work while gaining access to the enhanced metrics capabilities.
-
-### Key Changes
-
-1. Metrics are now stored with explicit types (counter, gauge, histogram)
-2. Labels replace metric name concatenation for dimensions
-3. Timing metrics use histograms instead of raw value lists
-4. Thread-safe registry enables concurrent access
-5. Pluggable exporters support multiple monitoring backends
-
-The migration provides immediate benefits in monitoring capabilities while maintaining existing functionality.

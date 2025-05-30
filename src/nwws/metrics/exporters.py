@@ -134,20 +134,6 @@ class JSONExporter(MetricExporter):
         return time.time()
 
 
-class OpenTelemetryExporter(MetricExporter):
-    """Exporter for OpenTelemetry metrics format."""
-
-    def export(self) -> str:
-        """Export metrics in OpenTelemetry format."""
-        # This would integrate with OpenTelemetry SDK
-        # For now, return JSON format as placeholder
-        return JSONExporter(self.registry).export()
-
-    def get_content_type(self) -> str:
-        """Get the content type for OpenTelemetry format."""
-        return "application/json"
-
-
 class LogExporter(MetricExporter):
     """Exporter that logs metrics using structured logging."""
 

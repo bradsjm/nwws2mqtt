@@ -5,9 +5,10 @@ build/
 dist/
 wheels/
 *.egg-info
+.ruff_cache/
 
 # Virtual environments
-.venv
+.venv/
 
 # IDE and editor files
 .idea/
