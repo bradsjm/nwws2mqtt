@@ -30,6 +30,7 @@ class MQTTOutputConfig:
     username: str | None = None
     password: str | None = None
     topic_prefix: str = "nwws"
+    topic_pattern: str = "{prefix}/{cccc}/{product_type}/{awipsid}/{product_id}"
     qos: int = 1
     retain: bool = False
     client_id: str = "nwws-oi-pipeline-client"
@@ -77,6 +78,11 @@ class MQTTOutput(Output):
             username=config.mqtt_username,
             password=config.mqtt_password,
             topic_prefix=config.mqtt_topic_prefix,
+            topic_pattern=getattr(
+                config,
+                "mqtt_topic_pattern",
+                "{prefix}/{cccc}/{product_type}/{awipsid}/{product_id}",
+            ),
             qos=config.mqtt_qos,
             retain=config.mqtt_retain,
             client_id=config.mqtt_client_id,
@@ -189,11 +195,8 @@ class MQTTOutput(Output):
             return
 
         try:
-            # Create topic based on source, AFOS, and product ID
-            # Using cccc as source and awipsid as afos for topic structure
-            topic = (
-                f"{self.config.topic_prefix}/{event.cccc}/{event.awipsid}/{event.id}"
-            )
+            # Create topic using configured pattern and dynamic component resolution
+            topic = self._build_topic(event)
 
             # Create properties for message expiry only if retain is enabled
             properties = None
@@ -371,6 +374,59 @@ class MQTTOutput(Output):
 
         self._published_topics.clear()
 
+    def _get_product_type_indicator(self, event: TextProductEventData) -> str:
+        """Determine the product type indicator for topic structure.
+
+        Uses VTEC phenomena.significance if available, otherwise first 3 letters of AWIPS ID.
+
+        Args:
+            event: The text product event data.
+
+        Returns:
+            Product type indicator string for topic construction.
+
+        """
+        # Check for VTEC codes in product segments
+        if event.product.segments:
+            for segment in event.product.segments:
+                if segment.vtec:
+                    # Use the first VTEC record's phenomena and significance
+                    first_vtec = segment.vtec[0]
+                    return f"{first_vtec.phenomena}.{first_vtec.significance}"
+
+        # Fallback to first 3 letters of AWIPS ID for non-VTEC products
+        if event.awipsid and len(event.awipsid) >= 3:
+            return event.awipsid[:3].upper()
+
+        # Final fallback for products without VTEC or sufficient AWIPS ID
+        return "GENERAL"
+
+    def _build_topic(self, event: TextProductEventData) -> str:
+        """Build MQTT topic using configured pattern and event data.
+
+        Args:
+            event: The text product event data.
+
+        Returns:
+            Formatted MQTT topic string.
+
+        """
+        # Get dynamic components
+        product_type = self._get_product_type_indicator(event)
+        awipsid = event.awipsid if event.awipsid else "NO_AWIPSID"
+
+        # Build topic components dictionary for pattern substitution
+        topic_components = {
+            "prefix": self.config.topic_prefix.strip(),
+            "cccc": event.cccc.strip(),
+            "product_type": product_type,
+            "awipsid": awipsid.strip(),
+            "product_id": event.id.strip(),
+        }
+
+        # Format topic using configured pattern
+        return self.config.topic_pattern.format(**topic_components)
+
 
 def mqtt_factory_create(output_id: str, **config: Any) -> MQTTOutput:
     """Create MQTT output from configuration.
@@ -384,5 +440,8 @@ def mqtt_factory_create(output_id: str, **config: Any) -> MQTTOutput:
 
     """
     broker = config.pop("broker", "localhost")
-    mqtt_config = MQTTOutputConfig(broker=broker, **config)
+    topic_pattern = config.pop(
+        "topic_pattern", "{prefix}/{cccc}/{product_type}/{awipsid}/{product_id}"
+    )
+    mqtt_config = MQTTOutputConfig(broker=broker, topic_pattern=topic_pattern, **config)
     return MQTTOutput(output_id=output_id, config=mqtt_config)
