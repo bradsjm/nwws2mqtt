@@ -18,7 +18,7 @@ from nwws.metrics.api_server import MetricApiServer
 from nwws.models import Config
 from nwws.models.events import NoaaPortEventData
 from nwws.outputs.console import ConsoleOutput
-from nwws.outputs.mqtt import mqtt_factory_create
+from nwws.outputs.mqtt import MQTTOutput
 from nwws.pipeline import Pipeline
 from nwws.pipeline.errors import PipelineErrorHandler
 from nwws.pipeline.stats import PipelineStatsCollector
@@ -105,13 +105,13 @@ class WeatherWireApp:
                     XmlTransformer(),
                 ],
             ),
-            outputs=[
-                ConsoleOutput(pretty=True),
-                mqtt_factory_create(output_id="mqtt-output"),
-            ],
+            outputs=[ConsoleOutput(pretty=True)],
             stats_collector=self.pipeline_stats_collector,
             error_handler=error_handler,
         )
+
+        if self.config.mqtt_config:
+            self.pipeline.outputs.append(MQTTOutput(config=self.config.mqtt_config))
 
         logger.info("Pipeline configured", pipeline_id=self.pipeline.pipeline_id)
 

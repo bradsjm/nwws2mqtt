@@ -6,44 +6,26 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import time
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import paho.mqtt.client as mqtt
 from loguru import logger
 from paho.mqtt.packettypes import PacketTypes
 from paho.mqtt.properties import Properties
 
-from nwws.models.events import NoaaPortEventData, TextProductEventData
+from nwws.models.events import TextProductEventData
 from nwws.models.events.xml_event_data import XmlEventData
 from nwws.pipeline import Output, PipelineEvent
+from nwws.utils import build_topic
 
 if TYPE_CHECKING:
     from models.mqtt_config import MqttConfig
-
-DEFAULT_TOPIC_PATTERN = "{prefix}/{cccc}/{product_type}/{awipsid}/{product_id}"
-
-
-@dataclass
-class MQTTOutputConfig:
-    """Configuration for MQTT output."""
-
-    broker: str
-    port: int = 1883
-    username: str | None = None
-    password: str | None = None
-    topic_prefix: str = "nwws"
-    topic_pattern: str = DEFAULT_TOPIC_PATTERN
-    qos: int = 1
-    retain: bool = False
-    client_id: str = "nwws-oi-pipeline-client"
-    message_expiry_minutes: int = 60
 
 
 class MQTTOutput(Output):
     """Output that publishes pipeline events to MQTT broker."""
 
-    def __init__(self, output_id: str = "mqtt", *, config: MQTTOutputConfig) -> None:
+    def __init__(self, output_id: str = "mqtt", *, config: MqttConfig) -> None:
         """Initialize the MQTT output.
 
         Args:
@@ -60,39 +42,6 @@ class MQTTOutput(Output):
         self._published_topics: dict[str, float] = {}  # topic -> timestamp
         self._cleanup_task: asyncio.Task[None] | None = None
 
-    @classmethod
-    def from_config(cls, output_id: str, config: MqttConfig) -> MQTTOutput:
-        """Create MQTT output from configuration.
-
-        Args:
-            output_id: Unique identifier for this output.
-            config: MQTT configuration object.
-
-        Returns:
-            Configured MQTT output instance.
-
-        Raises:
-            MQTTConfigurationError: If broker is not configured.
-
-        """
-        mqtt_config = MQTTOutputConfig(
-            broker=config.mqtt_broker or "localhost",
-            port=config.mqtt_port or 1883,
-            username=config.mqtt_username,
-            password=config.mqtt_password,
-            topic_prefix=config.mqtt_topic_prefix,
-            topic_pattern=getattr(
-                config,
-                "mqtt_topic_pattern",
-                DEFAULT_TOPIC_PATTERN,
-            ),
-            qos=config.mqtt_qos,
-            retain=config.mqtt_retain,
-            client_id=config.mqtt_client_id,
-            message_expiry_minutes=config.mqtt_message_expiry_minutes,
-        )
-        return cls(output_id=output_id, config=mqtt_config)
-
     async def start(self) -> None:
         """Start MQTT client and connect to broker."""
         await super().start()
@@ -105,15 +54,17 @@ class MQTTOutput(Output):
 
         try:
             # Create MQTT client
-            self._client = mqtt.Client(client_id=self.config.client_id)
+            self._client = mqtt.Client(client_id=self.config.mqtt_client_id)
 
             # Set callbacks
             self._client.on_connect = self._on_connect
             self._client.on_disconnect = self._on_disconnect
 
             # Set credentials if provided
-            if self.config.username and self.config.password:
-                self._client.username_pw_set(self.config.username, self.config.password)
+            if self.config.mqtt_username and self.config.mqtt_password:
+                self._client.username_pw_set(
+                    self.config.mqtt_username, self.config.mqtt_password
+                )
 
             # Start the client loop
             self._client.loop_start()
@@ -122,14 +73,14 @@ class MQTTOutput(Output):
             logger.info(
                 "Connecting to MQTT broker",
                 output_id=self.output_id,
-                broker=self.config.broker,
-                port=self.config.port,
+                broker=self.config.mqtt_broker,
+                port=self.config.mqtt_port,
             )
 
-            self._client.connect(self.config.broker, self.config.port, 60)
+            self._client.connect(self.config.mqtt_broker, self.config.mqtt_port, 60)
 
             # Start cleanup task if retention is enabled
-            if self.config.retain:
+            if self.config.mqtt_retain:
                 self._cleanup_task = asyncio.create_task(
                     self._cleanup_expired_messages(),
                 )
@@ -156,7 +107,7 @@ class MQTTOutput(Output):
                 await self._cleanup_task
 
         # Cleanup retained messages if configured
-        if self.config.retain:
+        if self.config.mqtt_retain:
             await self._cleanup_all_messages()
 
         if self._client:
@@ -181,7 +132,7 @@ class MQTTOutput(Output):
             event: The pipeline event to send.
 
         """
-        if not isinstance(event, NoaaPortEventData):
+        if not (isinstance(event, (XmlEventData, TextProductEventData))):
             logger.debug(
                 "Skipping unknown event",
                 output_id=self.output_id,
@@ -199,13 +150,13 @@ class MQTTOutput(Output):
 
         try:
             # Create topic using configured pattern and dynamic component resolution
-            topic = self._build_topic(event)
+            topic = build_topic(event=event, prefix=self.config.mqtt_topic_prefix)
 
             # Create properties for message expiry only if retain is enabled
             properties = None
-            if self.config.retain:
+            if self.config.mqtt_retain:
                 properties = Properties(PacketTypes.PUBLISH)
-                expiry_seconds = self.config.message_expiry_minutes * 60
+                expiry_seconds = self.config.mqtt_message_expiry_minutes * 60
                 properties.MessageExpiryInterval = expiry_seconds
 
             # The event's __str__ method should return a valid string representation
@@ -215,14 +166,14 @@ class MQTTOutput(Output):
             result = self._client.publish(
                 topic,
                 payload,
-                qos=self.config.qos,
-                retain=self.config.retain,
+                qos=self.config.mqtt_qos,
+                retain=self.config.mqtt_retain,
                 properties=properties,
             )
 
             if result.rc == mqtt.MQTT_ERR_SUCCESS:
                 # Track the published topic with timestamp only if retain is enabled
-                if self.config.retain:
+                if self.config.mqtt_retain:
                     self._published_topics[topic] = time.time()
                 logger.info(
                     "Published to MQTT",
@@ -286,7 +237,7 @@ class MQTTOutput(Output):
     async def _cleanup_expired_messages(self) -> None:
         """Periodically clean up expired messages."""
         cleanup_interval = 60  # Check every minute
-        expiry_seconds = self.config.message_expiry_minutes * 60
+        expiry_seconds = self.config.mqtt_message_expiry_minutes * 60
 
         while True:
             try:
@@ -376,83 +327,3 @@ class MQTTOutput(Output):
                 )
 
         self._published_topics.clear()
-
-    def _get_product_type_indicator(self, event: TextProductEventData) -> str:
-        """Determine the product type indicator for topic structure.
-
-        Uses VTEC phenomena.significance if available, otherwise first 3 letters of AWIPS ID.
-
-        Args:
-            event: The text product event data.
-
-        Returns:
-            Product type indicator string for topic construction.
-
-        """
-        # Check for VTEC codes in product segments
-        if event.product.segments:
-            for segment in event.product.segments:
-                if segment.vtec:
-                    # Use the first VTEC record's phenomena and significance
-                    first_vtec = segment.vtec[0]
-                    return f"{first_vtec.phenomena}.{first_vtec.significance}"
-
-        # Fallback to first 3 letters of AWIPS ID for non-VTEC products
-        if event.awipsid and len(event.awipsid) >= 3:
-            return event.awipsid[:3].upper()
-
-        # Final fallback for products without VTEC or sufficient AWIPS ID
-        return "GENERAL"
-
-    def _build_topic(self, event: NoaaPortEventData) -> str:
-        """Build MQTT topic using configured pattern and event data.
-
-        Args:
-            event: The text product event data.
-
-        Returns:
-            Formatted MQTT topic string.
-
-        """
-        # Get Product Type Indicator
-        if isinstance(event, TextProductEventData):
-            product_type = self._get_product_type_indicator(event)
-        elif isinstance(event, XmlEventData):
-            product_type = "XML"
-        else:
-            product_type = "UNKNOWN"
-
-        # Use AWIPS ID or default if not available
-        awipsid = event.awipsid if event.awipsid else "NO_AWIPSID"
-
-        # Build topic components dictionary for pattern substitution
-        topic_components = {
-            "prefix": self.config.topic_prefix.strip(),
-            "cccc": event.cccc.strip(),
-            "product_type": product_type,
-            "awipsid": awipsid.strip(),
-            "product_id": event.id.strip(),
-            "content_type": event.content_type,
-        }
-
-        # Format topic using configured pattern
-        return self.config.topic_pattern.format(**topic_components)
-
-
-def mqtt_factory_create(output_id: str, **config: Any) -> MQTTOutput:
-    """Create MQTT output from configuration.
-
-    Args:
-        output_id: Unique identifier for the output.
-        **config: Configuration parameters for the MQTT output.
-
-    Returns:
-        Configured MQTT output instance.
-
-    """
-    broker = config.pop("broker", "localhost")
-    topic_pattern = config.pop(
-        "topic_pattern", "{prefix}/{cccc}/{product_type}/{awipsid}/{product_id}"
-    )
-    mqtt_config = MQTTOutputConfig(broker=broker, topic_pattern=topic_pattern, **config)
-    return MQTTOutput(output_id=output_id, config=mqtt_config)

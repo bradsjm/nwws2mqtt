@@ -5,8 +5,10 @@ from unittest.mock import MagicMock
 
 from nwws.models.events import TextProductEventData
 from nwws.models.weather import TextProductModel, TextProductSegmentModel, VTECModel
-from nwws.outputs.mqtt import MQTTOutput, MQTTOutputConfig
+from nwws.outputs.mqtt import MQTTOutput
+from nwws.models import MqttConfig
 from nwws.pipeline import PipelineEventMetadata
+from nwws.utils import build_topic
 
 
 from typing import List, Optional, Dict, TypedDict
@@ -14,15 +16,14 @@ from typing import List, Optional, Dict, TypedDict
 class TestMQTTTopicStructure:
     """Test MQTT topic structure construction."""
 
-    config: MQTTOutputConfig
+    config: MqttConfig
     mqtt_output: MQTTOutput
 
     def setup_method(self) -> None:
         """Set up test fixtures."""
-        self.config = MQTTOutputConfig(
-            broker="localhost",
-            topic_prefix="nwws",
-            topic_pattern="{prefix}/{cccc}/{product_type}/{awipsid}/{product_id}"
+        self.config = MqttConfig(
+            mqtt_broker="localhost",
+            mqtt_topic_prefix="nwws"
         )
         self.mqtt_output = MQTTOutput("test", config=self.config)
 
@@ -175,27 +176,6 @@ class TestMQTTTopicStructure:
         expected = "nwws/KPHI/GENERAL/NO_AWIPSID/202307131700-KPHI-UNKNOWN"
         assert result == expected
 
-    def test_custom_topic_pattern(self) -> None:
-        """Test topic building with custom pattern."""
-        custom_config = MQTTOutputConfig(
-            broker="localhost",
-            topic_prefix="weather",
-            topic_pattern="{prefix}/{product_type}/{cccc}/{product_id}"
-        )
-        mqtt_output = MQTTOutput("test", config=custom_config)
-
-        tornado_warning = self.create_vtec_model("TO", "W")
-        event = self.create_mock_event(
-            cccc="KALY",
-            awipsid="TORALY",
-            product_id="test-123",
-            vtec_records=[tornado_warning]
-        )
-
-        result = mqtt_output._build_topic(event)  # type: ignore[protected-access]
-        expected = "weather/TO.W/KALY/test-123"
-        assert result == expected
-
     def test_filtering_scenarios(self) -> None:
         """Test various filtering scenarios that users might want."""
         class TestCaseFilterDict(TypedDict):
@@ -253,7 +233,7 @@ class TestMQTTTopicStructure:
                 vtec_records=case["vtec"]
             )
 
-            result = self.mqtt_output._build_topic(event)  # type: ignore[protected-access]
+            result = build_topic(event)  # type: ignore[protected-access]
             assert result == case["expected_topic"]
 
             # Verify that the topic would match expected filter patterns

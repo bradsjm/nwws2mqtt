@@ -8,10 +8,8 @@ from dataclasses import dataclass
 class MqttConfig:
     """Configuration class for output handlers."""
 
-    enabled_handlers: list[str]
-
     # MQTT Configuration
-    mqtt_broker: str | None = None
+    mqtt_broker: str = "localhost"
     mqtt_port: int = 1883
     mqtt_username: str | None = None
     mqtt_password: str | None = None
@@ -24,12 +22,8 @@ class MqttConfig:
     @classmethod
     def from_env(cls) -> "MqttConfig":
         """Create output config from environment variables."""
-        handlers_str = os.getenv("OUTPUT_HANDLERS", "console")
-        enabled_handlers = [h.strip() for h in handlers_str.split(",") if h.strip()]
-
         return cls(
-            enabled_handlers=enabled_handlers,
-            mqtt_broker=os.getenv("MQTT_BROKER"),
+            mqtt_broker=os.getenv("MQTT_BROKER", "localhost"),
             mqtt_port=int(os.getenv("MQTT_PORT", "1883")),
             mqtt_username=os.getenv("MQTT_USERNAME"),
             mqtt_password=os.getenv("MQTT_PASSWORD"),
