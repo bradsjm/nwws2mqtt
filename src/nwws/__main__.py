@@ -11,19 +11,22 @@ from types import FrameType, TracebackType
 from dotenv import load_dotenv
 from loguru import logger
 
-from nwws.filters import TestMessageFilter
+from nwws.filters.duplicate_filter import DuplicateFilter
+from nwws.filters.test_msg_filter import TestMessageFilter
 from nwws.metrics import MetricRegistry
 from nwws.metrics.api_server import MetricApiServer
 from nwws.models import Config
 from nwws.models.events import NoaaPortEventData
+from nwws.outputs.console import ConsoleOutput
 from nwws.outputs.mqtt import mqtt_factory_create
 from nwws.pipeline import Pipeline
 from nwws.pipeline.errors import PipelineErrorHandler
 from nwws.pipeline.stats import PipelineStatsCollector
+from nwws.pipeline.transformers import ChainTransformer
 from nwws.pipeline.types import PipelineEventMetadata, PipelineStage
 from nwws.receiver import WeatherWire, WeatherWireConfig, WeatherWireMessage
 from nwws.receiver.stats import WeatherWireStatsCollector
-from nwws.transformers import NoaaPortTransformer
+from nwws.transformers import NoaaPortTransformer, XmlTransformer
 from nwws.utils import LoggingConfig
 
 # Load environment variables from .env file
@@ -94,9 +97,18 @@ class WeatherWireApp:
         error_handler = PipelineErrorHandler()
         self.pipeline: Pipeline = Pipeline(
             pipeline_id="pipeline",
-            filters=[TestMessageFilter(filter_id="test-messages")],
-            transformer=NoaaPortTransformer(transformer_id="noaaport"),
-            outputs=[mqtt_factory_create(output_id="mqtt-server")],
+            filters=[DuplicateFilter(), TestMessageFilter()],
+            transformer=ChainTransformer(
+                transformer_id="chain",
+                transformers=[
+                    NoaaPortTransformer(),
+                    XmlTransformer(),
+                ],
+            ),
+            outputs=[
+                ConsoleOutput(pretty=True),
+                mqtt_factory_create(output_id="mqtt-output"),
+            ],
             stats_collector=self.pipeline_stats_collector,
             error_handler=error_handler,
         )
@@ -146,6 +158,7 @@ class WeatherWireApp:
                 subject=event.subject,
                 ttaaii=event.ttaaii,
                 delay_stamp=event.delay_stamp,
+                content_type="application/octet-stream",
                 metadata=PipelineEventMetadata(
                     source="weather-wire-receiver",
                     stage=PipelineStage.INGEST,
@@ -154,7 +167,7 @@ class WeatherWireApp:
             )
             await self.pipeline.process(pipeline_event)
             logger.debug(
-                "Weather wire event submitted to pipeline",
+                "Weather wire data submitted to pipeline",
                 event_id=pipeline_event.metadata.event_id,
                 product_id=pipeline_event.id,
                 subject=pipeline_event.subject,

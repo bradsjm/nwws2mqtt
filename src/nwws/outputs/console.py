@@ -1,9 +1,10 @@
 # pyright: strict
 """Console output for pipeline events using Rich console."""
 
+from loguru import logger
 from rich.console import Console
 
-from nwws.models.events import TextProductEventData
+from nwws.models.events.noaa_port_event_data import NoaaPortEventData
 from nwws.pipeline import Output, PipelineEvent
 
 
@@ -17,11 +18,13 @@ class ConsoleOutput(Output):
         self.pretty = pretty
 
     async def send(self, event: PipelineEvent) -> None:
-        """Send the event to console as JSON."""
-        if isinstance(event, TextProductEventData):
-            json = event.product.model_dump_json(
-                indent=2 if self.pretty else None,
-                exclude_defaults=True,
-                by_alias=True,
+        """Send the event to console."""
+        if not isinstance(event, NoaaPortEventData):
+            logger.debug(
+                "Skipping non-text product event",
+                output_id=self.output_id,
+                event_type=type(event).__name__,
             )
-            self.console.print(json)
+            return
+
+        self.console.print(str(event))

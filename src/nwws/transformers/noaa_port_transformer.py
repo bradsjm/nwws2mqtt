@@ -23,39 +23,44 @@ class NoaaPortTransformer(Transformer):
 
     def transform(self, event: PipelineEvent) -> PipelineEvent:
         """Handle incoming NOAA Port event and convert to a product."""
-        if isinstance(event, NoaaPortEventData):
-            product = convert_text_product_to_model(
-                parser(text=event.noaaport, ugc_provider={}),
-            )
-
+        if not isinstance(event, NoaaPortEventData):
             logger.debug(
-                "Transformed Raw Content to Text Product Model",
-                event_id=event.metadata.event_id,
-                product_id=event.id,
-                subject=event.subject,
+                "Event is not NoaaPortEventData, passing through",
+                event_type=type(event).__name__,
             )
+            return event
 
-            # Update metadata
-            new_metadata = PipelineEventMetadata(
-                event_id=event.metadata.event_id,
-                source=self.transformer_id,
-                stage=PipelineStage.TRANSFORM,
-                trace_id=event.metadata.trace_id,
-                custom=event.metadata.custom.copy(),
-            )
+        product = convert_text_product_to_model(
+            parser(text=event.noaaport, ugc_provider={}),
+        )
 
-            # Create new event data
-            return TextProductEventData(
-                metadata=new_metadata,
-                awipsid=event.awipsid,
-                cccc=event.cccc,
-                id=event.id,
-                issue=event.issue,
-                product=product,
-                subject=event.subject,
-                ttaaii=event.ttaaii,
-                delay_stamp=event.delay_stamp,
-            )
+        logger.debug(
+            "Transformed Raw Content to Text Product Model",
+            event_id=event.metadata.event_id,
+            product_id=event.id,
+            subject=event.subject,
+        )
 
-        """Pass through event if not NoaaPortEventData"""
-        return event
+        # Update metadata
+        new_metadata = PipelineEventMetadata(
+            event_id=event.metadata.event_id,
+            source=self.transformer_id,
+            stage=PipelineStage.TRANSFORM,
+            trace_id=event.metadata.trace_id,
+            custom=event.metadata.custom.copy(),
+        )
+
+        # Create new event data
+        return TextProductEventData(
+            metadata=new_metadata,
+            awipsid=event.awipsid,
+            cccc=event.cccc,
+            id=event.id,
+            issue=event.issue,
+            product=product,
+            subject=event.subject,
+            ttaaii=event.ttaaii,
+            delay_stamp=event.delay_stamp,
+            noaaport=event.noaaport,
+            content_type="text/plain",
+        )

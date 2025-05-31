@@ -14,11 +14,14 @@ from loguru import logger
 from paho.mqtt.packettypes import PacketTypes
 from paho.mqtt.properties import Properties
 
-from nwws.models.events import TextProductEventData
+from nwws.models.events import NoaaPortEventData, TextProductEventData
+from nwws.models.events.xml_event_data import XmlEventData
 from nwws.pipeline import Output, PipelineEvent
 
 if TYPE_CHECKING:
     from models.mqtt_config import MqttConfig
+
+DEFAULT_TOPIC_PATTERN = "{prefix}/{cccc}/{product_type}/{awipsid}/{product_id}"
 
 
 @dataclass
@@ -30,7 +33,7 @@ class MQTTOutputConfig:
     username: str | None = None
     password: str | None = None
     topic_prefix: str = "nwws"
-    topic_pattern: str = "{prefix}/{cccc}/{product_type}/{awipsid}/{product_id}"
+    topic_pattern: str = DEFAULT_TOPIC_PATTERN
     qos: int = 1
     retain: bool = False
     client_id: str = "nwws-oi-pipeline-client"
@@ -81,7 +84,7 @@ class MQTTOutput(Output):
             topic_pattern=getattr(
                 config,
                 "mqtt_topic_pattern",
-                "{prefix}/{cccc}/{product_type}/{awipsid}/{product_id}",
+                DEFAULT_TOPIC_PATTERN,
             ),
             qos=config.mqtt_qos,
             retain=config.mqtt_retain,
@@ -178,9 +181,9 @@ class MQTTOutput(Output):
             event: The pipeline event to send.
 
         """
-        if not isinstance(event, TextProductEventData):
+        if not isinstance(event, NoaaPortEventData):
             logger.debug(
-                "Skipping non-text product event",
+                "Skipping unknown event",
                 output_id=self.output_id,
                 event_type=type(event).__name__,
             )
@@ -205,10 +208,8 @@ class MQTTOutput(Output):
                 expiry_seconds = self.config.message_expiry_minutes * 60
                 properties.MessageExpiryInterval = expiry_seconds
 
-            payload = event.product.model_dump_json(
-                exclude_defaults=True,
-                by_alias=True,
-            )
+            # The event's __str__ method should return a valid string representation
+            payload = str(event)
 
             # Publish message
             result = self._client.publish(
@@ -229,6 +230,7 @@ class MQTTOutput(Output):
                     event_id=event.metadata.event_id,
                     product_id=event.id,
                     topic=topic,
+                    content_type=event.content_type,
                 )
             else:
                 logger.warning(
@@ -238,6 +240,7 @@ class MQTTOutput(Output):
                     return_code=result.rc,
                     topic=topic,
                     product_id=event.id,
+                    content_type=event.content_type,
                 )
 
         except (ConnectionError, OSError, ValueError) as e:
@@ -401,7 +404,7 @@ class MQTTOutput(Output):
         # Final fallback for products without VTEC or sufficient AWIPS ID
         return "GENERAL"
 
-    def _build_topic(self, event: TextProductEventData) -> str:
+    def _build_topic(self, event: NoaaPortEventData) -> str:
         """Build MQTT topic using configured pattern and event data.
 
         Args:
@@ -411,8 +414,15 @@ class MQTTOutput(Output):
             Formatted MQTT topic string.
 
         """
-        # Get dynamic components
-        product_type = self._get_product_type_indicator(event)
+        # Get Product Type Indicator
+        if isinstance(event, TextProductEventData):
+            product_type = self._get_product_type_indicator(event)
+        elif isinstance(event, XmlEventData):
+            product_type = "XML"
+        else:
+            product_type = "UNKNOWN"
+
+        # Use AWIPS ID or default if not available
         awipsid = event.awipsid if event.awipsid else "NO_AWIPSID"
 
         # Build topic components dictionary for pattern substitution
@@ -422,6 +432,7 @@ class MQTTOutput(Output):
             "product_type": product_type,
             "awipsid": awipsid.strip(),
             "product_id": event.id.strip(),
+            "content_type": event.content_type,
         }
 
         # Format topic using configured pattern

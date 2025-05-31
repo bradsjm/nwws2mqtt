@@ -66,7 +66,9 @@ class TestMQTTTopicStructure:
                 issue=datetime(2023, 7, 13, 19, 15, 0),
                 subject="Test Product",
                 ttaaii="WFUS51",
-                delay_stamp=None
+                delay_stamp=None,
+                content_type="text/plain",
+                noaaport="Test message content"
             )
 
     def create_vtec_model(self, phenomena: str = "TO", significance: str = "W") -> VTECModel:

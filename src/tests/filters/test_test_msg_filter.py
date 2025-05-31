@@ -40,6 +40,7 @@ def test_message_event(test_event_metadata: PipelineEventMetadata) -> NoaaPortEv
         subject="Test Message",
         ttaaii="TEST01",
         delay_stamp=None,
+        content_type="text/plain",
     )
 
 
@@ -56,6 +57,7 @@ def normal_event(test_event_metadata: PipelineEventMetadata) -> NoaaPortEventDat
         subject="Area Forecast Discussion",
         ttaaii="SXUS44",
         delay_stamp=None,
+        content_type="text/plain",
     )
 
 
@@ -101,6 +103,7 @@ class TestTestMessageFilter:
             subject="Test Message",
             ttaaii="TEST01",
             delay_stamp=None,
+            content_type="text/plain",
         )
         
         filter_instance = TestMessageFilter()
@@ -121,6 +124,7 @@ class TestTestMessageFilter:
             subject="Test Message",
             ttaaii="TEST01",
             delay_stamp=None,
+            content_type="text/plain",
         )
         
         filter_instance = TestMessageFilter()
@@ -169,6 +173,7 @@ class TestTestMessageFilter:
             subject="Test Message",
             ttaaii="TEST01",
             delay_stamp=None,
+            content_type="text/plain",
         )
         
         filter_instance = TestMessageFilter()
@@ -201,6 +206,7 @@ class TestTestMessageFilter:
             subject="Test Message",
             ttaaii="TEST01",
             delay_stamp=None,
+            content_type="text/plain",
         )
         
         filter_instance = TestMessageFilter()
@@ -221,6 +227,7 @@ class TestTestMessageFilter:
             subject="Test Message",
             ttaaii="TEST01",
             delay_stamp=None,
+            content_type="text/plain",
         )
         
         filter_instance = TestMessageFilter()

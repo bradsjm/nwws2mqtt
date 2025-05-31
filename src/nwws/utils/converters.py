@@ -138,7 +138,7 @@ def convert_text_product_segment_to_model(
         isPDS=getattr(segment_obj, "is_pds", False),
         bulletPoints=list(getattr(segment_obj, "bullets", [])),
         affectedWfoList=affected_wfo_list,
-        specialTagsText=special_tags_text,
+        specialTagsText=special_tags_text or None,
     )
 
 
@@ -187,9 +187,9 @@ def convert_text_product_to_model(
             "nicedate": product_obj.get_nicedate()
             if hasattr(product_obj, "get_nicedate")
             else None,
-            "main_headline": product_obj.get_main_headline("")
+            "main_headline": (product_obj.get_main_headline() or None)
             if hasattr(product_obj, "get_main_headline")
-            else "",
+            else None,
             "signature": product_obj.get_signature()
             if hasattr(product_obj, "get_signature")
             else None,
