@@ -11,8 +11,10 @@ authors = [
 keywords = ["noaa", "nwws", "nwws-oi"]
 dependencies = [
   "fastapi>=0.115.12",
+  "geopandas>=1.0.1",
   "loguru>=0.7.0",
   "paho-mqtt>=2.1.0",
+  "pandas-stubs>=2.2.3.250527",
   "psycopg[binary]>=3.2.9",
   "pydantic>=2.11.5",
   "pyiem>=1.23.0",
@@ -34,6 +36,7 @@ dev = [
   "pyyaml>=6.0.2",
   "ruff>=0.11.12",
   "basedpyright>=1.29.2",
+  "pandas-stubs>=2.2.3.250527",
 ]
 
 [tool.pytest.ini_options]
