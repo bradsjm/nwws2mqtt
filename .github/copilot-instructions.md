@@ -1,7 +1,9 @@
 # Python Code Generation Instructions (Python 3.12+)
 
-## Tools
-- Use `get-library-docs` with `resolve-library-id` for all third party libraries to ensure latest documentation is available.
+## Libraries
+- **Standard Libraries:** Prefer built-in libraries over 3rd party when possible.
+- **3rd Party Libraries:** Use only well-maintained libraries with active communities. Avoid libraries with known security vulnerabilities or poor documentation.
+- **Documentation**: Use `get-library-docs` with `resolve-library-id` tools for 3rd party documentation.
 
 ## Type System (Pyright Strict)
 - **Target Version:** Use Python 3.12+ features (e.g. pattern matching, Self type).
@@ -35,12 +37,13 @@
 - **Data Representation:** Use dataclasses or pydantic models for structured data.
 - **Properties:** Use `@property` for managed attribute access.
 - **Efficiency:** Use comprehensions and generators for data transformation and large datasets.
-- **Output & Logging:** Use the `logging` module for output; never use `print()`.
+- **Output & Logging:** Use the existing logging library (or `logging` if none) for output; never use `print()`.
 - **Design Patterns:** Apply idiomatic patterns (e.g., context managers, factories) where it will reduce complexity or improve understandability.
 - **Inline Simple Functions:** Avoid creating functions that have only a single line of code; prefer to inline such logic directly.
 
 ## Error Handling
-- **Granular Exceptions:** Always catch specific exceptions (e.g., `except ValueError:`, `except requests.HTTPError:`) for external or I/O operations. AVOID bare except blocks.
+- **Granular Exceptions:** Always catch specific exceptions (e.g., `except ValueError:`, `except requests.HTTPError:`) for external or I/O operations.
+- **AVOID** bare except blocks except as a fallback for unexpected errors with # noqa: BLE001 comment.
 
 ## Documentation
 - **Docstrings:** Add PEP 257 docstrings for all public modules, classes, functions, and methods.

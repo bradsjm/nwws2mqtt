@@ -97,7 +97,6 @@ class Histogram:
             2500.0,
             5000.0,
             10000.0,
-            float("inf"),
         ]
         return cls(buckets=buckets)
 

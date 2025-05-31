@@ -7,21 +7,21 @@ import time
 from asyncio import CancelledError
 from collections.abc import Callable
 from types import FrameType, TracebackType
-from typing import Any
 
 from dotenv import load_dotenv
 from loguru import logger
 
 from nwws.filters import TestMessageFilter
 from nwws.metrics import MetricRegistry
-from nwws.models import Config, XMPPConfig
+from nwws.metrics.api_server import MetricApiServer
+from nwws.models import Config
 from nwws.models.events import NoaaPortEventData
 from nwws.outputs.mqtt import mqtt_factory_create
 from nwws.pipeline import Pipeline
-from nwws.pipeline.errors import ErrorHandler
+from nwws.pipeline.errors import PipelineErrorHandler
 from nwws.pipeline.stats import PipelineStatsCollector
 from nwws.pipeline.types import PipelineEventMetadata, PipelineStage
-from nwws.receiver import WeatherWire, WeatherWireMessage
+from nwws.receiver import WeatherWire, WeatherWireConfig, WeatherWireMessage
 from nwws.receiver.stats import WeatherWireStatsCollector
 from nwws.transformers import NoaaPortTransformer
 from nwws.utils import LoggingConfig
@@ -47,23 +47,31 @@ class WeatherWireApp:
         # Setup enhanced logging
         LoggingConfig.configure(config.log_level, config.log_file)
 
+        # Initialize metric registry for application metrics
+        self.metric_registry = MetricRegistry()
+        self.metric_api = MetricApiServer(self.metric_registry)
+
         # Setup signal handlers for graceful shutdown
         signal_handler: SignalHandler = self._signal_handler
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
 
-        # Create pipeline first to get shared stats
+        # Create processing pipeline
         self._setup_pipeline()
 
-        # Create Weather Wire receiver with XMPP configuration and stats
-        xmpp_config = XMPPConfig(
-            username=config.username,
-            password=config.password,
-            server=config.server,
-            port=config.port,
+        # Create Weather Wire receiver
+        self._setup_receiver()
+
+    def _setup_receiver(self) -> None:
+        """Initialize the Weather Wire receiver with XMPP configuration."""
+        xmpp_config = WeatherWireConfig(
+            username=self.config.nwws_username,
+            password=self.config.nwws_password,
+            server=self.config.nwws_server,
+            port=self.config.nwws_port,
         )
 
-        # Create receiver stats collector using the same metric registry as pipeline
+        # Create receiver stats collector
         self.receiver_stats_collector = WeatherWireStatsCollector(
             self.metric_registry,
             "weather_wire",
@@ -71,34 +79,21 @@ class WeatherWireApp:
 
         self.receiver = WeatherWire(
             config=xmpp_config,
-            callback=self._receive_weather_message_feed,
+            callback=self._handle_weather_wire_message,
             stats_collector=self.receiver_stats_collector,
         )
 
-    def _validate_config(self, config: Config) -> None:
-        """Validate critical configuration parameters."""
-        if not config.username or not config.password:
-            credentials_error = "XMPP credentials (username and password) are required"
-            raise ValueError(credentials_error)
-        if not config.server:
-            server_error = "XMPP server is required"
-            raise ValueError(server_error)
-        if config.port <= 0 or config.port > 65535:
-            port_error = (
-                f"Invalid port number: {config.port}. Must be between 1 and 65535"
-            )
-            raise ValueError(port_error)
+        logger.info("Weather Wire receiver initialized", xmpp_config=xmpp_config)
 
     def _setup_pipeline(self) -> None:
         """Configure and initialize the pipeline system."""
         # Create shared metric registry for both pipeline and receiver
-        self.metric_registry = MetricRegistry()
         self.pipeline_stats_collector = PipelineStatsCollector(
-            self.metric_registry, "weather_wire_pipeline"
+            self.metric_registry, "pipeline"
         )
-        error_handler = ErrorHandler()
+        error_handler = PipelineErrorHandler()
         self.pipeline: Pipeline = Pipeline(
-            pipeline_id="weather-wire-pipeline",
+            pipeline_id="pipeline",
             filters=[TestMessageFilter(filter_id="test-msg-filter")],
             transformer=NoaaPortTransformer(transformer_id="noaaport1"),
             outputs=[mqtt_factory_create(output_id="mqtt-server")],
@@ -108,7 +103,38 @@ class WeatherWireApp:
 
         logger.info("Pipeline configured", pipeline_id=self.pipeline.pipeline_id)
 
-    async def _receive_weather_message_feed(self, event: WeatherWireMessage) -> None:
+    async def _start_services(self) -> None:
+        """Start all application services in the correct order."""
+        # Start pipeline first
+        await self.pipeline.start()
+
+        # Start weather wire receiver
+        await self.receiver.start()
+
+        # Start metrics API server if enabled
+        await (
+            self.metric_api.start_server(
+                host=self.config.metric_host,
+                port=self.config.metric_port,
+                log_level=self.config.log_level,
+            )
+            if self.config.metric_server
+            else asyncio.sleep(0)
+        )
+
+    async def _cleanup_services(self) -> None:
+        """Stop all application services."""
+        await asyncio.gather(
+            self.receiver.stop(),
+            self.pipeline.stop(),
+            (
+                self.metric_api.stop_server()
+                if self.config.metric_server
+                else asyncio.sleep(0)
+            ),
+        )
+
+    async def _handle_weather_wire_message(self, event: WeatherWireMessage) -> None:
         """Handle Weather Wire content by feeding to the pipeline."""
         try:
             pipeline_event = NoaaPortEventData(
@@ -160,15 +186,6 @@ class WeatherWireApp:
             subject=subject,
         )
 
-    async def run(self) -> None:
-        """Run the application event loop until shutdown.
-
-        This method assumes services are already started (via context manager).
-        """
-        logger.info("Running NWWS-OI application event loop")
-        await self._shutdown_event.wait()
-        logger.info("Stopped NWWS-OI application event loop")
-
     async def __aenter__(self) -> "WeatherWireApp":
         """Async context manager entry.
 
@@ -199,17 +216,6 @@ class WeatherWireApp:
         await self._cleanup_services()
         logger.info("Cleaned up application services")
 
-    async def _start_services(self) -> None:
-        """Start all application services in the correct order.
-
-        Starts the pipeline first, then the weather wire receiver.
-        """
-        # Start pipeline first
-        await self.pipeline.start()
-
-        # Start weather wire receiver
-        self.receiver.start()
-
     def _signal_handler(self, signum: int, _frame: FrameType | None) -> None:
         """Handle shutdown signals gracefully.
 
@@ -224,6 +230,39 @@ class WeatherWireApp:
         )
         self.shutdown()
 
+    def _validate_config(self, config: Config) -> None:
+        """Validate critical configuration parameters."""
+        if not config.nwws_username or not config.nwws_password:
+            credentials_error = "XMPP credentials (username and password) are required"
+            raise ValueError(credentials_error)
+        if not config.nwws_server:
+            server_error = "XMPP server is required"
+            raise ValueError(server_error)
+        if config.nwws_port <= 0 or config.nwws_port > 65535:
+            port_error = (
+                f"Invalid port number: {config.nwws_port}. Must be between 1 and 65535"
+            )
+            raise ValueError(port_error)
+
+        # Validate metrics server configuration
+        if config.metric_server and (
+            config.metric_port <= 0 or config.metric_port > 65535
+        ):
+            metrics_port_error = (
+                f"Invalid metrics port: {config.metric_port}. "
+                f"Must be between 1 and 65535"
+            )
+            raise ValueError(metrics_port_error)
+
+    async def run(self) -> None:
+        """Run the application event loop until shutdown.
+
+        This method assumes services are already started (via context manager).
+        """
+        logger.info("Running NWWS-OI application event loop")
+        await self._shutdown_event.wait()
+        logger.info("Stopped NWWS-OI application event loop")
+
     def shutdown(self) -> None:
         """Gracefully shutdown the application.
 
@@ -235,69 +274,6 @@ class WeatherWireApp:
         logger.info("Shutting down NWWS-OI application")
         self.is_shutting_down = True
         self._shutdown_event.set()
-
-    async def _cleanup_services(self) -> None:
-        """Stop all application services."""
-        await asyncio.gather(
-            self.receiver.stop(),
-            self.pipeline.stop(),
-        )
-
-    def get_comprehensive_stats(self) -> dict[str, Any]:
-        """Get comprehensive statistics including pipeline and receiver metrics."""
-        # Add application-level metrics
-        uptime_seconds = time.time() - self._start_time
-
-        # Get key metrics from the new metrics system
-        receiver_labels = {"receiver": "weather_wire"}
-
-        return {
-            "application": {
-                "uptime_seconds": uptime_seconds,
-                "is_running": not self.is_shutting_down,
-                "receiver_connected": self.receiver.is_client_connected(),
-                "pipeline_started": self.pipeline.is_started,
-            },
-            "metrics": self.metric_registry.get_registry_summary(),
-            "summary": {
-                "total_messages_received": self.metric_registry.get_metric_value(
-                    "weather_wire_operation_results_total",
-                    labels={
-                        **receiver_labels,
-                        "operation": "message_processing",
-                        "result": "success",
-                    },
-                )
-                or 0,
-                "total_delayed_messages": self.metric_registry.get_metric_value(
-                    "weather_wire_delayed_messages_total",
-                    labels=receiver_labels,
-                )
-                or 0,
-                "total_connection_attempts": self.metric_registry.get_metric_value(
-                    "weather_wire_connection_attempts_total",
-                    labels=receiver_labels,
-                )
-                or 0,
-                "total_connection_failures": self.metric_registry.get_metric_value(
-                    "weather_wire_operation_results_total",
-                    labels={
-                        **receiver_labels,
-                        "operation": "connection",
-                        "result": "failure",
-                    },
-                )
-                or 0,
-                "last_message_age_seconds": self.metric_registry.get_metric_value(
-                    "weather_wire_last_message_age_seconds",
-                    labels=receiver_labels,
-                ),
-                "connection_status": self.metric_registry.get_metric_value(
-                    "weather_wire_component_status",
-                    labels={**receiver_labels, "component": "connection"},
-                ),
-            },
-        }
 
 
 async def main() -> None:

@@ -12,8 +12,9 @@ from loguru import logger
 from slixmpp import JID
 from slixmpp.stanza import Message
 
-from nwws.models import XMPPConfig
 from nwws.receiver.stats import WeatherWireStatsCollector
+
+from .config import WeatherWireConfig
 
 # Configuration constants
 MUC_ROOM = "nwws@conference.nwws-oi.weather.gov"
@@ -47,7 +48,7 @@ class WeatherWire(slixmpp.ClientXMPP):
 
     def __init__(
         self,
-        config: XMPPConfig,
+        config: WeatherWireConfig,
         callback: Callable[[WeatherWireMessage], Awaitable[None]],
         *,
         stats_collector: WeatherWireStatsCollector | None = None,

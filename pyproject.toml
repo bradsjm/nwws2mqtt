@@ -1,97 +1,97 @@
 [project]
 name = "nwws2mqtt"
 version = "0.1.0"
-authors = [
-    { name = "Jonathan Bradshaw", email = "jonathan.bradshaw@email.com" },
-]
-license = { file = "LICENSE" }
-keywords = ["nwws-oi", "nwws", "noaa"]
 description = "Provides a gateway from NWWS OI feed to MQTT server"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = [
-    "fastapi>=0.115.12",
-    "loguru>=0.7.0",
-    "paho-mqtt>=2.1.0",
-    "psycopg[binary]>=3.2.9",
-    "pydantic>=2.11.5",
-    "pyiem>=1.23.0",
-    "python-dateutil>=2.8.0",
-    "python-dotenv>=1.1.0",
-    "rich>=14.0.0",
-    "slixmpp>=1.10.0",
+license = { file = "LICENSE" }
+authors = [
+  { name = "Jonathan Bradshaw", email = "jonathan.bradshaw@email.com" },
 ]
-
+keywords = ["noaa", "nwws", "nwws-oi"]
+dependencies = [
+  "fastapi>=0.115.12",
+  "loguru>=0.7.0",
+  "paho-mqtt>=2.1.0",
+  "psycopg[binary]>=3.2.9",
+  "pydantic>=2.11.5",
+  "pyiem>=1.23.0",
+  "python-dateutil>=2.8.0",
+  "python-dotenv>=1.1.0",
+  "rich>=14.0.0",
+  "slixmpp>=1.10.0",
+  "uvicorn>=0.24.0",
+]
 
 [dependency-groups]
 dev = [
-    "aiofiles>=24.1.0",
-    "aiohttp>=3.12.4",
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.23.0",
-    "pytest-mock>=3.14.0",
-    "pyyaml>=6.0.2",
+  "aiofiles>=24.1.0",
+  "aiohttp>=3.12.4",
+  "httpx>=0.25.0",
+  "pytest-asyncio>=0.23.0",
+  "pytest-mock>=3.14.0",
+  "pytest>=8.0.0",
+  "pyyaml>=6.0.2",
 ]
+
+[tool.basedpyright]
+executionEnvironments = [{ root = "src", pythonVersion = "3.13" }]
+include = ["src"]
+exclude = [
+  "**/__pycache__",
+  ".git",
+  ".mypy_cache",
+  ".ruff_cache",
+  ".venv",
+  "build",
+  "dist",
+  "typings",
+  "tests",
+]
+typeCheckingMode = "strict"
+
+[tool.pytest.ini_options]
+addopts = ["--strict-markers", "--strict-config"]
+filterwarnings = ["error", "ignore::UserWarning", "ignore::DeprecationWarning"]
+markers = [
+  "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+  "integration: marks tests as integration tests",
+  "unit: marks tests as unit tests",
+]
+minversion = "8.0"
+python_classes = ["Test*"]
+python_files = ["test_*.py", "*_test.py"]
+python_functions = ["test_*"]
+testpaths = ["src/tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.ruff]
 target-version = "py313"
 line-length = 88
 extend-exclude = [
-    ".git",
-    ".mypy_cache",
-    ".ruff_cache",
-    ".venv",
-    "__pycache__",
-    "build",
-    "dist",
-    "typings",
-    "tests",
+  ".git",
+  ".mypy_cache",
+  ".ruff_cache",
+  ".venv",
+  "__pycache__",
+  "build",
+  "dist",
+  "typings",
+  "tests",
 ]
 
 [tool.ruff.lint]
 select = ["ALL"]
 ignore = [
-    "ANN",     # Let Pyright handle annotation checks
-    "D203",    # Conflicts with D211 (no blank line before class docstring)
-    "D213",    # Conflicts with D212 (multi-line summary on first line)
-    "PLR2004", # Magic number literals
-    "COM812",  # Use of `print` in production code
+  "ANN",  # Let Pyright handle annotation checks
+  "D203",  # Conflicts with D211 (no blank line before class docstring)
+  "D213",  # Conflicts with D212 (multi-line summary on first line)
+  "PLR2004",  # Magic number literals
+  "COM812",  # Use of `print` in production code
 ]
 
 [tool.ruff.lint.pycodestyle]
 max-line-length = 100
 
 [tool.ruff.format]
-
-
-[tool.basedpyright]
-executionEnvironments = [{ root = "src", pythonVersion = "3.13" }]
-include = ["src"]
-exclude = [
-    "**/__pycache__",
-    ".git",
-    ".mypy_cache",
-    ".ruff_cache",
-    ".venv",
-    "build",
-    "dist",
-    "typings",
-    "tests",
-]
-typeCheckingMode = "strict"
-
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-minversion = "8.0"
-addopts = ["--strict-markers", "--strict-config"]
-testpaths = ["src/tests"]
-python_files = ["test_*.py", "*_test.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-asyncio_default_fixture_loop_scope = "function"
-markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "integration: marks tests as integration tests",
-    "unit: marks tests as unit tests",
-]
-filterwarnings = ["error", "ignore::UserWarning", "ignore::DeprecationWarning"]

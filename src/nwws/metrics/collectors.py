@@ -167,6 +167,28 @@ class MetricsCollector:
         metric_name = self._metric_name(name)
         return self.registry.get_metric_value(metric_name, labels)
 
+    def timing_context(
+        self,
+        operation_name: str,
+        labels: dict[str, str] | None = None,
+        *,
+        record_success: bool = True,
+    ) -> TimingContext:
+        """Create a timing context for measuring operation duration.
+
+        Args:
+            operation_name: Name of the operation being timed
+            labels: Optional labels for the metrics
+            record_success: Whether to record operation success/failure
+
+        Returns:
+            TimingContext instance for use in with statement
+
+        """
+        return TimingContext(
+            self, operation_name, labels, record_success=record_success
+        )
+
 
 class TimingContext:
     """Context manager for timing operations."""

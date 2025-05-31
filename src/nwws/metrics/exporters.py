@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .registry import MetricRegistry
@@ -107,56 +107,3 @@ class PrometheusExporter(MetricExporter):
 
         label_pairs = [f'{key}="{value}"' for key, value in sorted(labels.items())]
         return "{" + ",".join(label_pairs) + "}"
-
-
-class JSONExporter(MetricExporter):
-    """Exporter for JSON metrics format."""
-
-    def export(self) -> str:
-        """Export metrics in JSON format."""
-        import json
-
-        metrics_data = {
-            "timestamp": self._get_current_timestamp(),
-            "metrics": [metric.to_dict() for metric in self.registry.list_metrics()],
-        }
-
-        return json.dumps(metrics_data, indent=2)
-
-    def get_content_type(self) -> str:
-        """Get the content type for JSON format."""
-        return "application/json"
-
-    def _get_current_timestamp(self) -> float:
-        """Get current timestamp."""
-        import time
-
-        return time.time()
-
-
-class LogExporter(MetricExporter):
-    """Exporter that logs metrics using structured logging."""
-
-    def __init__(self, registry: MetricRegistry, logger: Any = None) -> None:
-        """Initialize with registry and optional logger."""
-        super().__init__(registry)
-        self.logger = logger
-
-    def export(self) -> str:
-        """Export metrics by logging them."""
-        summary = self.registry.get_registry_summary()
-
-        if self.logger:
-            self.logger.info("metrics_export", **summary)
-        else:
-            # Fallback - could integrate with loguru or other logging
-            import json
-            import sys
-
-            sys.stdout.write(json.dumps(summary, indent=2) + "\n")
-
-        return ""
-
-    def get_content_type(self) -> str:
-        """Get the content type (not applicable for logging)."""
-        return "text/plain"

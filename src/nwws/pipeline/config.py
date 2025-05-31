@@ -11,7 +11,7 @@ from typing import Any
 from loguru import logger
 
 from .core import Pipeline, PipelineManager
-from .errors import ErrorHandler, ErrorHandlingStrategy, PipelineError
+from .errors import ErrorHandlingStrategy, PipelineError, PipelineErrorHandler
 from .filters import FilterConfig, FilterRegistry
 from .outputs import OutputConfig, OutputRegistry
 from .stats import PipelineStatsCollector
@@ -157,7 +157,7 @@ class PipelineBuilder:
             # Create error handler
             error_handler = None
             if config.enable_error_handling:
-                error_handler = ErrorHandler(
+                error_handler = PipelineErrorHandler(
                     strategy=config.error_handling_strategy,
                     max_retries=config.max_retries,
                     retry_delay_seconds=config.retry_delay_seconds,

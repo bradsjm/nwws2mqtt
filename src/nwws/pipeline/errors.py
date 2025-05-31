@@ -104,7 +104,7 @@ class PipelineErrorEvent:
     """Whether this error is recoverable."""
 
 
-class ErrorHandler:
+class PipelineErrorHandler:
     """Handles and tracks pipeline errors."""
 
     def __init__(  # noqa: PLR0913

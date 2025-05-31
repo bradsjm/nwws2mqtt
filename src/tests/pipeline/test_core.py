@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from nwws.pipeline.core import Pipeline, PipelineManager
-from nwws.pipeline.errors import ErrorHandler, PipelineError
+from nwws.pipeline.errors import PipelineErrorHandler, PipelineError
 from nwws.pipeline.types import PipelineEvent, PipelineEventMetadata
 
 
@@ -21,7 +21,7 @@ class TestPipeline:
         mock_transformer: Mock,
         mock_output: Mock,
         mock_stats_collector: Mock,
-        error_handler: ErrorHandler,
+        error_handler: PipelineErrorHandler,
     ) -> None:
         """Test pipeline initialization with components."""
         pipeline = Pipeline(
@@ -228,7 +228,7 @@ class TestPipeline:
         summary = pipeline.get_stats_summary()
         assert summary is None
 
-    def test_get_error_summary(self, error_handler: ErrorHandler) -> None:
+    def test_get_error_summary(self, error_handler: PipelineErrorHandler) -> None:
         """Test getting error summary."""
         pipeline = Pipeline(
             pipeline_id="test-pipeline",

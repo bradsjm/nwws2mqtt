@@ -17,10 +17,10 @@ from .config import (
 )
 from .core import Pipeline, PipelineManager
 from .errors import (
-    ErrorHandler,
     ErrorHandlingStrategy,
     PipelineError,
     PipelineErrorEvent,
+    PipelineErrorHandler,
 )
 from .filters import Filter, FilterRegistry
 from .outputs import Output, OutputRegistry
@@ -58,7 +58,7 @@ __all__ = [  # noqa: RUF022
     "OutputRegistry",
     "TransformerRegistry",
     # Stats and errors
-    "ErrorHandler",
+    "PipelineErrorHandler",
     "PipelineError",
     "PipelineStatsCollector",
 ]

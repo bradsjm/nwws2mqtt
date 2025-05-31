@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 
 @dataclass
-class XMPPConfig:
+class WeatherWireConfig:
     """Configuration class for XMPP client."""
 
     username: str

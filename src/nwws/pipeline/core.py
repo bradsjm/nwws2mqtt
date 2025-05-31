@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, Self
 
 from loguru import logger
 
-from .errors import ErrorHandler, PipelineError
+from .errors import PipelineErrorHandler, PipelineError
 from .types import PipelineEvent, PipelineStage
 
 if TYPE_CHECKING:
@@ -31,7 +31,7 @@ class Pipeline:
         transformer: Transformer | None = None,
         outputs: list[Output] | None = None,
         stats_collector: PipelineStatsCollector | None = None,
-        error_handler: ErrorHandler | None = None,
+        error_handler: PipelineErrorHandler | None = None,
     ) -> None:
         """Initialize the pipeline with components.
 
@@ -49,7 +49,7 @@ class Pipeline:
         self.transformer = transformer
         self.outputs = outputs or []
         self.stats_collector = stats_collector
-        self.error_handler = error_handler or ErrorHandler()
+        self.error_handler = error_handler or PipelineErrorHandler()
         self._is_started = False
 
     async def start(self) -> None:

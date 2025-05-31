@@ -12,7 +12,7 @@ import pytest
 
 from nwws.metrics.collectors import MetricsCollector
 from nwws.metrics.registry import MetricRegistry
-from nwws.pipeline.errors import ErrorHandler, ErrorHandlingStrategy
+from nwws.pipeline.errors import PipelineErrorHandler, ErrorHandlingStrategy
 from nwws.pipeline.filters import Filter
 from nwws.pipeline.outputs import Output
 from nwws.pipeline.transformers import Transformer
@@ -98,7 +98,7 @@ def metrics_mock() -> Mock:
 def mock_stats_collector() -> Mock:
     """Create mock pipeline stats collector."""
     from nwws.pipeline.stats import PipelineStatsCollector
-    
+
     stats_mock = Mock(spec=PipelineStatsCollector)
     stats_mock.record_processing_time = Mock()
     stats_mock.record_throughput = Mock()
@@ -110,15 +110,15 @@ def mock_stats_collector() -> Mock:
 
 
 @pytest.fixture
-def error_handler() -> ErrorHandler:
+def error_handler() -> PipelineErrorHandler:
     """Create error handler with continue strategy."""
-    return ErrorHandler(strategy=ErrorHandlingStrategy.CONTINUE)
+    return PipelineErrorHandler(strategy=ErrorHandlingStrategy.CONTINUE)
 
 
 @pytest.fixture
-def retry_error_handler() -> ErrorHandler:
+def retry_error_handler() -> PipelineErrorHandler:
     """Create error handler with retry strategy."""
-    return ErrorHandler(
+    return PipelineErrorHandler(
         strategy=ErrorHandlingStrategy.RETRY,
         max_retries=2,
         retry_delay_seconds=0.01,

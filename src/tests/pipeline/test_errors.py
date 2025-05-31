@@ -6,7 +6,7 @@ from __future__ import annotations
 import pytest
 
 from nwws.pipeline.errors import (
-    ErrorHandler,
+    PipelineErrorHandler,
     ErrorHandlingStrategy,
     FilterError,
     OutputError,
@@ -109,14 +109,14 @@ class TestErrorHandler:
 
     def test_default_initialization(self) -> None:
         """Test error handler with default settings."""
-        handler = ErrorHandler()
+        handler = PipelineErrorHandler()
         assert handler.strategy == ErrorHandlingStrategy.CONTINUE
         assert handler.max_retries == 3
         assert handler.retry_delay_seconds == 1.0
 
     def test_custom_initialization(self) -> None:
         """Test error handler with custom settings."""
-        handler = ErrorHandler(
+        handler = PipelineErrorHandler(
             strategy=ErrorHandlingStrategy.RETRY,
             max_retries=5,
             retry_delay_seconds=0.5,
@@ -127,7 +127,7 @@ class TestErrorHandler:
 
     def test_handle_error(self) -> None:
         """Test basic error handling."""
-        handler = ErrorHandler()
+        handler = PipelineErrorHandler()
         exception = ValueError("Test error")
 
         error_event = handler.handle_error(
@@ -146,7 +146,7 @@ class TestErrorHandler:
 
     def test_error_counting(self) -> None:
         """Test error counting functionality."""
-        handler = ErrorHandler()
+        handler = PipelineErrorHandler()
 
         # No errors initially
         assert handler.get_error_count(PipelineStage.FILTER, "filter-1") == 0
@@ -176,7 +176,7 @@ class TestErrorHandler:
 
     def test_last_error_tracking(self) -> None:
         """Test last error tracking."""
-        handler = ErrorHandler()
+        handler = PipelineErrorHandler()
 
         # No last error initially
         assert handler.get_last_error(PipelineStage.FILTER, "filter-1") is None
@@ -195,7 +195,7 @@ class TestErrorHandler:
 
     async def test_should_retry_continue_strategy(self) -> None:
         """Test retry logic with continue strategy."""
-        handler = ErrorHandler(strategy=ErrorHandlingStrategy.CONTINUE)
+        handler = PipelineErrorHandler(strategy=ErrorHandlingStrategy.CONTINUE)
 
         should_retry = await handler.should_retry(
             PipelineStage.FILTER, "filter-1", ValueError("Test")
@@ -204,7 +204,7 @@ class TestErrorHandler:
 
     async def test_should_retry_retry_strategy(self) -> None:
         """Test retry logic with retry strategy."""
-        handler = ErrorHandler(strategy=ErrorHandlingStrategy.RETRY, max_retries=2)
+        handler = PipelineErrorHandler(strategy=ErrorHandlingStrategy.RETRY, max_retries=2)
 
         # Should retry for network errors
         should_retry = await handler.should_retry(
@@ -220,7 +220,7 @@ class TestErrorHandler:
 
     async def test_execute_with_retry_success(self) -> None:
         """Test successful operation execution."""
-        handler = ErrorHandler(strategy=ErrorHandlingStrategy.RETRY)
+        handler = PipelineErrorHandler(strategy=ErrorHandlingStrategy.RETRY)
 
         async def successful_operation() -> str:
             return "success"
@@ -232,7 +232,7 @@ class TestErrorHandler:
 
     async def test_execute_with_retry_eventual_success(self) -> None:
         """Test operation that succeeds after retries."""
-        handler = ErrorHandler(
+        handler = PipelineErrorHandler(
             strategy=ErrorHandlingStrategy.RETRY,
             max_retries=2,
             retry_delay_seconds=0.01,
@@ -255,7 +255,7 @@ class TestErrorHandler:
 
     async def test_execute_with_retry_failure(self) -> None:
         """Test operation that fails after all retries."""
-        handler = ErrorHandler(
+        handler = PipelineErrorHandler(
             strategy=ErrorHandlingStrategy.RETRY,
             max_retries=1,
             retry_delay_seconds=0.01,
@@ -271,7 +271,7 @@ class TestErrorHandler:
 
     def test_error_summary(self) -> None:
         """Test error summary generation."""
-        handler = ErrorHandler()
+        handler = PipelineErrorHandler()
 
         # Handle some errors
         handler.handle_error(
@@ -292,7 +292,7 @@ class TestErrorHandler:
 
     def test_reset_errors(self) -> None:
         """Test error reset functionality."""
-        handler = ErrorHandler()
+        handler = PipelineErrorHandler()
 
         # Handle error
         handler.handle_error(
