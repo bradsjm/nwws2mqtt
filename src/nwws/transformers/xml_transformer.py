@@ -120,7 +120,9 @@ class XmlTransformer(Transformer):
         """
         # Remove control characters except for \r, \n, and \t
         cleaned = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "", xml_content)
-        cleaned = cleaned.replace("\r\n", "\n").replace("\r", "\n")
+        cleaned = (
+            cleaned.replace("\r\n", "\n").replace("\r", "\n").replace("\n\n", "\n")
+        )
 
         # Ensure XML declaration is present
         if not cleaned.lstrip().startswith("<?xml"):
