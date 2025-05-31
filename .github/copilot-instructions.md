@@ -2,8 +2,8 @@
 
 ## Libraries
 - **Standard Libraries:** Prefer built-in libraries over 3rd party when possible.
-- **3rd Party Libraries:** Use only well-maintained libraries with active communities. Avoid libraries with known security vulnerabilities or poor documentation.
-- **Documentation**: Use `get-library-docs` with `resolve-library-id` tools for 3rd party documentation.
+- **3rd Party Library Use:** Use only well-maintained libraries with active communities. Avoid libraries with known security vulnerabilities or poor documentation.
+- **Documentation**: Always lookup the latest SDK details for 3rd party libraries using available tools.
 
 ## Type System (Pyright Strict)
 - **Target Version:** Use Python 3.12+ features (e.g. pattern matching, Self type).
@@ -48,3 +48,8 @@
 ## Documentation
 - **Docstrings:** Add PEP 257 docstrings for all public modules, classes, functions, and methods.
 - **Style:** Use active, imperative voice in docstrings (e.g., "Return...", "Calculate...").
+
+## Testing
+- **Pytest:** Use pytest for unit tests.
+- **Linting**: Lint code using `ruff check --fix` before running tests.
+- **Type Checking**: Type check code using `basedpyright` before running tests.
