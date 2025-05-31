@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, Self
 
 from loguru import logger
 
-from .errors import PipelineErrorHandler, PipelineError
+from .errors import PipelineError, PipelineErrorHandler
 from .types import PipelineEvent, PipelineStage
 
 if TYPE_CHECKING:
