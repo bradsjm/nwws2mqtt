@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -53,7 +54,7 @@ def noaaport_event_data(sample_noaaport_text: str) -> NoaaPortEventData:
         awipsid="AFDBOX",
         cccc="KBOX",
         id="SXUS44KBOX121200",
-        issue="2023-07-12T12:00:00Z",
+        issue=datetime.fromisoformat("2023-07-12T12:00:00+00:00"),
         noaaport=sample_noaaport_text,
         subject="Area Forecast Discussion",
         ttaaii="SXUS44",
@@ -78,7 +79,7 @@ def non_noaaport_event() -> TextProductEventData:
         awipsid="TESTMSG",
         cccc="KTEST",
         id="TEST123",
-        issue="2023-07-12T12:00:00Z",
+        issue=datetime.fromisoformat("2023-07-12T12:00:00+00:00"),
         product=MagicMock(),
         subject="Test Message",
         ttaaii="TEST01",

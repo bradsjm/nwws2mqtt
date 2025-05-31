@@ -29,7 +29,7 @@ class TestOutputsPackage:
         expected_exports = ["ConsoleOutput", "MQTTOutput"]
         assert set(__all__) == set(expected_exports)
 
-    @patch("src.outputs.console.Console")
+    @patch("nwws.outputs.console.Console")
     def test_console_output_instantiation(self, _mock_console_class: Mock) -> None:
         """Test that ConsoleOutput can be instantiated."""
         from nwws.outputs import ConsoleOutput

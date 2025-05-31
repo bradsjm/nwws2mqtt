@@ -95,6 +95,21 @@ def metrics_mock() -> Mock:
 
 
 @pytest.fixture
+def mock_stats_collector() -> Mock:
+    """Create mock pipeline stats collector."""
+    from nwws.pipeline.stats import PipelineStatsCollector
+    
+    stats_mock = Mock(spec=PipelineStatsCollector)
+    stats_mock.record_processing_time = Mock()
+    stats_mock.record_throughput = Mock()
+    stats_mock.record_queue_size = Mock()
+    stats_mock.record_error = Mock()
+    stats_mock.update_stage_status = Mock()
+    stats_mock.get_summary = Mock(return_value={"processed": 10})
+    return stats_mock
+
+
+@pytest.fixture
 def error_handler() -> ErrorHandler:
     """Create error handler with continue strategy."""
     return ErrorHandler(strategy=ErrorHandlingStrategy.CONTINUE)

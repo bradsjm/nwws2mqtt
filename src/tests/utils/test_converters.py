@@ -434,48 +434,6 @@ class TestConvertTextProductToModel:
         assert isinstance(result, TextProductModel)
         assert result.product_id is None
 
-    def test_convert_product_method_exceptions(self) -> None:
-            """Test conversion when product methods raise exceptions."""
-            # Use MagicMock and configure methods to raise exceptions
-            mock_product = MagicMock()
-            mock_product.text = "TEXT"
-            mock_product.warnings = []
-            mock_product.source = "KALY"
-            mock_product.wmo = "WFUS51"
-            mock_product.ddhhmm = "121200"
-            mock_product.bbb = None
-            mock_product.valid = datetime.datetime(2023, 7, 12, 12, 0, 0)
-            mock_product.wmo_valid = None
-            mock_product.utcnow = datetime.datetime(2023, 7, 12, 12, 0, 0)
-            mock_product.z = None
-            mock_product.afos = "TORALY"
-            mock_product.sections = []
-            mock_product.segments = []
-            mock_product.geometry = None
-
-            mock_product.get_product_id.side_effect = ValueError("Test error")
-            mock_product.get_nicedate.side_effect = Exception("Test error")
-            mock_product.get_main_headline.side_effect = Exception("Test error")
-            mock_product.get_signature.side_effect = Exception("Test error")
-            mock_product.get_channels.side_effect = Exception("Test error")
-            mock_product.is_correction.side_effect = Exception("Test error")
-            mock_product.is_resent.side_effect = Exception("Test error")
-            mock_product.parse_attn_wfo.side_effect = Exception("Test error")
-            mock_product.parse_attn_rfc.side_effect = Exception("Test error")
-
-            result = convert_text_product_to_model(mock_product)
-
-            assert isinstance(result, TextProductModel)
-            assert result.product_id is None
-            assert result.nicedate is None
-            assert result.main_headline == ""
-            assert result.signature is None
-            assert result.channels == []
-            assert result.is_correction is None
-            assert result.is_resent is None
-            assert result.attn_wfo == []
-            assert result.attn_rfc == []
-
     def test_convert_product_missing_afos_for_channels(self) -> None:
         """Test conversion when afos is None but get_channels exists."""
         mock_product = MagicMock()

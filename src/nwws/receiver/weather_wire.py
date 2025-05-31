@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import slixmpp
-from dateutil import parser as date_parser
 from loguru import logger
 from slixmpp import JID
 from slixmpp.stanza import Message
@@ -31,15 +30,15 @@ class WeatherWireMessage:
     """NOAAPort formatted text of the product message."""
     id: str
     """Unique identifier for the product (server process ID and sequence number)."""
-    issue: str
-    """Issue time of the product in ISO 8601 format."""
+    issue: datetime
+    """Issue time of the product as a datetime object."""
     ttaaii: str
     """TTAAII code representing the WMO product type and time."""
     cccc: str
     """CCCC code representing the issuing office or center."""
     awipsid: str
     """The six character AWIPS ID, sometimes called AFOS PIL; if available otherwise 'NONE'."""
-    delay_stamp: str | None
+    delay_stamp: datetime | None
     """Delay stamp if the message was delayed, otherwise None."""
 
 
@@ -290,8 +289,9 @@ class WeatherWire(slixmpp.ClientXMPP):
         """Process group chat message containing weather data."""
         # Get the message subject from the body or subject field
         subject = str(msg.get("body", "")) or str(msg.get("subject", ""))
+
         # Get delay stamp if available
-        delay_stamp: str | None = msg["delay"]["stamp"] if "delay" in msg else None
+        delay_stamp: datetime | None = msg["delay"]["stamp"] if "delay" in msg else None
 
         # Check for NWWS-OI namespace in the message
         x = msg.xml.find("{nwws-oi}x")
@@ -317,10 +317,21 @@ class WeatherWire(slixmpp.ClientXMPP):
 
         # Get the metadata from the NWWS-OI namespace
         xid = x.get("id", "")
-        issue = x.get("issue", "")
+        issue_str = x.get("issue", "")
         ttaaii = x.get("ttaaii", "")
         cccc = x.get("cccc", "")
         awipsid = x.get("awipsid", "NONE")
+
+        # Parse issue time from ISO 8601 format to datetime
+        try:
+            issue = datetime.fromisoformat(issue_str.replace("Z", "+00:00"))
+        except ValueError:
+            logger.warning(
+                "Invalid issue time format, using current time",
+                issue_str=issue_str,
+                msg_id=msg.get_id(),
+            )
+            issue = datetime.now(UTC)
 
         # Convert the body to NOAAPort format
         # Replace double newlines with carriage returns and ensure proper termination
@@ -341,7 +352,7 @@ class WeatherWire(slixmpp.ClientXMPP):
             "received",
             subject=subject,
             id=xid,
-            issue=issue,
+            issue=issue.isoformat(),
             ttaaii=ttaaii,
             cccc=cccc,
             awipsid=awipsid,
@@ -396,25 +407,22 @@ class WeatherWire(slixmpp.ClientXMPP):
         self.plugin["xep_0045"].leave_muc(muc_room_jid, self.nickname)
         logger.info("Unsubscribing from MUC room", room=MUC_ROOM)
 
-    def _calculate_delay_ms(self, delay_stamp: str) -> float | None:
+    def _calculate_delay_ms(self, delay_stamp: datetime) -> float | None:
         """Calculate delay in milliseconds from delay stamp.
 
         Args:
-            delay_stamp: ISO 8601 timestamp string like "2025-05-30 15:14:15.872000+00:00"
+            delay_stamp: Delay timestamp as a datetime object.
 
         Returns:
             Delay in milliseconds or None if parsing fails.
 
         """
         try:
-            # Parse the delay timestamp
-            delay_time = date_parser.isoparse(delay_stamp)
-
             # Get current time in UTC
             current_time = datetime.now(UTC)
 
             # Calculate delay
-            delay_delta = current_time - delay_time
+            delay_delta = current_time - delay_stamp
 
             # Convert to milliseconds
             delay_ms = delay_delta.total_seconds() * 1000

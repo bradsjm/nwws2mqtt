@@ -1,9 +1,10 @@
 # pyright: strict
-"""Tests for TestMessageFilter."""
+"""Test module for TestMessageFilter."""
 
 from __future__ import annotations
 
 import time
+from datetime import datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -34,7 +35,7 @@ def test_message_event(test_event_metadata: PipelineEventMetadata) -> NoaaPortEv
         awipsid="TSTMSG",
         cccc="KTEST",
         id="TEST123",
-        issue="2023-07-12T12:00:00Z",
+        issue=datetime.fromisoformat("2023-07-12T12:00:00+00:00"),
         noaaport="Test message content",
         subject="Test Message",
         ttaaii="TEST01",
@@ -50,7 +51,7 @@ def normal_event(test_event_metadata: PipelineEventMetadata) -> NoaaPortEventDat
         awipsid="AFDBOX",
         cccc="KBOX",
         id="SXUS44KBOX121200",
-        issue="2023-07-12T12:00:00Z",
+        issue=datetime.fromisoformat("2023-07-12T12:00:00+00:00"),
         noaaport="Normal forecast content",
         subject="Area Forecast Discussion",
         ttaaii="SXUS44",
@@ -95,7 +96,7 @@ class TestTestMessageFilter:
             awipsid="tstmsg",
             cccc="KTEST",
             id="TEST123",
-            issue="2023-07-12T12:00:00Z",
+            issue=datetime.fromisoformat("2023-07-12T12:00:00+00:00"),
             noaaport="Test message content",
             subject="Test Message",
             ttaaii="TEST01",
@@ -115,7 +116,7 @@ class TestTestMessageFilter:
             awipsid="TstMsg",
             cccc="KTEST",
             id="TEST123",
-            issue="2023-07-12T12:00:00Z",
+            issue=datetime.fromisoformat("2023-07-12T12:00:00+00:00"),
             noaaport="Test message content",
             subject="Test Message",
             ttaaii="TEST01",
@@ -163,7 +164,7 @@ class TestTestMessageFilter:
             awipsid="",
             cccc="KTEST",
             id="TEST123",
-            issue="2023-07-12T12:00:00Z",
+            issue=datetime.fromisoformat("2023-07-12T12:00:00+00:00"),
             noaaport="Test message content",
             subject="Test Message",
             ttaaii="TEST01",
@@ -195,7 +196,7 @@ class TestTestMessageFilter:
             awipsid="TSTMSG123",
             cccc="KTEST",
             id="TEST123",
-            issue="2023-07-12T12:00:00Z",
+            issue=datetime.fromisoformat("2023-07-12T12:00:00+00:00"),
             noaaport="Test message content",
             subject="Test Message",
             ttaaii="TEST01",
@@ -215,7 +216,7 @@ class TestTestMessageFilter:
             awipsid="MYTSTMSG",
             cccc="KTEST",
             id="TEST123",
-            issue="2023-07-12T12:00:00Z",
+            issue=datetime.fromisoformat("2023-07-12T12:00:00+00:00"),
             noaaport="Test message content",
             subject="Test Message",
             ttaaii="TEST01",
