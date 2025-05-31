@@ -34,22 +34,6 @@ dev = [
   "pyyaml>=6.0.2",
 ]
 
-[tool.basedpyright]
-executionEnvironments = [{ root = "src", pythonVersion = "3.13" }]
-include = ["src"]
-exclude = [
-  "**/__pycache__",
-  ".git",
-  ".mypy_cache",
-  ".ruff_cache",
-  ".venv",
-  "build",
-  "dist",
-  "typings",
-  "tests",
-]
-typeCheckingMode = "strict"
-
 [tool.pytest.ini_options]
 addopts = ["--strict-markers", "--strict-config"]
 filterwarnings = ["error", "ignore::UserWarning", "ignore::DeprecationWarning"]
