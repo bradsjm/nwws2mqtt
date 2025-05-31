@@ -163,6 +163,7 @@ class TestMQTTOutput:
         mock_event.metadata.event_id = "test-event-123"
         mock_product = Mock()
         mock_product.model_dump_json.return_value = '{"test": "data"}'
+        mock_product.segments = []  # Empty segments list for fallback to AWIPS ID
         mock_event.product = mock_product
 
         await output.send(mock_event)
@@ -171,8 +172,9 @@ class TestMQTTOutput:
         mock_client.publish.assert_called_once()
         call_args = mock_client.publish.call_args
 
-        # Check topic format: prefix/cccc/awipsid/id
-        expected_topic = "nwws/KTEST/TESTAID/TEST123"
+        # Check topic format: prefix/cccc/product_type/awipsid/id
+        # With no VTEC and AWIPS ID "TESTAID", product_type should be "TES"
+        expected_topic = "nwws/KTEST/TES/TESTAID/TEST123"
         assert call_args[0][0] == expected_topic
 
         # Check payload is JSON
@@ -259,6 +261,7 @@ class TestMQTTOutput:
         mock_event.metadata.event_id = "test-event-123"
         mock_product = Mock()
         mock_product.model_dump_json.return_value = '{"test": "data"}'
+        mock_product.segments = []  # Empty segments list for fallback to AWIPS ID
         mock_event.product = mock_product
 
         await output.send(mock_event)

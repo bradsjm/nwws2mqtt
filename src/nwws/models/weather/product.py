@@ -146,6 +146,16 @@ class TextProductSegmentModel(BaseModel):
         alias="bulletPoints",
         default_factory=list,
     )
+    affected_wfos: list[str] = Field(
+        description="List of WFOs affected by this segment based on its UGCs.",
+        alias="affectedWfoList",
+        default_factory=list,
+    )
+    special_tags_text: str | None = Field(
+        default=None,
+        description="Human-readable text representation of special weather tags.",
+        alias="specialTagsText",
+    )
 
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
@@ -158,11 +168,7 @@ class TextProductModel(WMOModel):
         description="AFOS PIL (Product Identifier Line) for the product.",
         alias="afosPil",
     )
-    sections: list[str] = Field(
-        description="List of text sections, typically split by double newlines.",
-        alias="textSections",
-        default_factory=list[str],
-    )
+
     segments: list[TextProductSegmentModel] = Field(
         description="List of parsed product segments.",
         alias="productSegments",
@@ -220,5 +226,6 @@ class TextProductModel(WMOModel):
         alias="attentionRfcList",
         default_factory=list,
     )
+
 
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)

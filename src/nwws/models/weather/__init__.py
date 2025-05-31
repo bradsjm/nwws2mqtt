@@ -9,7 +9,6 @@ from .wmo import WMOModel
 
 __all__ = [
     "HVTECModel",
-    "HVTECModel",
     "NWSLIModel",
     "TextProductModel",
     "TextProductSegmentModel",

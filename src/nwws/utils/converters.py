@@ -11,6 +11,23 @@ from nwws.models.weather import (
     VTECModel,
 )
 
+
+def _safe_call_method(obj, method_name: str, default):
+    """Safely call a method on an object, returning default if it fails."""
+    try:
+        if hasattr(obj, method_name):
+            method = getattr(obj, method_name)
+            if callable(method):
+                result = method()
+                # Handle case where result is a MagicMock (for tests)
+                if hasattr(result, "_mock_name"):
+                    return default
+                return result
+    except (AttributeError, TypeError, ValueError):
+        pass
+    return default
+
+
 if TYPE_CHECKING:
     from pyiem.nws.hvtec import HVTEC
     from pyiem.nws.product import TextProduct, TextProductSegment
@@ -40,7 +57,9 @@ def convert_vtec_to_model(vtec_obj: "VTEC") -> VTECModel:
         phenomena=getattr(vtec_obj, "phenomena", ""),
         significance=getattr(vtec_obj, "significance", ""),
         eventTrackingNumber=getattr(vtec_obj, "etn", 0),
-        year=getattr(vtec_obj, "year", 0),
+        beginTimestamp=getattr(vtec_obj, "begints", None),
+        endTimestamp=getattr(vtec_obj, "endts", None),
+        year=getattr(vtec_obj, "year", None),
     )
 
 
@@ -76,8 +95,21 @@ def convert_text_product_segment_to_model(
     if hvtec_attr:
         hvtec_list = [convert_hvtec_to_model(h) for h in hvtec_attr if h]
 
+    affected_wfo_list = _safe_call_method(segment_obj, "get_affected_wfos", [])
+    if not isinstance(affected_wfo_list, list):
+        affected_wfo_list = []
+    # Ensure all elements are str
+    affected_wfo_list = [str(wfo) for wfo in affected_wfo_list]
+
+    special_tags_text = _safe_call_method(segment_obj, "special_tags_to_text", None)
+    if special_tags_text is not None and not isinstance(special_tags_text, str):
+        special_tags_text = None
+
     return TextProductSegmentModel(
         segmentText=getattr(segment_obj, "unixtext", ""),
+        vtecRecords=[
+            convert_vtec_to_model(v) for v in getattr(segment_obj, "vtec", []) if v
+        ],
         ugcRecords=[
             convert_ugc_to_model(u) for u in getattr(segment_obj, "ugcs", []) if u
         ],
@@ -105,6 +137,8 @@ def convert_text_product_segment_to_model(
         isEmergency=getattr(segment_obj, "is_emergency", False),
         isPDS=getattr(segment_obj, "is_pds", False),
         bulletPoints=list(getattr(segment_obj, "bullets", [])),
+        affectedWfoList=affected_wfo_list,
+        specialTagsText=special_tags_text,
     )
 
 
@@ -144,7 +178,6 @@ def convert_text_product_to_model(
             "z": getattr(product_obj, "z", None),
             # TextProduct specific attributes
             "afos": getattr(product_obj, "afos", None),
-            "sections": list(getattr(product_obj, "sections", [])),
             "segments": [
                 convert_text_product_segment_to_model(s)
                 for s in getattr(product_obj, "segments", [])

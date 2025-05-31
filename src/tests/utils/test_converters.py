@@ -119,6 +119,8 @@ class TestConvertVTECToModel:
         del mock_vtec.significance
         del mock_vtec.etn
         del mock_vtec.year
+        del mock_vtec.begints
+        del mock_vtec.endts
 
         result = convert_vtec_to_model(mock_vtec)
 
@@ -131,7 +133,9 @@ class TestConvertVTECToModel:
         assert result.phenomena == ""
         assert result.significance == ""
         assert result.etn == 0
-        assert result.year == 0
+        assert result.year is None
+        assert result.begints is None
+        assert result.endts is None
 
 
 class TestConvertHVTECToModel:
@@ -273,6 +277,9 @@ class TestConvertTextProductSegmentToModel:
         mock_segment.is_emergency = True
         mock_segment.is_pds = False
         mock_segment.bullets = ["* TORNADO CONFIRMED", "* TAKE COVER NOW"]
+        mock_segment.vtec = []
+        mock_segment.get_affected_wfos = MagicMock(return_value=["KALY"])
+        mock_segment.special_tags_to_text = MagicMock(return_value="Wind threat: RADAR INDICATED")
 
         result = convert_text_product_segment_to_model(mock_segment)
 
@@ -317,6 +324,9 @@ class TestConvertTextProductSegmentToModel:
         mock_segment.is_emergency = False
         mock_segment.is_pds = False
         mock_segment.bullets = []
+        mock_segment.vtec = []
+        mock_segment.get_affected_wfos = MagicMock(return_value=[])
+        mock_segment.special_tags_to_text = MagicMock(return_value=None)
 
         result = convert_text_product_segment_to_model(mock_segment)
 
@@ -325,6 +335,8 @@ class TestConvertTextProductSegmentToModel:
         assert result.headlines == []
         assert result.hvtec == []
         assert result.bullets == []
+        assert result.affected_wfos == []
+        assert result.special_tags_text is None
 
     def test_convert_segment_missing_attributes(self) -> None:
         """Test conversion with missing segment attributes uses defaults."""
@@ -341,7 +353,7 @@ class TestConvertTextProductSegmentToModel:
             "windtag", "windtagunits", "windthreat", "hailtag", "haildirtag",
             "hailthreat", "winddirtag", "tornadotag", "waterspouttag",
             "landspouttag", "damagetag", "squalltag", "flood_tags",
-            "is_emergency", "is_pds", "bullets"
+            "is_emergency", "is_pds", "bullets", "vtec"
         ]:
             delattr(mock_segment, attr)
 
@@ -371,7 +383,7 @@ class TestConvertTextProductToModel:
         mock_product.utcnow = datetime.datetime(2023, 7, 12, 12, 0, 0)
         mock_product.z = "Z"
         mock_product.afos = "TORALY"
-        mock_product.sections = ["SECTION1", "SECTION2"]
+
         mock_product.segments = []
         mock_product.geometry = None
         mock_product.get_product_id.return_value = "202307121200-KALY-WFUS51-TORALY"
@@ -391,7 +403,7 @@ class TestConvertTextProductToModel:
         assert result.warnings == ["Warning 1", "Warning 2"]
         assert result.source == "KALY"
         assert result.afos == "TORALY"
-        assert result.sections == ["SECTION1", "SECTION2"]
+
         assert result.product_id == "202307121200-KALY-WFUS51-TORALY"
         assert result.nicedate == "July 12, 2023 12:00 PM UTC"
         assert result.main_headline == "TORNADO WARNING"
@@ -416,7 +428,7 @@ class TestConvertTextProductToModel:
         mock_product.utcnow = datetime.datetime(2023, 7, 12, 12, 0, 0)  # Required field
         mock_product.z = None
         mock_product.afos = None  # Missing required for ID
-        mock_product.sections = []
+
         mock_product.segments = []
         mock_product.geometry = None
         # get_product_id should not be called due to missing attributes
@@ -448,7 +460,7 @@ class TestConvertTextProductToModel:
         mock_product.utcnow = datetime.datetime(2023, 7, 12, 12, 0, 0)  # Required field
         mock_product.z = None
         mock_product.afos = None  # No afos
-        mock_product.sections = []
+
         mock_product.segments = []
         mock_product.geometry = None
         mock_product.get_product_id.return_value = "TEST-ID"

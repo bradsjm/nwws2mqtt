@@ -94,8 +94,8 @@ class WeatherWireApp:
         error_handler = PipelineErrorHandler()
         self.pipeline: Pipeline = Pipeline(
             pipeline_id="pipeline",
-            filters=[TestMessageFilter(filter_id="test-msg-filter")],
-            transformer=NoaaPortTransformer(transformer_id="noaaport1"),
+            filters=[TestMessageFilter(filter_id="test-messages")],
+            transformer=NoaaPortTransformer(transformer_id="noaaport"),
             outputs=[mqtt_factory_create(output_id="mqtt-server")],
             stats_collector=self.pipeline_stats_collector,
             error_handler=error_handler,
