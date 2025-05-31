@@ -14,18 +14,45 @@ A gateway service that connects to the NWWS-OI (National Weather Service Weather
 
 ## Installation
 
+### Option 1: Docker (Recommended)
+
+**Docker is strongly recommended** due to the complex scientific computing dependencies (GDAL, HDF5, NetCDF, GEOS, PROJ, ECCODES) required by the `pyiem` weather data processing library. The Docker setup handles all these dependencies automatically.
+
 1. Clone the repository:
 ```bash
 git clone <repository-url>
 cd nwws2mqtt
 ```
 
-2. Install dependencies:
+2. Initialize environment and start services:
+```bash
+./docker.sh init
+./docker.sh up
+```
+
+See the [Docker documentation](docker/README.md) for detailed Docker usage.
+
+### Option 2: Local Development
+
+**Note**: Local development requires installing complex scientific computing dependencies (GDAL, HDF5, NetCDF, GEOS, PROJ, ECCODES) on your system. On macOS, use `brew install gdal hdf5 netcdf geos proj eccodes`. On Ubuntu/Debian, use `apt-get install libgdal-dev libhdf5-dev libnetcdf-dev libgeos-dev libproj-dev libeccodes-dev`. Windows users should consider using WSL2 or Docker.
+
+1. Clone the repository:
+```bash
+git clone <repository-url>
+cd nwws2mqtt
+```
+
+2. Install system dependencies (example for macOS):
+```bash
+brew install gdal hdf5 netcdf geos proj eccodes
+```
+
+3. Install Python dependencies:
 ```bash
 uv sync
 ```
 
-3. Copy the example environment file and configure:
+4. Copy the example environment file and configure:
 ```bash
 cp .env.example .env
 # Edit .env with your configuration

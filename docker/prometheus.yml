@@ -1,0 +1,89 @@
+# Prometheus configuration for NWWS2MQTT monitoring
+
+global:
+    scrape_interval: 15s
+    evaluation_interval: 15s
+    external_labels:
+        monitor: "nwws2mqtt-monitor"
+
+rule_files:
+    # Add any alerting rules here
+    # - "alert_rules.yml"
+
+scrape_configs:
+    # NWWS2MQTT application metrics
+    - job_name: "nwws2mqtt"
+      static_configs:
+          - targets: ["nwws2mqtt:8080"]
+      metrics_path: "/metrics"
+      scrape_interval: 10s
+      scrape_timeout: 5s
+      honor_labels: true
+      params:
+          format: ["prometheus"]
+      relabel_configs:
+          - source_labels: [__address__]
+            target_label: __param_target
+          - source_labels: [__param_target]
+            target_label: instance
+          - target_label: __address__
+            replacement: nwws2mqtt:8080
+
+    # Prometheus self-monitoring
+    - job_name: "prometheus"
+      static_configs:
+          - targets: ["localhost:9090"]
+      scrape_interval: 30s
+
+    # Optional: Monitor Mosquitto MQTT broker if metrics are available
+    - job_name: "mosquitto"
+      static_configs:
+          - targets: ["mosquitto:9001"]
+      metrics_path: "/metrics"
+      scrape_interval: 30s
+      scrape_timeout: 10s
+      # Only scrape if mosquitto exports metrics
+      honor_labels: true
+
+    # Optional: Monitor PostgreSQL if using postgres_exporter
+    - job_name: "postgres"
+      static_configs:
+          - targets: ["postgres:5432"]
+      metrics_path: "/metrics"
+      scrape_interval: 30s
+      scrape_timeout: 10s
+      # Requires postgres_exporter to be configured
+      honor_labels: true
+
+    # Optional: Monitor Redis if using redis_exporter
+    - job_name: "redis"
+      static_configs:
+          - targets: ["redis:6379"]
+      metrics_path: "/metrics"
+      scrape_interval: 30s
+      scrape_timeout: 10s
+      # Requires redis_exporter to be configured
+      honor_labels: true
+
+# Alertmanager configuration (optional)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#           - alertmanager:9093
+
+# Storage configuration
+storage:
+    # Remote write configuration (optional for long-term storage)
+    # remote_write:
+    #   - url: "https://your-remote-prometheus-endpoint/api/v1/write"
+    #     basic_auth:
+    #       username: "your-username"
+    #       password: "your-password"
+
+    # Remote read configuration (optional)
+    # remote_read:
+    #   - url: "https://your-remote-prometheus-endpoint/api/v1/read"
+    #     basic_auth:
+    #       username: "your-username"
+    #       password: "your-password"

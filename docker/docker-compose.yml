@@ -1,0 +1,167 @@
+version: "3.8"
+
+services:
+    nwws2mqtt:
+        build:
+            context: ..
+            dockerfile: docker/Dockerfile
+            args:
+                PYTHON_VERSION: 3.13
+        container_name: nwws2mqtt
+        restart: unless-stopped
+        ports:
+            - "8080:8080"
+        environment:
+            # NWWS-OI Configuration - Set these in .env file
+            - NWWS_USERNAME=${NWWS_USERNAME}
+            - NWWS_PASSWORD=${NWWS_PASSWORD}
+            - NWWS_SERVER=${NWWS_SERVER:-nwws-oi.weather.gov}
+            - NWWS_PORT=${NWWS_PORT:-5222}
+
+            # Logging Configuration
+            - LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+            # Metrics Configuration
+            - METRIC_ENABLED=${METRIC_ENABLED:-true}
+            - METRIC_HOST=0.0.0.0
+            - METRIC_PORT=8080
+
+            # MQTT Configuration (optional)
+            - MQTT_BROKER=${MQTT_BROKER}
+            - MQTT_PORT=${MQTT_PORT:-1883}
+            - MQTT_USERNAME=${MQTT_USERNAME}
+            - MQTT_PASSWORD=${MQTT_PASSWORD}
+            - MQTT_TOPIC_PREFIX=${MQTT_TOPIC_PREFIX:-nwws}
+            - MQTT_QOS=${MQTT_QOS:-1}
+            - MQTT_RETAIN=${MQTT_RETAIN:-true}
+            - MQTT_CLIENT_ID=${MQTT_CLIENT_ID:-nwws-oi-client}
+        volumes:
+            # Optional: Mount logs directory
+            - ../logs:/app/logs:rw
+        networks:
+            - nwws-network
+        healthcheck:
+            test:
+                [
+                    "CMD",
+                    "python",
+                    "-c",
+                    "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')",
+                ]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 40s
+        depends_on:
+            - mosquitto
+        profiles:
+            - default
+
+    # Optional MQTT broker for local development/testing
+    mosquitto:
+        image: eclipse-mosquitto:2.0.18
+        container_name: mosquitto
+        restart: unless-stopped
+        ports:
+            - "1883:1883"
+            - "9001:9001"
+        volumes:
+            - mosquitto-data:/mosquitto/data
+            - mosquitto-logs:/mosquitto/log
+            - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+        networks:
+            - nwws-network
+        profiles:
+            - default
+            - mqtt
+
+    # Optional PostgreSQL database for metrics/data storage
+    postgres:
+        image: postgres:16-alpine
+        container_name: postgres
+        restart: unless-stopped
+        environment:
+            - POSTGRES_DB=${POSTGRES_DB:-nwws}
+            - POSTGRES_USER=${POSTGRES_USER:-nwws}
+            - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-nwws123}
+        ports:
+            - "5432:5432"
+        volumes:
+            - postgres-data:/var/lib/postgresql/data
+        networks:
+            - nwws-network
+        profiles:
+            - database
+            - full
+
+    # Optional Redis for caching/session storage
+    redis:
+        image: redis:7-alpine
+        container_name: redis
+        restart: unless-stopped
+        ports:
+            - "6379:6379"
+        volumes:
+            - redis-data:/data
+        networks:
+            - nwws-network
+        profiles:
+            - cache
+            - full
+
+    # Optional Prometheus for metrics collection
+    prometheus:
+        image: prom/prometheus:latest
+        container_name: prometheus
+        restart: unless-stopped
+        ports:
+            - "9090:9090"
+        volumes:
+            - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+            - prometheus-data:/prometheus
+        command:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus"
+            - "--web.console.libraries=/etc/prometheus/console_libraries"
+            - "--web.console.templates=/etc/prometheus/consoles"
+            - "--storage.tsdb.retention.time=200h"
+            - "--web.enable-lifecycle"
+        networks:
+            - nwws-network
+        depends_on:
+            - nwws2mqtt
+        profiles:
+            - monitoring
+            - full
+
+    # Optional Grafana for metrics visualization
+    grafana:
+        image: grafana/grafana:latest
+        container_name: grafana
+        restart: unless-stopped
+        ports:
+            - "3000:3000"
+        environment:
+            - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+            - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+        volumes:
+            - grafana-data:/var/lib/grafana
+        networks:
+            - nwws-network
+        depends_on:
+            - prometheus
+        profiles:
+            - monitoring
+            - full
+
+networks:
+    nwws-network:
+        driver: bridge
+
+volumes:
+    mosquitto-data:
+    mosquitto-logs:
+    postgres-data:
+    redis-data:
+    prometheus-data:
+    grafana-data:
