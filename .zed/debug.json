@@ -1,0 +1,16 @@
+[
+    {
+        "label": "Active File",
+        "adapter": "Debugpy",
+        "program": "${ZED_FILE}",
+        "request": "launch"
+    },
+    {
+        "label": "NWWS Module",
+        "adapter": "Debugpy",
+        "request": "launch",
+        "module": "nwws",
+        "cwd": "${ZED_WORKTREE_ROOT}/src",
+        "pythonPath": "${ZED_WORKTREE_ROOT}/.venv/bin/python"
+    }
+]

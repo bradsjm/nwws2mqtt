@@ -1,0 +1,10 @@
+[
+    {
+        "label": "Run NWWS Module",
+        "command": "uv",
+        "args": ["run", "--module", "nwws"],
+        "cwd": "${ZED_WORKTREE_ROOT}/src",
+        "allow_concurrent_runs": false,
+        "use_new_terminal": false
+    }
+]
