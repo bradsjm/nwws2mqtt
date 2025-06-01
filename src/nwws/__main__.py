@@ -251,6 +251,7 @@ class WeatherWireApp:
     async def _handle_weather_wire_message(self, event: WeatherWireMessage) -> None:
         """Handle Weather Wire content by feeding to the pipeline."""
         try:
+            # Create enhanced initial metadata with rich context
             pipeline_event = NoaaPortEventData(
                 awipsid=event.awipsid,
                 cccc=event.cccc,
@@ -264,16 +265,36 @@ class WeatherWireApp:
                 metadata=PipelineEventMetadata(
                     source="weather-wire-receiver",
                     stage=PipelineStage.INGEST,
-                    trace_id=event.id,
+                    trace_id=f"wr-{event.id}-{int(time.time())}",
+                    custom={
+                        "original_source": "weather_wire",
+                        "message_size_bytes": len(event.noaaport),
+                        "has_delay_stamp": event.delay_stamp is not None,
+                        "ingest_timestamp": time.time(),
+                        "awipsid": event.awipsid,
+                        "cccc": event.cccc,
+                        "ttaaii": event.ttaaii,
+                        "subject": event.subject,
+                    },
                 ),
             )
+
             await self.pipeline.process(pipeline_event)
-            logger.debug(
-                "Weather wire data submitted to pipeline",
+
+            # Enhanced logging with metadata context
+            logger.info(
+                "Weather wire message ingested to pipeline",
                 event_id=pipeline_event.metadata.event_id,
+                trace_id=pipeline_event.metadata.trace_id,
                 product_id=pipeline_event.id,
                 subject=pipeline_event.subject,
+                awipsid=pipeline_event.awipsid,
+                cccc=pipeline_event.cccc,
+                message_size_bytes=len(event.noaaport),
+                has_delay_stamp=event.delay_stamp is not None,
+                content_type=pipeline_event.content_type,
             )
+
         except (ValueError, TypeError, AttributeError) as e:
             self._log_processing_error(e, event, "Failed to process weather wire event")
         except Exception as e:  # noqa: BLE001 - Catch-all for unexpected errors
@@ -289,17 +310,25 @@ class WeatherWireApp:
         event: WeatherWireMessage,
         message: str,
     ) -> None:
-        """Log processing errors with consistent format."""
+        """Log processing errors with enhanced context and metadata."""
         event_id = event.id if hasattr(event, "id") else "unknown"
         subject = event.subject if hasattr(event, "subject") else "unknown"
+        awipsid = event.awipsid if hasattr(event, "awipsid") else "unknown"
+        cccc = event.cccc if hasattr(event, "cccc") else "unknown"
 
-        logger.error(
-            message,
-            error=str(error),
-            error_type=type(error).__name__,
-            product_id=event_id,
-            subject=subject,
-        )
+        # Enhanced error logging with additional context
+        error_context = {
+            "error": str(error),
+            "error_type": type(error).__name__,
+            "product_id": event_id,
+            "subject": subject,
+            "awipsid": awipsid,
+            "cccc": cccc,
+            "processing_stage": "ingestion",
+            "source": "weather-wire-receiver",
+        }
+
+        logger.error(message, **error_context)
 
     async def __aenter__(self) -> "WeatherWireApp":
         """Async context manager entry.
@@ -374,9 +403,26 @@ class WeatherWireApp:
 
         This method assumes services are already started (via context manager).
         """
-        logger.info("Running NWWS-OI application event loop")
+        logger.info(
+            "Running NWWS-OI application event loop",
+            pipeline_id=self.pipeline.pipeline_id,
+            uptime_seconds=time.time() - self._start_time,
+            filters_count=len(self.pipeline.filters),
+            has_transformer=self.pipeline.transformer is not None,
+            outputs_count=len(self.pipeline.outputs),
+        )
         await self._shutdown_event.wait()
-        logger.info("Stopped NWWS-OI application event loop")
+
+        # Log final statistics on shutdown
+        if hasattr(self.pipeline, "stats_collector") and self.pipeline.stats_collector:
+            final_stats = self.pipeline.stats_collector.get_summary()
+            logger.info(
+                "NWWS-OI application stopped with final statistics",
+                uptime_seconds=time.time() - self._start_time,
+                **final_stats,
+            )
+        else:
+            logger.info("NWWS-OI application event loop stopped")
 
     def shutdown(self) -> None:
         """Gracefully shutdown the application.
@@ -399,17 +445,36 @@ async def main() -> None:
     """
     try:
         config = Config.from_env()
+        logger.info(
+            "Starting NWWS-OI application with configuration",
+            nwws_server=config.nwws_server,
+            nwws_port=config.nwws_port,
+            outputs=config.outputs,
+            log_level=config.log_level,
+            metric_server_enabled=config.metric_server,
+        )
+
         async with WeatherWireApp(config) as app:
             await app.run()
 
     except ValueError as e:
-        logger.error("Configuration error", error=str(e))
+        logger.error(
+            "Configuration error - application startup failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            stage="startup",
+        )
         sys.exit(1)
     except (TimeoutError, OSError, ConnectionError, RuntimeError, CancelledError) as e:
-        logger.error("Unexpected error", error=str(e))
+        logger.error(
+            "Runtime error - application failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            stage="runtime",
+        )
         sys.exit(1)
     finally:
-        logger.info("NWWS-OI application stopped")
+        logger.info("NWWS-OI application shutdown completed")
 
 
 if __name__ == "__main__":

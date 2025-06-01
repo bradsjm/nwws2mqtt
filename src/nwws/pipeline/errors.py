@@ -193,9 +193,28 @@ class PipelineErrorHandler:
         recoverable: bool = False,
         **details: Any,
     ) -> PipelineErrorEvent:
-        """Handle an error and create an error event."""
+        """Handle an error and create an error event with enhanced metadata context."""
         error_key = f"{stage.value}.{stage_id}"
         self._error_counts[error_key] = self._error_counts.get(error_key, 0) + 1
+
+        # Extract enhanced context from event metadata if available
+        enhanced_details = details.copy()
+        if original_event and original_event.metadata:
+            metadata = original_event.metadata
+            enhanced_details.update(
+                {
+                    "event_age_seconds": metadata.age_seconds,
+                    "trace_id": metadata.trace_id,
+                    "source": metadata.source,
+                    "current_stage": metadata.stage.value,
+                    "event_type": type(original_event).__name__,
+                }
+            )
+
+            # Extract journey information from custom metadata
+            journey_info = self._extract_journey_from_metadata(metadata)
+            if journey_info:
+                enhanced_details["journey_info"] = journey_info
 
         error_event = PipelineErrorEvent(
             event_id=event_id,
@@ -205,11 +224,14 @@ class PipelineErrorHandler:
             error_message=str(exception),
             original_event=original_event,
             exception=exception,
-            details=details,
+            details=enhanced_details,
             recoverable=recoverable,
         )
 
         self._last_errors[error_key] = error_event
+
+        # Log error with enhanced context
+        self._log_error_with_context(error_event, enhanced_details)
 
         # Update circuit breaker state if using that strategy
         if self.strategy == ErrorHandlingStrategy.CIRCUIT_BREAKER:
@@ -412,6 +434,102 @@ class PipelineErrorHandler:
                 for key, error in self._last_errors.items()
             },
         }
+
+    def _extract_journey_from_metadata(self, metadata: Any) -> dict[str, Any]:
+        """Extract journey information from event metadata for error context.
+
+        Args:
+            metadata: Event metadata containing custom fields.
+
+        Returns:
+            Dictionary of journey information for error context.
+
+        """
+        custom = getattr(metadata, "custom", {}) or {}
+        journey_info: dict[str, Any] = {}
+
+        # Extract applied transformers
+        transformers_applied = [
+            key.replace("_applied", "")
+            for key in custom
+            if key.endswith("_applied") and custom[key] is True
+        ]
+        if transformers_applied:
+            journey_info["transformers_applied"] = transformers_applied
+
+        # Extract filter decisions
+        filter_decisions = {}
+        for key, value in custom.items():
+            if key.endswith("_decision"):
+                filter_name = key.replace("_decision", "")
+                filter_decisions[filter_name] = value
+        if filter_decisions:
+            journey_info["filter_decisions"] = filter_decisions
+
+        # Extract processing times
+        processing_times = {}
+        for key, value in custom.items():
+            if key.endswith("_duration_ms") and isinstance(value, (int, float)):
+                component_name = key.replace("_duration_ms", "")
+                processing_times[component_name] = value
+        if processing_times:
+            journey_info["component_durations_ms"] = processing_times
+
+        # Extract transformation chain if available
+        if "derived_from" in custom:
+            journey_info["derived_from"] = custom["derived_from"]
+
+        return journey_info
+
+    def _log_error_with_context(
+        self, error_event: PipelineErrorEvent, enhanced_details: dict[str, Any]
+    ) -> None:
+        """Log error with enhanced context from metadata.
+
+        Args:
+            error_event: The error event to log.
+            enhanced_details: Enhanced details including metadata context.
+
+        """
+        log_context = {
+            "error_type": error_event.error_type,
+            "stage": error_event.stage.value,
+            "stage_id": error_event.stage_id,
+            "event_id": error_event.event_id,
+            "recoverable": error_event.recoverable,
+            "strategy": self.strategy.value,
+            "error_count": self._error_counts.get(
+                f"{error_event.stage.value}.{error_event.stage_id}", 0
+            ),
+        }
+
+        # Add metadata context if available
+        if "event_age_seconds" in enhanced_details:
+            log_context["event_age_seconds"] = enhanced_details["event_age_seconds"]
+        if "trace_id" in enhanced_details:
+            log_context["trace_id"] = enhanced_details["trace_id"]
+        if "source" in enhanced_details:
+            log_context["source"] = enhanced_details["source"]
+        if "event_type" in enhanced_details:
+            log_context["event_type"] = enhanced_details["event_type"]
+
+        # Add journey information if available
+        if "journey_info" in enhanced_details:
+            journey = enhanced_details["journey_info"]
+            if "transformers_applied" in journey:
+                log_context["transformers_applied"] = journey["transformers_applied"]
+            if "filter_decisions" in journey:
+                log_context["filter_decisions"] = journey["filter_decisions"]
+            if "component_durations_ms" in journey:
+                log_context["total_processing_time_ms"] = sum(
+                    journey["component_durations_ms"].values()
+                )
+
+        logger.error(
+            "Pipeline error occurred with enhanced context",
+            error_message=error_event.error_message,
+            **log_context,
+        )
 
     def reset_errors(self) -> None:
         """Reset all error tracking."""
