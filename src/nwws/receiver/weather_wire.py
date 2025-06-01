@@ -19,6 +19,7 @@ from .config import WeatherWireConfig
 # Configuration constants
 MUC_ROOM = "nwws@conference.nwws-oi.weather.gov"
 IDLE_TIMEOUT = 5 * 60  # 5 minutes
+MAX_HISTORY = 5  # Maximum history messages to retrieve when joining MUC
 
 
 @dataclass
@@ -145,10 +146,11 @@ class WeatherWire(slixmpp.ClientXMPP):
 
     async def _force_reconnect(self) -> None:
         """Force a reconnect of the XMPP client."""
+        await self.stop(reason="Idle timeout exceeded")
+
         if self.stats_collector:
             self.stats_collector.record_reconnection()
 
-        await self.stop()
         await asyncio.sleep(2)
         self.is_shutting_down = False
         self.last_message_time = time.time()
@@ -225,8 +227,8 @@ class WeatherWire(slixmpp.ClientXMPP):
         if self.stats_collector:
             self.stats_collector.record_connection_failure(str(reason))
 
-    async def _join_muc_room(self) -> None:
-        """Join and subscribe to the MUC room with proper configuration."""
+    async def _join_muc_room(self, max_history: int = MAX_HISTORY) -> None:
+        """Join and subscribe to the MUC room."""
         logger.info("Subscribing to room", room=MUC_ROOM)
 
         # Join MUC room
@@ -234,7 +236,7 @@ class WeatherWire(slixmpp.ClientXMPP):
         await self.plugin["xep_0045"].join_muc(  # type: ignore[misc]
             muc_room_jid,
             self.nickname,
-            maxhistory="5",
+            maxhistory=str(max_history),
         )
 
         # Send additional presence to ensure proper subscription
@@ -373,7 +375,7 @@ class WeatherWire(slixmpp.ClientXMPP):
         )
         await self.callback(event)
 
-    async def stop(self) -> None:
+    async def stop(self, reason: str | None = None) -> None:
         """Gracefully shutdown the XMPP client."""
         if self.is_shutting_down:
             return
@@ -381,21 +383,11 @@ class WeatherWire(slixmpp.ClientXMPP):
         logger.info("Shutting down NWWS-OI client")
         self.is_shutting_down = True
 
-        # Cancel idle monitor task if running
-        if self._idle_monitor_task is not None:
-            self._idle_monitor_task.cancel()
-            self._idle_monitor_task = None
-
-        # Cancel stats update task if running
-        if self._stats_update_task is not None:
-            self._stats_update_task.cancel()
-            self._stats_update_task = None
-
         # Leave MUC room gracefully
         self._leave_muc_room()
 
         # Disconnect from server
-        await self.disconnect()  # type: ignore[misc]
+        await self.disconnect(ignore_send_queue=True, reason=reason)  # type: ignore[misc]
 
         if self.stats_collector:
             self.stats_collector.update_connection_status(is_connected=False)
