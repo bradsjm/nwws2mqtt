@@ -19,10 +19,11 @@ from nwws.models import Config
 from nwws.models.events import NoaaPortEventData
 from nwws.outputs.console import ConsoleOutput
 from nwws.outputs.mqtt import MQTTOutput
-from nwws.pipeline import Pipeline
-from nwws.pipeline.errors import PipelineErrorHandler
-from nwws.pipeline.stats import PipelineStatsCollector
-from nwws.pipeline.transformers import ChainTransformer
+from nwws.pipeline.config import PipelineBuilder, PipelineConfig
+from nwws.pipeline.errors import ErrorHandlingStrategy
+from nwws.pipeline.filters import FilterConfig
+from nwws.pipeline.outputs import OutputConfig
+from nwws.pipeline.transformers import TransformerConfig
 from nwws.pipeline.types import PipelineEventMetadata, PipelineStage
 from nwws.receiver import WeatherWire, WeatherWireConfig, WeatherWireMessage
 from nwws.receiver.stats import WeatherWireStatsCollector
@@ -90,30 +91,131 @@ class WeatherWireApp:
 
     def _setup_pipeline(self) -> None:
         """Configure and initialize the pipeline system."""
-        # Create shared metric registry for both pipeline and receiver
-        self.pipeline_stats_collector = PipelineStatsCollector(
-            self.metric_registry, "pipeline"
+        # Create pipeline builder and register application-specific outputs
+        builder = PipelineBuilder()
+
+        # Register application-specific filters at runtime
+        builder.filter_registry.register("duplicate", self._create_duplicate_filter)
+        builder.filter_registry.register("test_msg", self._create_test_msg_filter)
+
+        # Register application-specific transformers at runtime
+        builder.transformer_registry.register(
+            "noaaport", self._create_noaaport_transformer
         )
-        error_handler = PipelineErrorHandler()
-        self.pipeline: Pipeline = Pipeline(
+        builder.transformer_registry.register("xml", self._create_xml_transformer)
+
+        # Register console and mqtt outputs at runtime
+        builder.output_registry.register("console", self._create_console_output)
+        builder.output_registry.register("mqtt", self._create_mqtt_output)
+
+        # Parse configured outputs from environment
+        output_configs = self._create_output_configs()
+
+        # Create pipeline configuration
+        pipeline_config = PipelineConfig(
             pipeline_id="pipeline",
-            filters=[DuplicateFilter(), TestMessageFilter()],
-            transformer=ChainTransformer(
+            filters=[
+                FilterConfig(
+                    filter_type="duplicate",
+                    filter_id="duplicate-filter",
+                ),
+                FilterConfig(
+                    filter_type="test_msg",
+                    filter_id="test-msg-filter",
+                ),
+            ],
+            transformer=TransformerConfig(
+                transformer_type="chain",
                 transformer_id="chain",
-                transformers=[
-                    NoaaPortTransformer(),
-                    XmlTransformer(),
-                ],
+                config={
+                    "transformers": [
+                        {"transformer_type": "noaaport", "transformer_id": "noaaport"},
+                        {"transformer_type": "xml", "transformer_id": "xml"},
+                    ]
+                },
             ),
-            outputs=[ConsoleOutput(pretty=True)],
-            stats_collector=self.pipeline_stats_collector,
-            error_handler=error_handler,
+            outputs=output_configs,
+            enable_stats=True,
+            enable_error_handling=True,
+            error_handling_strategy=ErrorHandlingStrategy.CIRCUIT_BREAKER,
         )
 
-        if self.config.mqtt_config:
-            self.pipeline.outputs.append(MQTTOutput(config=self.config.mqtt_config))
+        # Build pipeline using configuration
+        self.pipeline = builder.build_pipeline(pipeline_config)
+
+        # Store stats collector for metrics
+        self.pipeline_stats_collector = self.pipeline.stats_collector
 
         logger.info("Pipeline configured", pipeline_id=self.pipeline.pipeline_id)
+
+    def _create_output_configs(self) -> list[OutputConfig]:
+        """Create output configurations based on environment settings."""
+        output_configs: list[OutputConfig] = []
+        output_names = [name.strip().lower() for name in self.config.outputs.split(",")]
+
+        for output_name in output_names:
+            if output_name == "console":
+                output_configs.append(
+                    OutputConfig(
+                        output_type="console",
+                        output_id="console",
+                        config={"pretty": True},
+                    )
+                )
+            elif output_name == "mqtt":
+                if self.config.mqtt_config:
+                    output_configs.append(
+                        OutputConfig(
+                            output_type="mqtt",
+                            output_id="mqtt",
+                            config={"config": self.config.mqtt_config},
+                        )
+                    )
+                else:
+                    logger.warning("MQTT output requested but no MQTT config provided")
+            else:
+                logger.warning("Unknown output type", output_type=output_name)
+
+        return output_configs
+
+    def _create_mqtt_output(self, output_id: str, **kwargs: object) -> MQTTOutput:
+        """Create MQTT output instances."""
+        from nwws.models.mqtt_config import MqttConfig
+
+        config = kwargs.get("config")
+        if not isinstance(config, MqttConfig):
+            error_msg = "MQTT output requires valid MqttConfig"
+            raise TypeError(error_msg)
+        return MQTTOutput(output_id=output_id, config=config)
+
+    def _create_duplicate_filter(
+        self, filter_id: str, **_kwargs: object
+    ) -> DuplicateFilter:
+        """Create duplicate filter instances."""
+        return DuplicateFilter(filter_id=filter_id)
+
+    def _create_test_msg_filter(
+        self, filter_id: str, **_kwargs: object
+    ) -> TestMessageFilter:
+        """Create test message filter instances."""
+        return TestMessageFilter(filter_id=filter_id)
+
+    def _create_noaaport_transformer(
+        self, transformer_id: str, **_kwargs: object
+    ) -> NoaaPortTransformer:
+        """Create NOAA Port transformer instances."""
+        return NoaaPortTransformer(transformer_id=transformer_id)
+
+    def _create_xml_transformer(
+        self, transformer_id: str, **_kwargs: object
+    ) -> XmlTransformer:
+        """Create XML transformer instances."""
+        return XmlTransformer(transformer_id=transformer_id)
+
+    def _create_console_output(self, output_id: str, **kwargs: object) -> ConsoleOutput:
+        """Create console output instances."""
+        pretty = kwargs.get("pretty", True)
+        return ConsoleOutput(output_id=output_id, pretty=bool(pretty))
 
     async def _start_services(self) -> None:
         """Start all application services in the correct order."""
