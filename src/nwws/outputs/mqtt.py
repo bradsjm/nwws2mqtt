@@ -42,6 +42,8 @@ class MQTTOutput(Output):
         self._published_topics: dict[str, float] = {}  # topic -> timestamp
         self._cleanup_task: asyncio.Task[None] | None = None
 
+        logger.info("MQTT Output initialized", output_id=self.output_id)
+
     async def start(self) -> None:
         """Start MQTT client and connect to broker."""
         await super().start()

@@ -17,6 +17,8 @@ class ConsoleOutput(Output):
         self.console = Console()
         self.pretty = pretty
 
+        logger.info("Console Output initialized", output_id=self.output_id)
+
     async def send(self, event: PipelineEvent) -> None:
         """Send the event to console."""
         if not isinstance(event, NoaaPortEventData):

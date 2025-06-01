@@ -70,9 +70,9 @@ class Transformer(ABC):
 class PassThroughTransformer(Transformer):
     """Transformer that passes events through unchanged."""
 
-    def __init__(self) -> None:
+    def __init__(self, transformer_id: str = "passthrough") -> None:
         """Initialize the pass-through transformer."""
-        super().__init__("passthrough")
+        super().__init__(transformer_id)
 
     def transform(self, event: PipelineEvent) -> PipelineEvent:
         """Return the event unchanged."""
@@ -400,11 +400,73 @@ class TransformerRegistry:
         """Register built-in transformer types."""
         self.register("passthrough", PassThroughTransformer)
         self.register("attribute_mapper", AttributeMapperTransformer)
-        self.register("chain", ChainTransformer)
+        self.register("chain", self._create_chain_transformer)
         self.register("conditional", ConditionalTransformer)
         self.register("attribute", AttributeTransformer)
         self.register("property", PropertyTransformer)
         self.register("function", FunctionTransformer)
+
+    def _create_chain_transformer(
+        self, transformer_id: str, **kwargs: Any
+    ) -> ChainTransformer:
+        """Create a chain transformer from configuration.
+
+        Args:
+            transformer_id: Unique identifier for the transformer.
+            **kwargs: Configuration including 'transformers' list.
+
+        Returns:
+            Configured ChainTransformer instance.
+
+        Raises:
+            TransformerError: If configuration is invalid or transformer creation fails.
+
+        """
+        from typing import cast
+
+        transformers_config = kwargs.get("transformers", [])
+        if not isinstance(transformers_config, list):
+            msg = "Chain transformer requires 'transformers' list in configuration"
+            raise TransformerError(msg, transformer_id)
+
+        transformers: list[Transformer] = []
+        config_list = cast("list[dict[str, Any]]", transformers_config)
+
+        for i, transformer_config in enumerate(config_list):
+            transformer_type = transformer_config.get("transformer_type")
+            transformer_id_inner = transformer_config.get("transformer_id")
+            transformer_inner_config = transformer_config.get("config", {})
+
+            if not isinstance(transformer_type, str) or not isinstance(
+                transformer_id_inner, str
+            ):
+                msg = (
+                    f"Transformer config at index {i} missing "
+                    "'transformer_type' or 'transformer_id'"
+                )
+                raise TransformerError(msg, transformer_id)
+
+            # Create nested transformer configuration
+            # Ensure config is a dictionary
+            config_data = (
+                cast("dict[str, Any]", transformer_inner_config)
+                if isinstance(transformer_inner_config, dict)
+                else {}
+            )
+
+            nested_config = TransformerConfig(
+                transformer_type=transformer_type,
+                transformer_id=transformer_id_inner,
+                config=config_data,
+            )
+
+            # Use recursive transformer creation
+            nested_transformer = self.create(nested_config)
+            transformers.append(nested_transformer)
+
+        return ChainTransformer(
+            transformer_id=transformer_id, transformers=transformers
+        )
 
 
 # Global transformer registry instance

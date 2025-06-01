@@ -20,6 +20,7 @@ class Config:
     metric_server: bool = True  # Enable metrics
     metric_port: int = 8080  # Port for  metrics endpoint
     metric_host: str = "127.0.0.1"  # Host for metrics endpoint
+    outputs: str = "console"  # Comma-separated list of outputs (console,mqtt)
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -36,4 +37,5 @@ class Config:
             in ("true", "1", "yes"),
             metric_port=int(os.getenv("METRIC_PORT", "8080")),
             metric_host=os.getenv("METRIC_HOST", "127.0.0.1"),
+            outputs=os.getenv("OUTPUTS", "console"),
         )

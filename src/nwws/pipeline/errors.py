@@ -15,19 +15,61 @@ from .types import EventId, PipelineEvent, PipelineStage, StageId, Timestamp
 
 
 class ErrorHandlingStrategy(Enum):
-    """Strategy for handling errors in pipeline processing."""
+    """Strategy for handling errors in pipeline processing.
+
+    Each strategy determines how the pipeline responds to errors at any stage.
+    Choose the strategy that best fits your reliability and operational requirements:
+
+    - FAIL_FAST: Stops processing immediately on the first error encountered. No retries are
+      attempted, and the pipeline or stage will halt, propagating the exception upstream. Use
+      this for strict correctness or when errors indicate unrecoverable conditions.
+
+    - CONTINUE: Logs the error and continues processing subsequent events or stages. The error
+      is recorded, but the pipeline does not retry or halt. Use this when occasional errors are
+      tolerable and you want maximum throughput and resilience to transient failures.
+
+    - RETRY: Retries the failed operation up to a configurable maximum number of times
+      (default: 3), with exponential backoff between attempts (default multiplier: 2.0,
+      base delay: 1.0s). Retries are only attempted for certain exception types (OSError,
+      ConnectionError, TimeoutError). If all retries fail, the error is logged and processing
+      continues or fails based on context. Use this for transient or recoverable errors where
+      retrying may succeed.
+
+    - CIRCUIT_BREAKER: Uses the circuit breaker pattern for external dependencies. After a
+      configurable number of consecutive failures (default: 5), the circuit breaker "opens"
+      for that stage/component, causing further attempts to fail immediately for a timeout
+      period (default: 60s). After the timeout, the circuit enters a "half-open" state to
+      test recovery. If successful, it closes; if not, it reopens. This prevents overwhelming
+      failing dependencies and allows for graceful degradation. Use this for outputs or stages
+      that depend on unreliable external services.
+    """
 
     FAIL_FAST = "fail_fast"
-    """Stop processing immediately on first error."""
+    """Stop processing immediately on the first error encountered. No retries are attempted,
+    and the pipeline or stage will halt, propagating the exception upstream. Use for strict
+    correctness or when errors are unrecoverable.
+    """
 
     CONTINUE = "continue"
-    """Log error and continue processing."""
+    """Log the error and continue processing subsequent events or stages. No retries are attempted.
+    Errors are recorded, but the pipeline does not halt. Use when occasional errors are tolerable and
+    you want maximum throughput.
+    """
 
     RETRY = "retry"
-    """Retry the operation with backoff."""
+    """Retry the failed operation up to a configurable maximum number of times (default: 3), with
+    exponential backoff (default multiplier: 2.0, base delay: 1.0s). Retries are only attempted for
+    OSError, ConnectionError, or TimeoutError. If all retries fail, the error is logged and processing
+    continues or fails based on context. Use for transient or recoverable errors.
+    """
 
     CIRCUIT_BREAKER = "circuit_breaker"
-    """Use circuit breaker pattern for external dependencies."""
+    """Use the circuit breaker pattern for external dependencies. After a configurable number of
+    consecutive failures (default: 5), the circuit breaker opens for that stage/component, causing
+    further attempts to fail immediately for a timeout period (default: 60s). After the timeout,
+    the circuit enters a half-open state to test recovery. If successful, it closes; if not, it
+    reopens. Use for outputs or stages that depend on unreliable external services.
+    """
 
 
 class PipelineError(Exception):
@@ -122,8 +164,8 @@ class PipelineErrorHandler:
         Args:
             strategy: Error handling strategy to use.
             max_retries: Maximum number of retries for RETRY strategy.
-            retry_delay_seconds: Base delay between retries.
-            backoff_multiplier: Multiplier for exponential backoff.
+            retry_delay_seconds: Base delay between retries for RETRY strategy.
+            backoff_multiplier: Multiplier for exponential backoff for RETRY strategy.
             circuit_breaker_threshold: Number of failures to trigger circuit breaker.
             circuit_breaker_timeout_seconds: Time to wait before resetting circuit breaker.
 
