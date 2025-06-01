@@ -18,11 +18,17 @@
   - Limit tuples to 3 elements for small, immutable groups.
   - Use dataclasses/pydantic for any structured or complex data.
   - AVOID nested types like `dict[str, tuple[...]]`; prefer named types.
+- **Dynamic and Factory Typing:**
+  - When implementing factory functions (`Callable[..., SomeType]`), explicitly type parameters like `**kwargs` as `**kwargs: object` or a more specific `typing.Dict` if the structure is known.
+  - Ensure factory functions return the most specific type possible.
+  - Use `isinstance()` for runtime type checking of arguments passed via `**kwargs`.
+  - Use `typing.cast()` judiciously and with string literal type expressions (`cast("list[dict[str, str]]", ...)`) when necessary to guide the type checker, especially when dealing with data structures from configurations.
 
 ## Style & Formatting (Ruff Enforcement)
 - **PEP 8 Compliance:** Follow naming conventions (`snake_case` for functions/variables; `PascalCase` for classes).
 - **String Interpolation:** Use f-strings exclusively.
-- **Unused Variables:** Remove or prefix with underscore.
+- **Unused Variables:** Remove or prefix with underscore (`_`) if they must be kept (e.g., in function signatures for compatibility).
+- **Import Formatting**: Ensure import statements are automatically sorted and formatted according to project standards (as enforced by Ruff).
 
 ## Structure & Complexity
 - **Imports:** Always use absolute imports.
@@ -43,6 +49,7 @@
 
 ## Error Handling
 - **Granular Exceptions:** Always catch specific exceptions (e.g., `except ValueError:`, `except requests.HTTPError:`) for external or I/O operations.
+- **Specific Exception Types**: Use appropriate built-in exception types (e.g., `ValueError`, `TypeError`, `FileNotFoundError`, `ConnectionError`) for specific error conditions. Use `TypeError` when an argument or object is of an inappropriate type. Create exception messages by assigning the message string to a variable first, rather than directly in the exception constructor, for clarity and adherence to style guidelines.
 - **AVOID** bare except blocks except as a fallback for unexpected errors with # noqa: BLE001 comment.
 
 ## Documentation
@@ -51,5 +58,6 @@
 
 ## Testing
 - **Pytest:** Use pytest for unit tests.
-- **Linting**: Lint code using `ruff check --fix` before running tests.
-- **Type Checking**: Type check code using `basedpyright` before running tests.
+- **Linting**: Generated code MUST pass `ruff check --fix` without reporting any errors or warnings.
+- **Type Checking**: Generated code MUST pass `basedpyright` in strict mode without reporting any errors or warnings.
+- **Diagnostic Resolution**: Prioritize addressing and resolving ALL diagnostics reported by the environment (linting and type checking) as a critical step before considering code complete.
