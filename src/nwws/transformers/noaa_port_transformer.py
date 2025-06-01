@@ -51,9 +51,19 @@ class NoaaPortTransformer(Transformer):
             )
             return event
 
-        product = convert_text_product_to_model(
-            parser(text=event.noaaport, ugc_provider=self.ugc_provider),  # type: ignore[arg-type]
-        )
+        try:
+            product = convert_text_product_to_model(
+                parser(text=event.noaaport, ugc_provider=self.ugc_provider),  # type: ignore[arg-type]
+            )
+        except Exception as err:  # noqa: BLE001
+            logger.error(
+                "Failed to parse NOAA Port message",
+                error=str(err),
+                event_id=event.metadata.event_id,
+                product_id=event.id,
+                subject=event.subject,
+            )
+            return event
 
         logger.debug(
             "Transformed Raw Content to Text Product Model",
@@ -83,5 +93,5 @@ class NoaaPortTransformer(Transformer):
             ttaaii=event.ttaaii,
             delay_stamp=event.delay_stamp,
             noaaport=event.noaaport,
-            content_type="text/plain",
+            content_type="application/json",
         )
