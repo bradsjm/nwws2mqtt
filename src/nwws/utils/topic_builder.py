@@ -54,6 +54,8 @@ def build_topic(
         product_type = get_product_type_indicator(event)
     else:
         product_type = "XML"
+        if event.awipsid and len(event.awipsid) >= 3:
+            product_type = event.awipsid[:3].upper()
 
     # Use AWIPS ID or default if not available
     awipsid = event.awipsid if event.awipsid else "GENERAL"

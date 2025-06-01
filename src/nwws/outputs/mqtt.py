@@ -150,7 +150,7 @@ class MQTTOutput(Output):
 
         try:
             # Create topic using configured pattern and dynamic component resolution
-            topic = build_topic(event=event, prefix=self.config.mqtt_topic_prefix)
+            topics = [build_topic(event=event, prefix=self.config.mqtt_topic_prefix)]
 
             # Create properties for message expiry only if retain is enabled
             properties = None
@@ -163,36 +163,37 @@ class MQTTOutput(Output):
             payload = str(event)
 
             # Publish message
-            result = self._client.publish(
-                topic,
-                payload,
-                qos=self.config.mqtt_qos,
-                retain=self.config.mqtt_retain,
-                properties=properties,
-            )
+            for topic in topics:
+                result = self._client.publish(
+                    topic,
+                    payload,
+                    qos=self.config.mqtt_qos,
+                    retain=self.config.mqtt_retain,
+                    properties=properties,
+                )
 
-            if result.rc == mqtt.MQTT_ERR_SUCCESS:
-                # Track the published topic with timestamp only if retain is enabled
-                if self.config.mqtt_retain:
-                    self._published_topics[topic] = time.time()
-                logger.info(
-                    "Published to MQTT",
-                    output_id=self.output_id,
-                    event_id=event.metadata.event_id,
-                    product_id=event.id,
-                    topic=topic,
-                    content_type=event.content_type,
-                )
-            else:
-                logger.warning(
-                    "Failed to publish to MQTT",
-                    output_id=self.output_id,
-                    event_id=event.metadata.event_id,
-                    return_code=result.rc,
-                    topic=topic,
-                    product_id=event.id,
-                    content_type=event.content_type,
-                )
+                if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                    # Track the published topic with timestamp only if retain is enabled
+                    if self.config.mqtt_retain:
+                        self._published_topics[topic] = time.time()
+                    logger.info(
+                        "Published to MQTT",
+                        output_id=self.output_id,
+                        event_id=event.metadata.event_id,
+                        product_id=event.id,
+                        topic=topic,
+                        content_type=event.content_type,
+                    )
+                else:
+                    logger.warning(
+                        "Failed to publish to MQTT",
+                        output_id=self.output_id,
+                        event_id=event.metadata.event_id,
+                        return_code=result.rc,
+                        topic=topic,
+                        product_id=event.id,
+                        content_type=event.content_type,
+                    )
 
         except (ConnectionError, OSError, ValueError) as e:
             logger.error(
