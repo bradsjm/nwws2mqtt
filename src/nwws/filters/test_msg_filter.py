@@ -3,9 +3,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-from loguru import logger
+from typing import TYPE_CHECKING, Any
 
 from nwws.pipeline.filters import Filter
 
@@ -44,14 +42,26 @@ class TestMessageFilter(Filter):
         awipsid = getattr(event, "awipsid", "")
 
         # Reject test messages (case-insensitive comparison)
-        result = not (isinstance(awipsid, str) and awipsid.upper() == "TSTMSG")
+        return not (isinstance(awipsid, str) and awipsid.upper() == "TSTMSG")
 
-        if not result:
-            logger.debug(
-                "Filtering test message",
-                filter_id=self.filter_id,
-                event_id=event.metadata.event_id,
-                awipsid=awipsid,
-            )
+    def get_filter_decision_metadata(
+        self, event: PipelineEvent, *, result: bool
+    ) -> dict[str, Any]:
+        """Get metadata about the test message filter decision."""
+        metadata = super().get_filter_decision_metadata(event, result=result)
 
-        return result
+        # Add test message specific metadata
+        if hasattr(event, "awipsid"):
+            awipsid = getattr(event, "awipsid", "")
+            metadata[f"{self.filter_id}_awipsid"] = awipsid
+
+            if not result and isinstance(awipsid, str) and awipsid.upper() == "TSTMSG":
+                metadata[f"{self.filter_id}_reason"] = "test_message_filtered"
+            elif result:
+                metadata[f"{self.filter_id}_reason"] = "not_test_message"
+            else:
+                metadata[f"{self.filter_id}_reason"] = "invalid_awipsid"
+        else:
+            metadata[f"{self.filter_id}_reason"] = "missing_awipsid"
+
+        return metadata

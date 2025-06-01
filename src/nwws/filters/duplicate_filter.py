@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
@@ -101,28 +101,38 @@ class DuplicateFilter(Filter):
             time_since_last = current_time - last_seen
 
             if time_since_last < self.window_seconds:
-                logger.debug(
-                    "Filtering duplicate product",
-                    filter_id=self.filter_id,
-                    event_id=event.metadata.event_id,
-                    product_id=product_id,
-                    time_since_last_seconds=round(time_since_last, 2),
-                    window_seconds=self.window_seconds,
-                )
                 return False
 
         # Record this product ID with current timestamp
         self._seen_products[product_id] = current_time
-
-        logger.debug(
-            "Allowing new product",
-            filter_id=self.filter_id,
-            event_id=event.metadata.event_id,
-            product_id=product_id,
-            total_tracked_products=len(self._seen_products),
-        )
-
         return True
+
+    def get_filter_decision_metadata(
+        self, event: PipelineEvent, *, result: bool
+    ) -> dict[str, Any]:
+        """Get metadata about the duplicate filter decision."""
+        metadata = super().get_filter_decision_metadata(event, result=result)
+
+        # Add duplicate-specific metadata
+        if hasattr(event, "id"):
+            product_id = getattr(event, "id", "")
+            metadata[f"{self.filter_id}_product_id"] = product_id
+            metadata[f"{self.filter_id}_total_tracked"] = len(self._seen_products)
+
+            if not result and product_id in self._seen_products:
+                # Event was filtered as duplicate
+                last_seen = self._seen_products[product_id]
+                time_since_last = time.time() - last_seen
+                metadata[f"{self.filter_id}_time_since_last_seconds"] = round(
+                    time_since_last, 2
+                )
+                metadata[f"{self.filter_id}_reason"] = "duplicate_within_window"
+            elif result:
+                metadata[f"{self.filter_id}_reason"] = "unique_or_expired"
+        else:
+            metadata[f"{self.filter_id}_reason"] = "missing_product_id"
+
+        return metadata
 
     def _cleanup_expired_entries(self) -> None:
         """Remove expired entries from the seen products cache."""
@@ -161,4 +171,3 @@ class DuplicateFilter(Filter):
                 else 0.0
             ),
         }
-

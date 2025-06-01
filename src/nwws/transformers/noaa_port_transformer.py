@@ -1,6 +1,8 @@
 # pyright: strict
 """Transforms NoaaPort raw text to product."""
 
+from typing import Any
+
 from loguru import logger
 from pyiem.nws.products import parser  # type: ignore[import]
 from pyiem.nws.ugc import UGCProvider
@@ -8,8 +10,6 @@ from pyiem.nws.ugc import UGCProvider
 from nwws.models.events import NoaaPortEventData, TextProductEventData
 from nwws.pipeline import (
     PipelineEvent,
-    PipelineEventMetadata,
-    PipelineStage,
     Transformer,
 )
 from nwws.utils import convert_text_product_to_model
@@ -72,18 +72,10 @@ class NoaaPortTransformer(Transformer):
             subject=event.subject,
         )
 
-        # Update metadata
-        new_metadata = PipelineEventMetadata(
-            event_id=event.metadata.event_id,
-            source=self.transformer_id,
-            stage=PipelineStage.TRANSFORM,
-            trace_id=event.metadata.trace_id,
-            custom=event.metadata.custom.copy(),
-        )
-
-        # Create new event data
-        return TextProductEventData(
-            metadata=new_metadata,
+        # Create new event using simplified helper method
+        return self.create_transformed_event(
+            source_event=event,
+            target_event_class=TextProductEventData,
             awipsid=event.awipsid,
             cccc=event.cccc,
             id=event.id,
@@ -95,3 +87,27 @@ class NoaaPortTransformer(Transformer):
             noaaport=event.noaaport,
             content_type="application/json",
         )
+
+    def get_transformation_metadata(
+        self, input_event: PipelineEvent, output_event: PipelineEvent
+    ) -> dict[str, Any]:
+        """Get metadata about the NOAA Port transformation."""
+        metadata = super().get_transformation_metadata(input_event, output_event)
+
+        # Add NOAA Port specific transformation metadata
+        if isinstance(input_event, NoaaPortEventData):
+            metadata[f"{self.transformer_id}_message_size_bytes"] = len(
+                input_event.noaaport
+            )
+            metadata[f"{self.transformer_id}_has_delay_stamp"] = (
+                input_event.delay_stamp is not None
+            )
+            metadata[f"{self.transformer_id}_ugc_provider_available"] = (
+                self._ugc_provider is not None
+            )
+
+        if isinstance(output_event, TextProductEventData):
+            metadata[f"{self.transformer_id}_parsing_success"] = True
+            metadata[f"{self.transformer_id}_content_type"] = "application/json"
+
+        return metadata

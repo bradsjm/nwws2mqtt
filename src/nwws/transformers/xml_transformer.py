@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 
 from loguru import logger
 
@@ -13,7 +14,6 @@ from nwws.pipeline import (
     PipelineEvent,
     Transformer,
 )
-from nwws.pipeline.types import PipelineEventMetadata, PipelineStage
 
 
 class XmlTransformer(Transformer):
@@ -61,17 +61,10 @@ class XmlTransformer(Transformer):
             event_id=event.id,
         )
 
-        # Update metadata
-        new_metadata = PipelineEventMetadata(
-            event_id=event.metadata.event_id,
-            source=self.transformer_id,
-            stage=PipelineStage.TRANSFORM,
-            trace_id=event.metadata.trace_id,
-            custom=event.metadata.custom.copy(),
-        )
-
-        # Create new CapEventData
-        return XmlEventData(
+        # Create new XmlEventData using simplified helper method
+        return self.create_transformed_event(
+            source_event=event,
+            target_event_class=XmlEventData,
             awipsid=event.awipsid,
             cccc=event.cccc,
             id=event.id,
@@ -80,7 +73,6 @@ class XmlTransformer(Transformer):
             ttaaii=event.ttaaii,
             delay_stamp=event.delay_stamp,
             xml=xml,
-            metadata=new_metadata,
             noaaport=event.noaaport,
             content_type="text/xml",
         )
@@ -129,3 +121,23 @@ class XmlTransformer(Transformer):
             cleaned = '<?xml version="1.0" encoding="UTF-8"?>\n' + cleaned
 
         return cleaned.strip()
+
+    def get_transformation_metadata(
+        self, input_event: PipelineEvent, output_event: PipelineEvent
+    ) -> dict[str, Any]:
+        """Get metadata about the XML transformation."""
+        metadata = super().get_transformation_metadata(input_event, output_event)
+
+        # Add XML specific transformation metadata
+        if isinstance(input_event, TextProductEventData):
+            metadata[f"{self.transformer_id}_text_length"] = len(
+                input_event.product.text
+            )
+
+        if isinstance(output_event, XmlEventData):
+            metadata[f"{self.transformer_id}_xml_detected"] = True
+            metadata[f"{self.transformer_id}_xml_length"] = len(output_event.xml)
+            metadata[f"{self.transformer_id}_content_type"] = "text/xml"
+            metadata[f"{self.transformer_id}_xml_cleaned"] = True
+
+        return metadata

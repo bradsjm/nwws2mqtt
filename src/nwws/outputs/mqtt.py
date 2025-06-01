@@ -6,7 +6,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import paho.mqtt.client as mqtt
 from loguru import logger
@@ -330,3 +330,30 @@ class MQTTOutput(Output):
                 )
 
         self._published_topics.clear()
+
+    def get_output_metadata(self, event: PipelineEvent) -> dict[str, Any]:
+        """Get metadata about the MQTT output operation."""
+        metadata = super().get_output_metadata(event)
+
+        # Add MQTT-specific metadata
+        metadata[f"{self.output_id}_broker"] = self.config.mqtt_broker
+        metadata[f"{self.output_id}_port"] = self.config.mqtt_port
+        metadata[f"{self.output_id}_connected"] = self._connected
+        metadata[f"{self.output_id}_qos"] = self.config.mqtt_qos
+        metadata[f"{self.output_id}_retain"] = self.config.mqtt_retain
+        metadata[f"{self.output_id}_total_published_topics"] = len(
+            self._published_topics
+        )
+
+        if isinstance(event, (XmlEventData, TextProductEventData)):
+            # Build the topic that would be used
+            topic = build_topic(event=event, prefix=self.config.mqtt_topic_prefix)
+            metadata[f"{self.output_id}_target_topic"] = topic
+            metadata[f"{self.output_id}_event_processed"] = True
+            metadata[f"{self.output_id}_payload_size"] = len(str(event))
+            metadata[f"{self.output_id}_content_type"] = event.content_type
+        else:
+            metadata[f"{self.output_id}_event_processed"] = False
+            metadata[f"{self.output_id}_skip_reason"] = "unsupported_event_type"
+
+        return metadata

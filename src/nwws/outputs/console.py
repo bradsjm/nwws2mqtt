@@ -1,6 +1,8 @@
 # pyright: strict
 """Console output for pipeline events using Rich console."""
 
+from typing import Any
+
 from loguru import logger
 from rich.console import Console
 
@@ -30,3 +32,20 @@ class ConsoleOutput(Output):
             return
 
         self.console.print(str(event))
+
+    def get_output_metadata(self, event: PipelineEvent) -> dict[str, Any]:
+        """Get metadata about the console output operation."""
+        metadata = super().get_output_metadata(event)
+
+        # Add console-specific metadata
+        metadata[f"{self.output_id}_pretty_print"] = self.pretty
+        metadata[f"{self.output_id}_console_output"] = True
+
+        if isinstance(event, NoaaPortEventData):
+            metadata[f"{self.output_id}_event_processed"] = True
+            metadata[f"{self.output_id}_content_length"] = len(str(event))
+        else:
+            metadata[f"{self.output_id}_event_processed"] = False
+            metadata[f"{self.output_id}_skip_reason"] = "not_noaa_port_event"
+
+        return metadata
