@@ -29,6 +29,8 @@
 - **String Interpolation:** Use f-strings exclusively.
 - **Unused Variables:** Remove or prefix with underscore (`_`) if they must be kept (e.g., in function signatures for compatibility).
 - **Import Formatting**: Ensure import statements are automatically sorted and formatted according to project standards (as enforced by Ruff).
+- **Line Length:** Limit lines to 88 characters.
+- **Ruff Format**: Use the `ruff format` command initially to resolve formatting issues.
 
 ## Structure & Complexity
 - **Imports:** Always use absolute imports.
