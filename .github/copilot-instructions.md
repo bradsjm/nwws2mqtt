@@ -30,7 +30,7 @@
 - **Unused Variables:** Remove or prefix with underscore (`_`) if they must be kept (e.g., in function signatures for compatibility).
 - **Import Formatting**: Ensure import statements are automatically sorted and formatted according to project standards (as enforced by Ruff).
 - **Line Length:** Limit lines to 88 characters.
-- **Ruff Format**: Use the `ruff format` command initially to resolve formatting issues.
+- **Ruff Format**: Use the shell tool to run the `ruff format` command to resolve simple formatting issues and `ruff check --fix` to automatically fix linting issues where possible.
 
 ## Structure & Complexity
 - **Imports:** Always use absolute imports.
@@ -55,8 +55,9 @@
 - **AVOID** bare except blocks except as a fallback for unexpected errors with # noqa: BLE001 comment.
 
 ## Documentation
-- **Docstrings:** Add PEP 257 docstrings for all public modules, classes, functions, and methods.
+- **Docstrings:** Add PEP 257 docstrings for all public modules, classes, functions, and methods. Include examples in public facing docstrings.
 - **Style:** Use active, imperative voice in docstrings (e.g., "Return...", "Calculate...").
+- **Supporting Files**: Only generate examples or documentation files after confirming with the user.
 
 ## Testing
 - **Pytest:** Use pytest for unit tests.
