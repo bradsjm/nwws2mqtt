@@ -44,7 +44,7 @@ class Filter(ABC):
 
     def get_filter_decision_metadata(
         self,
-        event: PipelineEvent,  # noqa: ARG002
+        _event: PipelineEvent,
         *,
         result: bool,
     ) -> dict[str, Any]:
