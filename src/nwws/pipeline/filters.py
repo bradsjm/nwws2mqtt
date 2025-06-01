@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import re
+import time
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -13,13 +15,13 @@ from loguru import logger
 from .errors import FilterError
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
     from .types import PipelineEvent
 
 
 class Filter(ABC):
-    """Base class for pipeline filters."""
+    """Base class for pipeline filters with automatic decision tracking."""
 
     def __init__(self, filter_id: str) -> None:
         """Initialize the filter with an identifier."""
@@ -40,27 +42,70 @@ class Filter(ABC):
 
         """
 
+    def get_filter_decision_metadata(
+        self,
+        event: PipelineEvent, # noqa: ARG002
+        *,
+        result: bool,
+    ) -> dict[str, Any]:
+        """Get metadata about the filter decision.
+
+        Override this method to provide custom decision metadata.
+
+        Args:
+            event: The event that was filtered.
+            result: The filter decision.
+
+        Returns:
+            Dictionary of metadata about the filter decision.
+
+        """
+        return {
+            f"{self.filter_id}_decision": "passed" if result else "filtered",
+            f"{self.filter_id}_timestamp": time.time(),
+        }
+
     def __call__(self, event: PipelineEvent) -> bool:
-        """Make the filter callable."""
+        """Make the filter callable with automatic decision tracking."""
+        start_time = time.time()
+
         try:
+            # Process the event
             result = self.should_process(event)
+
+            # Get decision metadata
+            decision_metadata = self.get_filter_decision_metadata(event, result=result)
+            duration_ms = (time.time() - start_time) * 1000
+            decision_metadata[f"{self.filter_id}_duration_ms"] = duration_ms
+
+            # Log the decision with metadata
             logger.debug(
                 "Filter applied",
                 filter_id=self.filter_id,
                 event_id=event.metadata.event_id,
                 result=result,
+                duration_ms=duration_ms,
+                **decision_metadata,
             )
+
         except Exception as e:
             logger.error(
                 "Filter error",
                 filter_id=self.filter_id,
                 event_id=event.metadata.event_id,
                 error=str(e),
+                duration_ms=(time.time() - start_time) * 1000,
             )
             msg = f"Filter {self.filter_id} failed: {e}"
             raise FilterError(msg, self.filter_id) from e
 
         return result
+
+    @contextmanager
+    def processing_context(self, event: PipelineEvent) -> Iterator[dict[str, Any]]:
+        """Context manager for filter processing with automatic metadata collection."""
+        with event.processing_context(self.filter_id, "filter") as metadata:
+            yield metadata
 
 
 class PassThroughFilter(Filter):

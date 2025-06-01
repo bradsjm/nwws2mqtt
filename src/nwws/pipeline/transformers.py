@@ -3,17 +3,19 @@
 
 from __future__ import annotations
 
+import time
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from loguru import logger
 
 from .errors import TransformerError
-from .types import PipelineEvent
+from .types import PipelineEvent, PipelineStage
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
 # Type variables for transformer input/output
 T = TypeVar("T", bound=PipelineEvent)
@@ -21,7 +23,7 @@ U = TypeVar("U", bound=PipelineEvent)
 
 
 class Transformer(ABC):
-    """Base class for pipeline transformers."""
+    """Base class for pipeline transformers with simplified event creation."""
 
     def __init__(self, transformer_id: str) -> None:
         """Initialize the transformer with an identifier."""
@@ -42,10 +44,68 @@ class Transformer(ABC):
 
         """
 
+    def create_transformed_event(
+        self,
+        source_event: PipelineEvent,
+        target_event_class: type[U],
+        **event_kwargs: Any,
+    ) -> U:
+        """Create a new transformed event with proper metadata inheritance.
+
+        Args:
+            source_event: The original event being transformed.
+            target_event_class: Class of the new event to create.
+            **event_kwargs: Arguments for the new event constructor.
+
+        Returns:
+            New transformed event with inherited and enhanced metadata.
+
+        """
+        return source_event.create_derived_event(
+            event_class=target_event_class,
+            source=self.transformer_id,
+            stage=PipelineStage.TRANSFORM,
+            **event_kwargs,
+        )
+
+    def get_transformation_metadata(
+        self, input_event: PipelineEvent, output_event: PipelineEvent
+    ) -> dict[str, Any]:
+        """Get metadata about the transformation.
+
+        Override this method to provide custom transformation metadata.
+
+        Args:
+            input_event: The input event.
+            output_event: The output event.
+
+        Returns:
+            Dictionary of transformation metadata.
+
+        """
+        return {
+            f"{self.transformer_id}_applied": True,
+            f"{self.transformer_id}_input_type": type(input_event).__name__,
+            f"{self.transformer_id}_output_type": type(output_event).__name__,
+            f"{self.transformer_id}_timestamp": time.time(),
+        }
+
     def __call__(self, event: PipelineEvent) -> PipelineEvent:
-        """Make the transformer callable."""
+        """Make the transformer callable with automatic metadata enhancement."""
+        start_time = time.time()
+
         try:
+            # Transform the event
             result = self.transform(event)
+
+            # Add transformation metadata to the result
+            transformation_metadata = self.get_transformation_metadata(event, result)
+            duration_ms = (time.time() - start_time) * 1000
+            transformation_metadata[f"{self.transformer_id}_duration_ms"] = duration_ms
+
+            # Update the result event's metadata
+            result = result.with_custom_metadata(**transformation_metadata)
+
             logger.debug(
                 "Transformer applied",
                 transformer_id=self.transformer_id,
@@ -53,18 +113,27 @@ class Transformer(ABC):
                 output_event_id=result.metadata.event_id,
                 input_type=type(event).__name__,
                 output_type=type(result).__name__,
+                duration_ms=duration_ms,
             )
+
         except Exception as e:
             logger.error(
                 "Transformer error",
                 transformer_id=self.transformer_id,
                 event_id=event.metadata.event_id,
                 error=str(e),
+                duration_ms=(time.time() - start_time) * 1000,
             )
             msg = f"Transformer {self.transformer_id} failed: {e}"
             raise TransformerError(msg, self.transformer_id) from e
         else:
             return result
+
+    @contextmanager
+    def processing_context(self, event: PipelineEvent) -> Iterator[dict[str, Any]]:
+        """Context manager for transformer processing with automatic metadata collection."""
+        with event.processing_context(self.transformer_id, "transformer") as metadata:
+            yield metadata
 
 
 class PassThroughTransformer(Transformer):

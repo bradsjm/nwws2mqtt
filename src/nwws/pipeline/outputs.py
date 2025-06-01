@@ -5,10 +5,16 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import time
 from abc import ABC, abstractmethod
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator, Callable
+
 
 from loguru import logger
 
@@ -34,7 +40,7 @@ if TYPE_CHECKING:
 
 
 class Output(ABC):
-    """Base class for pipeline outputs."""
+    """Base class for pipeline outputs with automatic processing context."""
 
     def __init__(self, output_id: str) -> None:
         """Initialize the output with an identifier."""
@@ -68,8 +74,28 @@ class Output(ABC):
         """Check if the output is started."""
         return self._is_started
 
+    def get_output_metadata(self, event: PipelineEvent) -> dict[str, Any]:
+        """Get metadata about the output operation.
+
+        Override this method to provide custom output metadata.
+
+        Args:
+            event: The event being output.
+
+        Returns:
+            Dictionary of output metadata.
+
+        """
+        return {
+            f"{self.output_id}_destination": self.__class__.__name__.lower().replace(
+                "output", ""
+            ),
+            f"{self.output_id}_event_age_seconds": event.metadata.age_seconds,
+            f"{self.output_id}_timestamp": time.time(),
+        }
+
     async def __call__(self, event: PipelineEvent) -> None:
-        """Make the output callable."""
+        """Make the output callable with automatic processing context."""
         if not self._is_started:
             logger.warning(
                 "Output not started, skipping event",
@@ -78,23 +104,55 @@ class Output(ABC):
             )
             return
 
+        start_time = time.time()
+
         try:
+            # Get output metadata
+            output_metadata = self.get_output_metadata(event)
+
+            # Send the event
             await self.send(event)
+
+            # Add timing information
+            duration_ms = (time.time() - start_time) * 1000
+            output_metadata[f"{self.output_id}_duration_ms"] = duration_ms
+            output_metadata[f"{self.output_id}_success"] = True
+
             logger.debug(
                 "Output sent successfully",
                 output_id=self.output_id,
                 event_id=event.metadata.event_id,
                 event_type=type(event).__name__,
+                duration_ms=duration_ms,
+                **output_metadata,
             )
+
         except Exception as e:
+            duration_ms = (time.time() - start_time) * 1000
             logger.error(
                 "Output error",
                 output_id=self.output_id,
                 event_id=event.metadata.event_id,
                 error=str(e),
+                duration_ms=duration_ms,
             )
             msg = f"Output {self.output_id} failed: {e}"
             raise OutputError(msg, self.output_id) from e
+
+    @asynccontextmanager
+    async def processing_context(
+        self, event: PipelineEvent
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Async context manager for output processing with automatic metadata collection."""
+        output_metadata = self.get_output_metadata(event)
+        start_time = time.time()
+
+        try:
+            yield output_metadata
+        finally:
+            output_metadata[f"{self.output_id}_duration_ms"] = (
+                time.time() - start_time
+            ) * 1000
 
 
 class LogOutput(Output):
