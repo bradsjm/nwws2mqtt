@@ -4,11 +4,11 @@
 import asyncio
 import time
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import slixmpp
 from loguru import logger
+from pydantic import BaseModel, Field
 from slixmpp import JID
 from slixmpp.exceptions import XMPPError
 from slixmpp.stanza import Message
@@ -23,26 +23,29 @@ IDLE_TIMEOUT = 90  # 90 seconds of inactivity before reconnecting
 MAX_HISTORY = 5  # Maximum history messages to retrieve when joining MUC
 
 
-@dataclass
-class WeatherWireMessage:
-    """Event representing a received weathermessage."""
+class WeatherWireMessage(BaseModel):
+    """Represents content of a received weathermessage."""
 
-    subject: str
-    """Subject of the message, typically the product type or title."""
-    noaaport: str
-    """NOAAPort formatted text of the product message."""
-    id: str
-    """Unique identifier for the product (server process ID and sequence number)."""
-    issue: datetime
-    """Issue time of the product as a datetime object."""
-    ttaaii: str
-    """TTAAII code representing the WMO product type and time."""
-    cccc: str
-    """CCCC code representing the issuing office or center."""
-    awipsid: str
-    """The six character AWIPS ID, sometimes called AFOS PIL; if available otherwise 'NONE'."""
-    delay_stamp: datetime | None
-    """Delay stamp if the message was delayed, otherwise None."""
+    subject: str = Field(description="Subject of the message")
+    noaaport: str = Field(description="NOAAPort formatted text of the product message.")
+    id: str = Field(
+        description="Unique identifier for the product (server process ID and sequence number)."
+    )
+    issue: datetime = Field(
+        description="Issue time of the product as a datetime object."
+    )
+    ttaaii: str = Field(
+        description="TTAAII code representing the WMO product type and time."
+    )
+    cccc: str = Field(
+        description="CCCC code representing the issuing office or center."
+    )
+    awipsid: str = Field(
+        description="AWIPS ID (AFOS PIL) of the product if available.", default="NONE"
+    )
+    delay_stamp: datetime | None = Field(
+        description="Delay stamp if the message was delayed, otherwise None.",
+    )
 
 
 class WeatherWire(slixmpp.ClientXMPP):
@@ -97,7 +100,7 @@ class WeatherWire(slixmpp.ClientXMPP):
         # Initialize state variables
         self.last_message_time: float = time.time()
         self.is_shutting_down: bool = False
-        self._idle_monitor_task: asyncio.Task[object] | None = None
+        self._idle_monitor_task: asyncio.Task[None] | None = None
         self._stats_update_task: asyncio.Task[None] | None = None
         self._connection_start_time: float | None = None
 
@@ -234,19 +237,7 @@ class WeatherWire(slixmpp.ClientXMPP):
         """Handle successful connection and authentication."""
         logger.info("Successfully authenticated with NWWS-OI server")
 
-        # Start idle monitoring only (connection process timeout continues until first message)
-        if self._idle_monitor_task is None or self._idle_monitor_task.done():
-            self._idle_monitor_task = asyncio.create_task(self._monitor_idle_timeout())
-            logger.info("Idle timeout monitoring enabled", timeout=IDLE_TIMEOUT)
-
-        # Start periodic stats updates if stats collector is available
-        if self.stats_collector and (
-            self._stats_update_task is None or self._stats_update_task.done()
-        ):
-            self._stats_update_task = asyncio.create_task(
-                self._update_stats_periodically(),
-            )
-            logger.info("Periodic stats updates enabled")
+        await self._start_background_services()
 
         try:
             await self.get_roster()  # type: ignore[misc]
@@ -256,7 +247,7 @@ class WeatherWire(slixmpp.ClientXMPP):
             self.send_presence()
             logger.info("Initial presence sent")
 
-            await self._join_muc_room()
+            await self._join_nwws_room()
             logger.info("Joined MUC room", room=MUC_ROOM, nickname=self.nickname)
 
             await self._send_subscription_presence()
@@ -269,13 +260,32 @@ class WeatherWire(slixmpp.ClientXMPP):
             if self.stats_collector:
                 self.stats_collector.record_connection_failure(str(err))
 
-    async def _join_muc_room(self, max_history: int = MAX_HISTORY) -> None:
-        """Join MUC room with retry logic."""
+    async def _start_background_services(self) -> None:
+        """Start necessary services after session start."""
+        if self._idle_monitor_task is None or self._idle_monitor_task.done():
+            self._idle_monitor_task = asyncio.create_task(
+                self._monitor_idle_timeout(),
+                name="idle_timeout_monitor",
+            )
+            logger.info("Idle timeout monitoring enabled", timeout=IDLE_TIMEOUT)
+
+        # Start periodic stats updates if stats collector is available
+        if self.stats_collector and (
+            self._stats_update_task is None or self._stats_update_task.done()
+        ):
+            self._stats_update_task = asyncio.create_task(
+                self._update_stats_periodically(),
+                name="periodic_stats_update",
+            )
+            logger.info("Periodic stat updates enabled")
+
+    async def _join_nwws_room(self, max_history: int = MAX_HISTORY) -> None:
+        """Join the NWWS room."""
         # Don't join if shutting down
         if self.is_shutting_down:
             return
 
-        logger.info("Joining MUC room", room=MUC_ROOM, nickname=self.nickname)
+        logger.info("Joining NWWS room", room=MUC_ROOM, nickname=self.nickname)
 
         # Join MUC room
         muc_room_jid = JID(MUC_ROOM)
@@ -287,7 +297,7 @@ class WeatherWire(slixmpp.ClientXMPP):
             )
         except XMPPError as err:
             logger.error(
-                "Failed to join MUC room",
+                "Failed to join NWWS room",
                 room=MUC_ROOM,
                 nickname=self.nickname,
                 error=str(err),
@@ -380,12 +390,6 @@ class WeatherWire(slixmpp.ClientXMPP):
 
     async def _on_nwws_message(self, msg: Message) -> None:
         """Process group chat message containing weather data."""
-        # Get the message subject from the body or subject field
-        subject = str(msg.get("body", "")) or str(msg.get("subject", ""))
-
-        # Get delay stamp if available
-        delay_stamp: datetime | None = msg["delay"]["stamp"] if "delay" in msg else None
-
         # Check for NWWS-OI namespace in the message
         x = msg.xml.find("{nwws-oi}x")
         if x is None:
@@ -396,6 +400,17 @@ class WeatherWire(slixmpp.ClientXMPP):
             if self.stats_collector:
                 self.stats_collector.record_message_error("missing_namespace")
             return
+
+        # Get the message subject from the body or subject field
+        subject = str(msg.get("body", "")) or str(msg.get("subject", ""))
+
+        # Get delay stamp if available
+        delay_stamp: datetime | None = msg["delay"]["stamp"] if "delay" in msg else None
+        delay_ms = self._calculate_delay_ms(delay_stamp) if delay_stamp else None
+
+        # Calculate and record delay if present
+        if self.stats_collector and delay_ms is not None:
+            self.stats_collector.record_delayed_message(delay_ms)
 
         # Get the message body which should contain the weather data
         body = (x.text or "").strip()
@@ -409,59 +424,26 @@ class WeatherWire(slixmpp.ClientXMPP):
             return
 
         # Get the metadata from the NWWS-OI namespace
-        xid = x.get("id", "")
-        issue_str = x.get("issue", "")
-        ttaaii = x.get("ttaaii", "")
-        cccc = x.get("cccc", "")
-        awipsid = x.get("awipsid", "NONE")
-
-        # Parse issue time from ISO 8601 format to datetime
-        try:
-            issue = datetime.fromisoformat(issue_str.replace("Z", "+00:00"))
-        except ValueError:
-            logger.warning(
-                "Invalid issue time format, using current time",
-                issue_str=issue_str,
-                msg_id=msg.get_id(),
-            )
-            issue = datetime.now(UTC)
-
-        # Convert the body to NOAAPort format
-        # Replace double newlines with carriage returns and ensure proper termination
-        # and add start and end markers
-        unix_text: str = body
-        noaaport: str = f"\x01{unix_text.replace('\n\n', '\r\r\n')}"
-        if not noaaport.endswith("\n"):
-            noaaport = f"{noaaport}\r\r\n"
-        noaaport = f"{noaaport}\x03"
-
-        # Calculate and record delay if present
-        if delay_stamp and self.stats_collector:
-            delay_ms = self._calculate_delay_ms(delay_stamp)
-            if delay_ms is not None:
-                self.stats_collector.record_delayed_message(delay_ms)
-
-        logger.info(
-            "Received",
+        event = WeatherWireMessage(
             subject=subject,
-            id=xid,
-            issue=issue.isoformat(),
-            ttaaii=ttaaii,
-            cccc=cccc,
-            awipsid=awipsid,
+            noaaport=self._convert_to_noaaport(body),
+            id=x.get("id", ""),
+            issue=self._parse_issue_timestamp(x.get("issue", "")),
+            ttaaii=x.get("ttaaii", ""),
+            cccc=x.get("cccc", ""),
+            awipsid=x.get("awipsid", "") or "NONE",
             delay_stamp=delay_stamp,
         )
 
-        # Call the callback with the event
-        event = WeatherWireMessage(
-            subject=subject,
-            noaaport=noaaport,
-            id=xid,
-            issue=issue,
-            ttaaii=ttaaii,
-            cccc=cccc,
-            awipsid=awipsid,
-            delay_stamp=delay_stamp,
+        logger.info(
+            "Received Event",
+            subject=event.subject,
+            id=event.id,
+            issue=event.issue,
+            ttaaii=event.ttaaii,
+            cccc=event.cccc,
+            awipsid=event.awipsid,
+            delay_ms=delay_ms,
         )
         await self.callback(event)
 
@@ -470,7 +452,7 @@ class WeatherWire(slixmpp.ClientXMPP):
         logger.warning("Session ended")
 
         # Cancel all monitoring tasks
-        self._cancel_background_tasks()
+        self._stop_background_services()
 
     async def _on_disconnected(self, reason: str | Exception) -> None:
         """Handle disconnection."""
@@ -526,7 +508,7 @@ class WeatherWire(slixmpp.ClientXMPP):
         self.is_shutting_down = True
 
         # Cancel all monitoring tasks
-        self._cancel_background_tasks()
+        self._stop_background_services()
 
         # Leave MUC room gracefully
         self._leave_muc_room()
@@ -539,7 +521,7 @@ class WeatherWire(slixmpp.ClientXMPP):
 
         logger.info("Stopped NWWS-OI client")
 
-    def _cancel_background_tasks(self) -> None:
+    def _stop_background_services(self) -> None:
         """Cancel all monitoring and timeout tasks."""
         tasks_to_cancel = [
             self._idle_monitor_task,
@@ -548,7 +530,7 @@ class WeatherWire(slixmpp.ClientXMPP):
 
         for task in tasks_to_cancel:
             if task is not None and not task.done():
-                logger.info("Cancelling background task", task_name=task.get_name())
+                logger.info("Stopping background task", task_name=task.get_name())
                 task.cancel()
 
         # Reset task references
@@ -564,35 +546,36 @@ class WeatherWire(slixmpp.ClientXMPP):
         except XMPPError as err:
             logger.warning("Failed to leave MUC room gracefully", error=str(err))
 
-    def _calculate_delay_ms(self, delay_stamp: datetime) -> float | None:
-        """Calculate delay in milliseconds from delay stamp.
-
-        Args:
-            delay_stamp: Delay timestamp as a datetime object.
-
-        Returns:
-            Delay in milliseconds or None if parsing fails.
-
-        """
+    def _parse_issue_timestamp(self, issue_str: str) -> datetime:
+        """Parse issue time from string to datetime."""
         try:
-            # Get current time in UTC
-            current_time = datetime.now(UTC)
-
-            # Calculate delay
-            delay_delta = current_time - delay_stamp
-
-            # Convert to milliseconds
-            delay_ms = delay_delta.total_seconds() * 1000
-
-            # Return positive delay only (ignore future timestamps)
-            if delay_ms > 0:
-                return delay_ms
-
-        except (ValueError, TypeError, OverflowError) as e:
+            return datetime.fromisoformat(issue_str.replace("Z", "+00:00"))
+        except ValueError:
             logger.warning(
-                "Failed to parse delay timestamp",
-                delay_stamp=delay_stamp,
-                error=str(e),
+                "Invalid issue time format, using current time",
+                issue_str=issue_str,
             )
+            return datetime.now(UTC)
+
+    def _calculate_delay_ms(self, delay_stamp: datetime) -> float | None:
+        """Calculate delay in milliseconds from delay stamp."""
+        # Get current time in UTC
+        current_time = datetime.now(UTC)
+
+        # Calculate delay
+        delay_delta = current_time - delay_stamp
+        delay_ms = delay_delta.total_seconds() * 1000
+
+        # Return positive delay only (ignore future timestamps)
+        if delay_ms > 0:
+            return delay_ms
 
         return None
+
+    def _convert_to_noaaport(self, text: str) -> str:
+        """Convert text to NOAAPort format."""
+        # Replace double newlines with carriage returns and ensure proper termination
+        noaaport = f"\x01{text.replace('\n\n', '\r\r\n')}"
+        if not noaaport.endswith("\n"):
+            noaaport = f"{noaaport}\r\r\n"
+        return f"{noaaport}\x03"
