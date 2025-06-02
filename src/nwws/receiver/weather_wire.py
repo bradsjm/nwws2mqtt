@@ -390,14 +390,8 @@ class WeatherWire(slixmpp.ClientXMPP):
         processing_duration = time.time() - message_start_time
         message_size = len(str(msg.xml))  # Raw XML size
 
-        # Calculate delay from issue timestamp
-        delay_seconds = 0.0
-        if weather_message.delay_stamp:
-            delay_seconds = (
-                datetime.now(UTC) - weather_message.delay_stamp
-            ).total_seconds()
-        elif weather_message.issue:
-            delay_seconds = (datetime.now(UTC) - weather_message.issue).total_seconds()
+        # Calculate delay from delay_stamp
+        delay_seconds = self._calculate_delay_secs(weather_message.delay_stamp)
 
         # Extract office ID
         office_id = weather_message.cccc or "unknown"
@@ -406,7 +400,7 @@ class WeatherWire(slixmpp.ClientXMPP):
         if self.stats_collector:
             self.stats_collector.record_message_processed(
                 processing_duration_seconds=processing_duration,
-                message_delay_seconds=delay_seconds,
+                message_delay_seconds=delay_seconds or 0.0,
                 message_size_bytes=message_size,
                 office_id=office_id,
             )
@@ -479,7 +473,7 @@ class WeatherWire(slixmpp.ClientXMPP):
             delay_stamp=delay_stamp,
         )
 
-        delay_ms = self._calculate_delay_ms(delay_stamp) if delay_stamp else None
+        delay_ms = self._calculate_delay_secs(delay_stamp) if delay_stamp else None
 
         logger.info(
             "Received Event",
@@ -594,8 +588,11 @@ class WeatherWire(slixmpp.ClientXMPP):
             )
             return datetime.now(UTC)
 
-    def _calculate_delay_ms(self, delay_stamp: datetime) -> float | None:
+    def _calculate_delay_secs(self, delay_stamp: datetime | None) -> float:
         """Calculate delay in milliseconds from delay stamp."""
+        if delay_stamp is None:
+            return 0
+
         # Get current time in UTC
         current_time = datetime.now(UTC)
 
@@ -607,7 +604,7 @@ class WeatherWire(slixmpp.ClientXMPP):
         if delay_ms > 0:
             return delay_ms
 
-        return None
+        return 0
 
     def _convert_to_noaaport(self, text: str) -> str:
         """Convert text to NOAAPort format."""
