@@ -13,6 +13,9 @@ wheels/
 # IDE and editor files
 .idea/
 
+# Codebook Extension
+codebook.toml
+
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
 
