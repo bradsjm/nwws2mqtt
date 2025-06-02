@@ -1,0 +1,121 @@
+This document, "NATIONAL WEATHER SERVICE INSTRUCTION 10-320 MAY 14, 2020," outlines the requirements and guidelines for Surf Zone Forecast (SRF) and Coastal/Lakeshore Hazard Message (CFW) products issued by the National Weather Service (NWS).
+
+**1. Surf Zone Forecast (SRF) - Product Category SRF**
+
+- **Mission:** Provides life-saving information on surf zone hazards to the public and beachfront safety services.
+- **Issuance Guidelines:**
+    - **Creation Software:** Produced using Advanced Weather Interactive Processing System (AWIP) formatters; regionally approved software for OCONUS WFOs/WSOs without AWIPS.
+    - **Issuance Criteria:** Issued for beach areas defined by local WFOs in coordination with Regional Headquarters. Audience: public and local public safety officials.
+    - **Issuance Time:** Regional policy governs; at least once per day on a seasonal basis (e.g., Memorial Day weekend through Labor Day), but can be year-round.
+    - **Valid Time:** From issuance until expiration.
+    - **Universal Geographic Code (UGC):** Contains land-based zone UGC codes.
+    - **Product Expiration Time:** Not more than 24 hours from initial issuance.
+- **Technical Description:**
+    - **Mass News Disseminator (MND) Broadcast Line:** None.
+    - **MND Header:** "Surf Zone Forecast."
+    - **Content:**
+        - Developed in coordination with local safety agencies.
+        - **Minimum:** Wave/surf height and headlines for hazardous conditions.
+        - **Encouraged:** Rip currents, UV index, water temperature, winds, tides, other weather conditions, and beach/surf zone hazards.
+        - **Forecast Period:** Two-day forecast with options for:
+            - Discussion (free text, significant information for next 5 days).
+            - Nighttime periods.
+            - 3 to 5 Day Extended Forecast (condensed free text, may include Rip Current/Swim Risk, Surf/Wave height, weather, temperature, and winds).
+        - Seasonal offices should include an end-of-season and next-season start message.
+    - **Format:** Segmented, formatted, text product complying with NWSI 10-1701. Available in ASCII, EML, WML, and HTML. (See Appendix A for examples).
+- **Relationships with Other WFO Products:**
+    - **Advisories or Warnings:** SRFs are not used to issue advisories or warnings.
+    - **Coastal Hazard Message (CFW):** Current/expected CFW issuances (e.g., High Surf Advisories) should be referenced in the SRF.
+    - **Hazardous Weather Outlook (HWO):** High risk rip current forecasts for Day 1 (and high confidence Day 2) should be included in the Marine/Surf portion of the HWO (except Pacific/Alaska Regions).
+    - **Hurricane Local Statements (HLS):** SRF issuance continues during normal seasonal periods when tropical cyclone watches/warnings are in effect.
+- **Rip Currents:**
+    - Primary product for routine rip current information.
+    - Phrase: "Rip Current Risk" followed by text qualifier.
+    - Forecasts provided for Day 1 and Day 2, optional for Extended Forecast.
+    - **Three-Tiered Qualifiers (and definitions to be included in text products):**
+        - **Low Risk:** Risk for rip currents is low; life-threatening rip currents can occur near groins, jetties, reefs, piers.
+        - **Moderate Risk:** Life-threatening rip currents are possible in the surf zone.
+        - **High Risk:** Life-threatening rip currents are likely in the surf zone.
+    - **Moderate or High Risk:** Headline in SRF (High Risk only for WFO Guam). Refer to CFW (3.9) and HWO (2.5.1.2) for referencing. Offices may include call-to-action statements.
+- **Swim Risk (Great Lakes):**
+    - SRF is primary product for routine swimming conditions (waves and currents).
+    - Phrase: "Swim Risk" followed by text qualifier.
+    - Forecasts provided for Day 1 and Day 2, optional for Extended Forecast.
+    - **Three-Tiered Qualifiers (and definitions to be included in text products):**
+        - **Low Risk:** Large waves and dangerous currents not expected; dangerous currents may exist near piers, breakwalls, river outlets.
+        - **Moderate Risk:** Breaking waves and currents are expected.
+        - **High Risk:** Life-threatening waves and currents are expected.
+    - **High Risk:** Headline in SRF. Refer to CFW (3.10) and HWO (2.5.1.2) for referencing. Offices may include call-to-action statements.
+- **Updates, Amendments and Corrections:** SRFs updated for significant changes in forecast conditions (especially hazardous conditions), and corrected for format/grammatical errors.
+
+**2. Coastal/Lakeshore Hazard Message (CFW) - Product Category CFW**
+
+- **Mission:** Provides detailed information on significant coastal/lakeshore events to the public, shoreline, and surf zone interests. Great Lakes offices issue Lakeshore Hazard Message; coastal offices issue Coastal Hazard Message.
+- **CFW Products:**
+    - All CFW products contain VTEC (except outside WFO Guam's gridded zones).
+    - Single segmented product can be issued for multiple hazards.
+    - Format: WHAT, WHERE, WHEN, IMPACTS, ADDITIONAL DETAILS (optional), PRECAUTIONARY/PREPAREDNESS.
+    - **Table 1: CFW Products Table (Event Names and Phenomena Codes):**
+        - **Warnings:** Coastal Flood Warning /CF.W/, Lakeshore Flood Warning /LS.W/, High Surf Warning /SU.W/.
+        - **Watches:** Coastal Flood Watch /CF.A/, Lakeshore Flood Watch /LS.A/.
+        - **Advisories:** Coastal Flood Advisory /CF.Y/, Lakeshore Flood Advisory /LS.Y/, High Surf Advisory /SU.Y/.
+        - **Informational Statements:** For hazards not meeting Advisory/Watch/Warning criteria, or without specific criteria (e.g., oil spill, rip current risk, redirect to HLS). /CF.S/, /LS.S/, /RP.S BH.S/.
+- **Issuance Guidelines:**
+    - **Creation Software:** AWIPS Interactive Forecast Preparation System (IFPS) Graphical Hazards Generation (GHG) software; regionally approved software for OCONUS WFOs/WSOs without GHG.
+    - **Issuance Criteria:** Issued for hazards expected to meet or exceed warning, advisory, watch, or informational criteria.
+    - **Issuance Time:** Non-scheduled, event-driven. Initial issuance when a hazardous event is expected. Updates at least every 6-8 hours until event ends or is canceled.
+    - **Valid Time:** From release or specified time until canceled, updated, replaced, or expiration. Placed in P-VTEC line and headline.
+    - **Product Expiration Time:** Time users can expect an updated CFW.
+        - **Watch Expiration Time:** Generally 12 hours after issuance, coinciding with next expected update or event end. Placed in UGC string.
+        - **Warning, Advisory and Informational Statement Expiration Time:** Generally 6-8 hours after issuance, coinciding with next expected update or event end. Placed in UGC string.
+- **Coastal/Lakeshore Flood Watch:** Informs users of significant coastal/lakeshore flooding possible within 12-48 hours.
+- **Coastal/Lakeshore Flood Warning:** Informs users that serious threat to life and property from coastal/lakeshore flooding is occurring, imminent, or highly likely in first 12-24 hours (occasionally longer for strong likelihood or public response).
+- **Coastal/Lakeshore Flood Advisory:** Informs users of minor flooding (e.g., tidal overflow) occurring or possible within 12 hours. NWS Regional option.
+- **High Surf Advisory and Warning:**
+    - **Advisory:** Issued when breaking wave action in surf zone becomes a threat to life and property.
+    - **Warning:** Issued when breaking wave action results in an especially heightened threat to life and property. NWS Region option. Headlined in SRF if routinely issued.
+    - **High Surf and Rip Currents:** If rip currents are not primary hazard, information can be included in High Surf Advisory/Warning (SU.Y or SU.W VTEC) with a RP.S VTEC as a single segmented product. Both headlines should be used. If rip currents are primary hazard, Rip Current Statement (RP.S VTEC) should be issued.
+- **Informational Statements:**
+    - Used for hazards not meeting Advisory/Watch/Warning criteria, or without specific criteria (e.g., rip currents, oil spill).
+    - Can direct users to HLS.
+    - WFO/WSOs may choose not to issue for coastal areas unsuitable for recreational swimming.
+    - **Increasing Awareness of Surf Zone and Beach Hazards:** Use Rip Current Statement (RP.S, rip currents only) or Beach Hazards Statement (BH.S, multiple/other hazards) within CFW. BH.S for "Dangerous Swimming Conditions" from combined hazards.
+- **Rip Current Statement (RP.S VTEC):** Informs public/officials that life-threatening rip currents are expected. Issued to highlight increased threat (moderate or high risk). Only rip current information.
+    - WFOs/WSOs define seasons for issuance.
+- **Beach Hazards Statement (BH.S VTEC):** Highlights information on beach hazards not meeting advisory/warning criteria. Provides additional, targeted information on hazards along beach/coastal areas and surf zone waters. Can be issued for: dangerous currents, cold water temperatures, lightning potential, unusual surf/wave conditions not meeting advisory criteria, environmental hazards (chemical spills, HABs, bacteria, hazardous marine wildlife).
+    - Can include rip current information if occurring simultaneously with other hazards. If rip currents are the only hazard, issue Rip Current Statement.
+    - WFOs/WSOs define seasons for issuance.
+- **Technical Description (CFW):**
+    - **UGC Type:** Uses (Z) form of UGC.
+    - **MND Broadcast Instruction Line:** "URGENT – IMMEDIATE BROADCAST REQUESTED" for watches and warnings.
+    - **MND Product Type Line:** Only "Coastal Hazard Message" or "Lakeshore Hazard Message."
+    - **Content:** No overview section; includes segmented forecast information.
+    - **Segmented Forecast Information:**
+        - Each segment includes a coastal/lakeshore hazard headline and descriptive text. Describes specific hazardous CFW event(s) for the same geographical area.
+        - **Headline Elements (in order):** Leading ellipsis, valid event names (Table 1), event action phrase (Table 2), general event beginning day/time, general event ending day/time, trailing ellipsis.
+        - **Generic Headline Formats:** For in-effect, issuance time equals beginning, and cancellation.
+        - **Event Action Phrase:** Corresponds to VTEC action code (Table 2: NEW, EXA, EXB, CON, EXT, EXP, HAS EXPIRED, CAN, UPG).
+        - **Order of Segments:** Cancellation, Warnings, Advisories, Watches, Informational.
+        - **Order of Headlines:** Follows segment order if multiple headlines in a single segment.
+        - **Bullet Format:** Brief (1-2 sentences) critical information. Uses "WHAT," "WHERE," "WHEN," "IMPACTS," "PRECAUTIONARY/PREPAREDNESS ACTIONS." "ADDITIONAL DETAILS" for further info.
+        - "WHAT" bullet starts with "possible" for watches, "expected" for warnings, advisories, and statements (editable to "ongoing," "continuing," etc.).
+        - Coastal WFOs (except Alaska) reference water levels relative to height above ground (inundation), often MHHW as proxy. Information in parenthesis (e.g., 8 feet above ground (10 feet MLLW)).
+        - Each bulleted segment followed by brief precautionary/preparedness action.
+- **Updates, Cancellations, and Corrections (CFW):**
+    - **Coastal/Lakeshore Flood Watch:** At least every 12 hours until event ends/canceled, or when timing, areal extent, or conditions change.
+    - **Warning/Advisory/Informational:** At least every 6-8 hours until event ends/canceled, or when timing, areal extent, or conditions change.
+    - Watches upgraded to warnings/advisories, or canceled.
+    - WFOs/WSOs issue CFW to upgrade advisory to warning or downgrade warning to advisory.
+    - WFOs/WSOs issue CFW to cancel when threat no longer exists.
+- **Consistency with Other NWS Products:** Coordination with neighboring WFOs/WSOs, RFCs, and National Centers (e.g., for river discharge and storm surge).
+    - **Zone, Coastal/Surf Zone Forecasts:** CFW advisory/watch/warning products headlined in public zone forecasts and Surf Zone Forecasts (not routine marine forecasts).
+    - **Hazardous Weather Outlook (HWO):** Events valid within 48 hours may be referenced in HWO. Coastal hazards not expected within 48 hours addressed as outlook.
+    - **Short Term Forecast (NOW):** Coastal hazard information brief and augments CFW, not replaces.
+    - **Tropical Cyclone Local Watch/Warning Product (TCV) and Hurricane Local Statement (HLS):** CFW issued when tropical cyclone watches/warnings are in effect, providing inundation ranges consistent with TCV/HLS.
+
+**3. Water Level Observations and Dissemination**
+
+- **Tide and Water Level Observations:** Real-time access important. WFOs/WSOs maintain contact with local officials for data. Familiarity with terminology. NOS collects and distributes real-time tidal observations and predictions (tidesandcurrents.noaa.gov).
+- **Tide and Water Level Reports:** Routine tide reports issued using AWIPS product identifier TID. Tide data can be appended to Coastal/Lakeshore Message during significant coastal events. Reference standard datums (e.g., MLLW).
+- **Great Lakes Water Levels:** Data from U.S. Army Corps of Engineers and NOS.
+- **NWS Great Lakes Water Level Report:** Periodic reports issued using AWIPS product identifier OMR.
