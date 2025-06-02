@@ -330,63 +330,6 @@ class ConditionalOutput(Output):
             )
 
 
-class MulticastOutput(Output):
-    """Output that sends events to multiple outputs simultaneously."""
-
-    def __init__(
-        self, output_id: str, outputs: list[Output], *, fail_fast: bool = False
-    ) -> None:
-        """Initialize the multicast output.
-
-        Args:
-            output_id: Unique identifier for this output.
-            outputs: List of outputs to send events to.
-            fail_fast: If True, stop on first error; if False, continue with other outputs.
-
-        """
-        super().__init__(output_id)
-        self.outputs = outputs
-        self.fail_fast = fail_fast
-
-    async def start(self) -> None:
-        """Start all outputs."""
-        await super().start()
-        for output in self.outputs:
-            await output.start()
-
-    async def stop(self) -> None:
-        """Stop all outputs."""
-        for output in self.outputs:
-            await output.stop()
-        await super().stop()
-
-    async def send(self, event: PipelineEvent) -> None:
-        """Send event to all outputs."""
-        errors: list[Exception] = []
-
-        for output in self.outputs:
-            try:
-                await output.send(event)
-            except Exception as e:
-                if self.fail_fast:
-                    raise
-                errors.append(e)
-                logger.warning(
-                    "Output failed in multicast",
-                    output_id=self.output_id,
-                    failed_output_id=output.output_id,
-                    error=str(e),
-                )
-
-        if errors and not self.fail_fast:
-            logger.warning(
-                "Some outputs failed in multicast",
-                output_id=self.output_id,
-                error_count=len(errors),
-                total_outputs=len(self.outputs),
-            )
-
-
 class FileOutput(Output):
     """Output that writes events to a file."""
 
@@ -455,7 +398,7 @@ class FileOutput(Output):
             raise OutputError(error_msg, self.output_id) from e
 
 
-class HttpOutput(Output):
+class WebhookOutput(Output):
     """Output that sends events to HTTP endpoints."""
 
     def __init__(  # noqa: PLR0913
@@ -665,11 +608,10 @@ class OutputRegistry:
         """Register built-in output types."""
         self.register("log", LogOutput)
         self.register("file", FileOutput)
-        self.register("http", HttpOutput)
+        self.register("http", WebhookOutput)
         self.register("function", FunctionOutput)
         self.register("batch", BatchOutput)
         self.register("conditional", ConditionalOutput)
-        self.register("multicast", MulticastOutput)
 
 
 # Global output registry instance
