@@ -1,66 +1,133 @@
 # Python Code Generation Instructions (Python 3.12+)
 
-## Libraries
-- **Standard Libraries:** Prefer built-in libraries over 3rd party when possible.
-- **3rd Party Library Use:** Use only well-maintained libraries with active communities. Avoid libraries with known security vulnerabilities or poor documentation.
-- **Documentation**: Always lookup the latest SDK details for 3rd party libraries using available tools.
+## Core Philosophy
+Create production-grade, comprehensive solutions that go above and beyond basic requirements. Your code will be used in critical systems where reliability, maintainability, and correctness are paramount. Include as many relevant features, error handling scenarios, and best practices as possible unless otherwise instructed.
 
-## Type System (Pyright Strict)
-- **Target Version:** Use Python 3.12+ features (e.g. pattern matching, Self type).
-- **Complete Typing:** Type ALL function parameters, return values, class attributes, and critical variables.
-- **Modern Typing Only:**
-  - **Type Aliases:** `type Name = Definition` (PEP 695); never `typing.TypeAlias`/`NewType`.
-  - **Unions:** Use `X | Y` (not `Union[X, Y]`).
-  - **Generics:** Use `list[int]`, `dict[str, int]` (not `List[:]`, `Dict[:]`).
-- **Optional Types:** Use `X | None`; always explicitly `return None` when applicable.
-- **No `Any`:** NEVER use `Any`. Use explicit types, `TypeVar`, `Protocol`, or `object`.
-- **Data Structures:**
-  - Limit tuples to 3 elements for small, immutable groups.
-  - Use dataclasses/pydantic for any structured or complex data.
-  - AVOID nested types like `dict[str, tuple[...]]`; prefer named types.
-- **Dynamic and Factory Typing:**
-  - When implementing factory functions (`Callable[..., SomeType]`), explicitly type parameters like `**kwargs` as `**kwargs: object` or a more specific `typing.Dict` if the structure is known.
-  - Ensure factory functions return the most specific type possible.
-  - Use `isinstance()` for runtime type checking of arguments passed via `**kwargs`.
-  - Use `typing.cast()` judiciously and with string literal type expressions (`cast("list[dict[str, str]]", ...)`) when necessary to guide the type checker, especially when dealing with data structures from configurations.
+## Tool Usage Strategy (Critical)
+**Use available tools proactively to mitigate errors and ensure accuracy:**
 
-## Style & Formatting (Ruff Enforcement)
-- **PEP 8 Compliance:** Follow naming conventions (`snake_case` for functions/variables; `PascalCase` for classes).
-- **String Interpolation:** Use f-strings exclusively.
-- **Unused Variables:** Remove or prefix with underscore (`_`) if they must be kept (e.g., in function signatures for compatibility).
-- **Import Formatting**: Ensure import statements are automatically sorted and formatted according to project standards (as enforced by Ruff).
-- **Line Length:** Limit lines to 88 characters.
-- **Ruff Format**: Use the shell tool to run the `ruff format` command to resolve simple formatting issues and `ruff check --fix` to automatically fix linting issues where possible.
+Before writing any code, use thinking capabilities to plan your approach, then:
+1. **Research First**: Use documentation tools (`get-library-docs`, `resolve-library-id`) to verify API syntax and current best practices
+2. **Understand Context**: Use file system tools (`grep`, `find_path`, `read_file`) to understand existing codebase patterns
+3. **Parallel Tool Execution**: For maximum efficiency, invoke multiple independent tools simultaneously rather than sequentially
+4. **Validate Continuously**: Check diagnostics frequently during development to catch issues early
+5. **Final Verification**: Always run `ruff format`, `ruff check --fix`, and verify type checking passes
 
-## Structure & Complexity
-- **Imports:** Always use absolute imports.
-- **Function Parameters:** Limit to 5 arguments; group related parameters using dataclasses.
-- **Complexity Limits:**
-  - Cyclomatic complexity < 10.
-  - ≤ 12 branch statements per function.
-  - ≤ 50 logical statements per function.
-- **Testability:** Write pure functions and employ dependency injection. Avoid hidden state.
+**Why this matters**: Tool usage prevents syntax errors, API misuse, and integration issues that waste development time and compromise code quality.
 
-## Implementation Details
-- **Data Representation:** Use dataclasses or pydantic models for structured data.
-- **Properties:** Use `@property` for managed attribute access.
-- **Efficiency:** Use comprehensions and generators for data transformation and large datasets.
-- **Output & Logging:** Use the existing logging library (or `logging` if none) for output; never use `print()`.
-- **Design Patterns:** Apply idiomatic patterns (e.g., context managers, factories) where it will reduce complexity or improve understandability.
-- **Inline Simple Functions:** Avoid creating functions that have only a single line of code; prefer to inline such logic directly.
+## Type System Requirements (Zero Tolerance)
+**Complete typing prevents runtime errors and improves code maintainability:**
 
-## Error Handling
-- **Granular Exceptions:** Always catch specific exceptions (e.g., `except ValueError:`, `except requests.HTTPError:`) for external or I/O operations.
-- **Specific Exception Types**: Use appropriate built-in exception types (e.g., `ValueError`, `TypeError`, `FileNotFoundError`, `ConnectionError`) for specific error conditions. Use `TypeError` when an argument or object is of an inappropriate type. Create exception messages by assigning the message string to a variable first, rather than directly in the exception constructor, for clarity and adherence to style guidelines.
-- **AVOID** bare except blocks except as a fallback for unexpected errors with # noqa: BLE001 comment.
+- **Type Everything**: Parameters, returns, attributes, critical variables - no exceptions
+- **Modern Python 3.12+ Syntax Only**:
+  ```python
+  # Correct modern syntax
+  type UserID = int
+  type UserData = dict[str, str | int]
+  def process_user(user_id: UserID) -> UserData | None:
+  ```
+- **Forbidden Legacy Syntax**: Never use `typing.TypeAlias`, `Union`, `List`, `Dict`, `Any`
+- **Structured Data**: Replace nested dicts/tuples with dataclasses or Pydantic models
+- **Runtime Safety**: Use `isinstance()` checks for `**kwargs`, `typing.cast()` only with string literals
 
-## Documentation
-- **Docstrings:** Add PEP 257 docstrings for all public modules, classes, functions, and methods. Include examples in public facing docstrings.
-- **Style:** Use active, imperative voice in docstrings (e.g., "Return...", "Calculate...").
-- **Supporting Files**: Only generate examples or documentation files after confirming with the user.
+**Code MUST pass `basedpyright` strict mode without any errors or warnings.**
 
-## Testing
-- **Pytest:** Use pytest for unit tests.
-- **Linting**: Generated code MUST pass `ruff check --fix` without reporting any errors or warnings.
-- **Type Checking**: Generated code MUST pass `basedpyright` in strict mode without reporting any errors or warnings.
-- **Diagnostic Resolution**: Prioritize addressing and resolving ALL diagnostics reported by the environment (linting and type checking) as a critical step before considering code complete.
+## Quality Standards (Non-Negotiable)
+**These limits ensure code remains maintainable and testable:**
+
+- **Function Complexity**: ≤5 parameters, <10 cyclomatic complexity, ≤50 statements
+- **Error Handling Excellence**:
+  - Catch specific exceptions (`ValueError`, `ConnectionError`, `requests.HTTPError`)
+  - Assign error messages to variables before raising: `msg = "Invalid input"; raise ValueError(msg)`
+  - No bare except blocks (use `# noqa: BLE001` only for unexpected error fallbacks)
+- **Dependency Management**: Use absolute imports, prefer standard library over third-party when possible
+
+## Code Style (Ruff Enforced)
+**Consistent formatting improves readability and reduces cognitive load:**
+
+- **Naming**: `snake_case` for functions/variables, `PascalCase` for classes
+- **String Formatting**: F-strings exclusively - they're faster and more readable
+- **Line Length**: 88 characters maximum for optimal code review experience
+- **Unused Variables**: Remove or prefix with `_` if required for API compatibility
+- **Modern Python**: Use comprehensions, generators, and context managers where appropriate
+- **Getters/Setters**: Always use Getters when surfacing read-only variables to other classes and Setters for surfacing validation or logic requirements.
+
+**All code MUST pass `ruff check --fix` without errors or warnings.**
+
+## Architecture Patterns
+**Apply proven patterns for maintainable, testable code:**
+
+- **Data Modeling**: Dataclasses for simple data, Pydantic for validation/settings
+- **Property Management**: Use `@property` for computed attributes and validation
+- **Resource Management**: Context managers for files, connections, and cleanup
+- **Pure Functions**: Favor dependency injection over global state
+- **Single Responsibility**: Each function should do one thing exceptionally well
+
+## Testing Strategy (Critical for Reliability)
+**Focus on critical complexity areas only - quality over quantity:**
+
+### What to Test (Priority Order)
+1. **Business Logic**: Core algorithms, calculations, data transformations
+2. **Edge Cases**: Boundary values, empty collections, null/None handling
+3. **Integration Points**: External APIs, database operations, file I/O
+4. **Error Conditions**: Invalid inputs, network failures, resource exhaustion
+5. **Skip Simple Functions including Getters/Setters**: Unless they contain validation logic
+
+### Test Design Patterns
+- **Arrange-Act-Assert**: Clear test structure with distinct phases
+- **Parametrized Tests**: `@pytest.mark.parametrize` for multiple scenarios
+- **Fixtures**: Reusable test data and setup in `conftest.py`
+- **Property-Based Testing**: Use `hypothesis` for complex logic validation
+- **Test Doubles**: Mock external dependencies, not internal business logic
+
+### Code Testability Requirements
+- **Dependency Injection**: Pass dependencies as parameters, not global imports
+- **Pure Functions**: Favor functions without side effects when possible
+- **Single Responsibility**: Complex functions indicate need for decomposition
+- **Refactor for Tests**: If testing is hard, the design needs improvement
+
+### Test Organization
+```python
+# test_module.py structure
+class TestClassName:
+    def test_method_name_when_condition_then_expected(self):
+        # Given (Arrange)
+        # When (Act)
+        # Then (Assert)
+```
+
+### Documentation Standards
+- **Docstrings**: PEP 257 format with practical examples in active voice
+- **Test Documentation**: Describe "why" not "what" in complex test scenarios
+
+## Implementation Workflow
+**Follow this sequence for optimal results:**
+
+<thinking_guidance>
+Before implementing, think through:
+- What tools do I need to research this properly?
+- What are the edge cases and error scenarios?
+- How can I make this solution robust and general-purpose?
+- What existing patterns in the codebase should I follow?
+</thinking_guidance>
+
+1. **Plan**: Use thinking capabilities to understand requirements and plan architecture
+2. **Research**: Look up documentation for any libraries or APIs you'll use
+3. **Implement**: Write comprehensive solution with full error handling
+4. **Validate**: Run diagnostics and fix all issues
+5. **Document**: Add clear docstrings and if requested, supporting documentation files
+
+## Solution Philosophy
+**Create robust, maintainable solutions that work correctly for all valid inputs:**
+
+- Implement actual logic that solves problems generally, not just specific test cases
+- Don't hard-code values or create solutions tailored only to provided examples
+- Focus on understanding problem requirements and implementing correct algorithms
+- Follow software design principles: SOLID, DRY, and appropriate design patterns
+- If requirements seem unreasonable or tests appear incorrect, communicate this clearly
+- It is always acceptable to ask for clarification prior to writing code
+
+## Output Format
+<production_code>
+Your code should be production-ready with comprehensive error handling, logging instead of print statements, and thoughtful architecture that demonstrates professional software development practices.
+</production_code>
