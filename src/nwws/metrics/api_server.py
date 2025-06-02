@@ -56,7 +56,6 @@ class MetricApiServer:
         app.add_api_route("/health", self.health_check, methods=["GET"])
         app.add_api_route("/metrics", self.prometheus_metrics, methods=["GET"])
         app.add_api_route("/metrics/json", self.json_metrics, methods=["GET"])
-        app.add_api_route("/metrics/summary", self.metrics_summary, methods=["GET"])
 
         return app
 
@@ -122,25 +121,6 @@ class MetricApiServer:
             logger.error("Failed to export JSON metrics", exception=e)
             raise HTTPException(
                 status_code=500, detail="Failed to export metrics"
-            ) from e
-
-    async def metrics_summary(self) -> JSONResponse:
-        """Get a summary of all metrics in the registry.
-
-        Returns:
-            JSONResponse with metrics summary grouped by type.
-
-        """
-        try:
-            summary = self.registry.get_registry_summary()
-
-            logger.debug("Metrics summary generated")
-            return JSONResponse(content=summary)
-
-        except Exception as e:
-            logger.error("Failed to generate metrics summary", exception=e)
-            raise HTTPException(
-                status_code=500, detail="Failed to generate metrics summary"
             ) from e
 
     async def dashboard(self) -> Response:

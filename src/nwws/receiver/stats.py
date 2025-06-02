@@ -316,6 +316,9 @@ class WeatherWireStatsCollector:
         ):
             operations_successful += 1
 
+        # Do not record office label for following metrics
+        labels = self._make_labels()
+
         # 2. Processing duration histogram
         proc_dur_metric_name = self._make_metric_name(
             "message_processing_duration_seconds"
