@@ -87,7 +87,7 @@ class WeatherWireApp:
             stats_collector=self.receiver_stats_collector,
         )
 
-        logger.info("Weather Wire receiver initialized", xmpp_config=xmpp_config)
+        logger.info("Weather Wire receiver initialized")
 
     def _setup_pipeline(self) -> None:
         """Configure and initialize the pipeline system."""
@@ -413,16 +413,10 @@ class WeatherWireApp:
         )
         await self._shutdown_event.wait()
 
-        # Log final statistics on shutdown
-        if hasattr(self.pipeline, "stats_collector") and self.pipeline.stats_collector:
-            final_stats = self.pipeline.stats_collector.get_summary()
-            logger.info(
-                "NWWS-OI application stopped with final statistics",
-                uptime_seconds=time.time() - self._start_time,
-                **final_stats,
-            )
-        else:
-            logger.info("NWWS-OI application event loop stopped")
+        logger.info(
+            "NWWS-OI application event loop stopped",
+            uptime_seconds=time.time() - self._start_time,
+        )
 
     def shutdown(self) -> None:
         """Gracefully shutdown the application.

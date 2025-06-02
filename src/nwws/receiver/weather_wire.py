@@ -105,35 +105,38 @@ class WeatherWire(slixmpp.ClientXMPP):
         self._connection_start_time: float | None = None
 
         logger.info(
-            "Initializing NWWS-OI XMPP client",
+            "Initialized NWWS-OI XMPP client",
             username=config.username,
             server=config.server,
         )
 
     def _add_event_handlers(self) -> None:
-        """Add comprehensive event handlers for all relevant XMPP events."""
-        # Connection lifecycle events
+        """Add all necessary event handlers for the XMPP client."""
+        # Connection events
         self.add_event_handler("connecting", self._on_connecting)
         self.add_event_handler("connected", self._on_connected)
-        self.add_event_handler("disconnected", self._on_disconnected)
         self.add_event_handler("connection_failed", self._on_connection_failed)
-        self.add_event_handler("reconnect_delay", self._on_reconnect_delay)
+        self.add_event_handler("disconnected", self._on_disconnected)
         self.add_event_handler("killed", self._on_killed)
+
+        # Authentication events
+        self.add_event_handler("failed_auth", self._on_failed_auth)
 
         # Session events
         self.add_event_handler("session_start", self._on_session_start)
         self.add_event_handler("session_end", self._on_session_end)
-        self.add_event_handler("failed_auth", self._on_failed_auth)
 
-        # TLS/SSL events
-        self.add_event_handler("ssl_invalid_chain", self._on_ssl_invalid_chain)
-
-        # Message and stanza events
+        # Message events
         self.add_event_handler("groupchat_message", self._on_groupchat_message)
-        self.add_event_handler("stanza_not_sent", self._on_stanza_not_sent)
 
         # MUC events
-        self.add_event_handler("muc::*::presence", self._on_muc_presence)
+        self.add_event_handler("muc::{muc_room}::got_online", self._on_muc_presence)
+
+        # Stanza events
+        self.add_event_handler("stanza_not_sent", self._on_stanza_not_sent)
+
+        # Reconnection events
+        self.add_event_handler("reconnect_delay", self._on_reconnect_delay)
 
     def start(self) -> asyncio.Future[bool]:
         """Connect to the XMPP server."""
@@ -143,16 +146,13 @@ class WeatherWire(slixmpp.ClientXMPP):
             port=self.config.port,
         )
 
-        if self.stats_collector:
-            self.stats_collector.record_connection_attempt()
-
         return super().connect(host=self.config.server, port=self.config.port)  # type: ignore  # noqa: PGH003
 
     def is_client_connected(self) -> bool:
         """Check if the XMPP client is connected."""
         return self.is_connected() and not self.is_shutting_down
 
-    # Event handlers for connection lifecycle
+    # Connection event handlers
     async def _on_connecting(self, _event: object) -> None:
         """Handle connection initiation."""
         logger.info("Starting connection attempt to NWWS-OI server")
@@ -161,57 +161,45 @@ class WeatherWire(slixmpp.ClientXMPP):
         if self.stats_collector:
             self.stats_collector.record_connection_attempt()
 
-    # TLS/SSL event handlers
-    async def _on_ssl_invalid_chain(self, error: Exception) -> None:
-        """Handle SSL certificate chain validation failure."""
-        logger.error("SSL certificate chain validation failed", error=str(error))
-        if self.stats_collector:
-            event = self.stats_collector.receiver_id
-            labels = {"receiver": event, "error": str(error)}
-            self.stats_collector.collector.record_error(
-                "ssl_invalid_chain",
-                operation="tls_handshake",
-                labels=labels,
-            )
-
     async def _on_reconnect_delay(self, delay_time: float) -> None:
         """Handle reconnection delay notification."""
         logger.info("Reconnection delayed", delay_seconds=delay_time)
+
         if self.stats_collector:
-            # Record reconnection delay for monitoring
-            event = self.stats_collector.receiver_id
-            labels = {"receiver": event}
-            self.stats_collector.collector.observe_histogram(
-                "reconnect_delay_seconds",
-                delay_time,
-                labels=labels,
-                help_text="Duration of reconnection delays in seconds",
-            )
+            self.stats_collector.record_reconnect_attempt()
 
     async def _on_failed_auth(self, _event: object) -> None:
         """Handle authentication failure."""
         logger.error("Authentication failed for NWWS-OI client")
 
         if self.stats_collector:
-            self.stats_collector.record_authentication_failure()
+            self.stats_collector.record_authentication_failure(
+                reason="invalid_credentials"
+            )
 
     async def _on_connection_failed(self, reason: str | Exception) -> None:
         """Handle connection failure."""
-        logger.error("Connection to NWWS-OI server failed" + str(reason), reason=reason)
+        logger.error("Connection to NWWS-OI server failed", reason=str(reason))
 
         if self.stats_collector:
-            self.stats_collector.record_connection_failure(str(reason))
+            # Update connection status
+            self.stats_collector.update_connection_status(is_connected=False)
+
+            # Record failed connection with reason
+            self.stats_collector.record_connection_result(
+                success=False, reason=str(reason)
+            )
 
     async def _on_connected(self, _event: object) -> None:
         """Handle successful connection."""
         logger.info("Connected to NWWS-OI server")
 
         if self.stats_collector:
+            # Update connection status
             self.stats_collector.update_connection_status(is_connected=True)
 
-            if self._connection_start_time:
-                duration_ms = (time.time() - self._connection_start_time) * 1000
-                self.stats_collector.record_connection_success(duration_ms)
+            # Record successful connection
+            self.stats_collector.record_connection_result(success=True)
 
     async def _monitor_idle_timeout(self) -> None:
         """Monitor for idle timeout and force reconnect if needed."""
@@ -219,15 +207,14 @@ class WeatherWire(slixmpp.ClientXMPP):
             await asyncio.sleep(10)
             now = time.time()
             if now - self.last_message_time > IDLE_TIMEOUT:
-                idle_duration = now - self.last_message_time
                 logger.warning(
                     "No messages received in {timeout} seconds, reconnecting...",
                     timeout=IDLE_TIMEOUT,
                 )
 
                 if self.stats_collector:
-                    self.stats_collector.record_idle_timeout(idle_duration)
-                    self.stats_collector.record_reconnection()
+                    self.stats_collector.record_idle_timeout()
+                    self.stats_collector.record_disconnection(reason="idle_timeout")
 
                 self.reconnect(reason="Idle timeout exceeded")
                 break
@@ -258,7 +245,9 @@ class WeatherWire(slixmpp.ClientXMPP):
                 error=str(err),
             )
             if self.stats_collector:
-                self.stats_collector.record_connection_failure(str(err))
+                self.stats_collector.record_connection_result(
+                    success=False, reason=f"session_setup_failed: {err}"
+                )
 
     async def _start_background_services(self) -> None:
         """Start necessary services after session start."""
@@ -295,6 +284,10 @@ class WeatherWire(slixmpp.ClientXMPP):
                 self.nickname,
                 maxhistory=str(max_history),
             )
+            if self.stats_collector:
+                self.stats_collector.record_muc_join_result(
+                    muc_room=MUC_ROOM, success=True
+                )
         except XMPPError as err:
             logger.error(
                 "Failed to join NWWS room",
@@ -303,7 +296,9 @@ class WeatherWire(slixmpp.ClientXMPP):
                 error=str(err),
             )
             if self.stats_collector:
-                self.stats_collector.record_connection_failure(str(err))
+                self.stats_collector.record_muc_join_result(
+                    muc_room=MUC_ROOM, success=False
+                )
 
     async def _send_subscription_presence(self) -> None:
         """Send subscription presence."""
@@ -328,28 +323,14 @@ class WeatherWire(slixmpp.ClientXMPP):
             presence=presence,
         )
 
-        # Record successful MUC join
-        if self.stats_collector:
-            event = self.stats_collector.receiver_id
-            labels = {"receiver": event}
-            self.stats_collector.collector.record_operation(
-                "muc_join",
-                success=True,
-                labels=labels,
-            )
-
     # Stanza event handlers
     async def _on_stanza_not_sent(self, stanza: object) -> None:
         """Handle stanza send failure."""
-        logger.warning("Stanza not sent", stanza_type=type(stanza).__name__)
+        stanza_type = str(getattr(stanza, "tag", "unknown"))
+        logger.warning("Stanza not sent", stanza_type=stanza_type)
+
         if self.stats_collector:
-            event = self.stats_collector.receiver_id
-            labels = {"receiver": event, "stanza_type": type(stanza).__name__}
-            self.stats_collector.collector.increment_counter(
-                "stanzas_not_sent_total",
-                labels=labels,
-                help_text="Total number of stanzas that failed to send",
-            )
+            self.stats_collector.record_stanza_not_sent(stanza_type=stanza_type)
 
     async def _on_groupchat_message(self, msg: Message) -> None:
         """Process incoming groupchat message."""
@@ -360,10 +341,6 @@ class WeatherWire(slixmpp.ClientXMPP):
             logger.info("Client is shutting down, ignoring message")
             return
 
-        if self.stats_collector:
-            # Update the age of last message (should be near 0 for new messages)
-            self.stats_collector.update_last_message_age(0.0)
-
         # Check if the message is from the expected MUC room
         if msg.get_mucroom() != JID(MUC_ROOM).bare:
             logger.warning(
@@ -373,22 +350,87 @@ class WeatherWire(slixmpp.ClientXMPP):
             return
 
         try:
-            await self._on_nwws_message(msg)
+            # Process the message
+            weather_message = await self._on_nwws_message(msg)
 
-            if self.stats_collector:
-                duration_ms = (time.time() - message_start_time) * 1000
-                self.stats_collector.record_message_received(duration_ms)
+            if weather_message is None:
+                # Message was skipped (logged in _on_nwws_message)
+                return
+
+            await self._record_successful_message_processing(
+                weather_message, msg, message_start_time
+            )
 
         except ValueError as e:
-            logger.error(
-                "Error processing NWWS message",
-                error=str(e),
-                msg_id=msg.get_id(),
-            )
-            if self.stats_collector:
-                self.stats_collector.record_message_error("processing_error")
+            logger.error("Message parsing error", error=str(e))
 
-    async def _on_nwws_message(self, msg: Message) -> None:
+            if self.stats_collector:
+                self.stats_collector.record_message_processing_error(
+                    error_type="ValueError",
+                    office_id=self._extract_office_id_if_possible(msg),
+                )
+
+        except Exception as e:  # noqa: BLE001
+            logger.error("Unexpected message processing error", error=str(e))
+
+            if self.stats_collector:
+                self.stats_collector.record_message_processing_error(
+                    error_type=type(e).__name__,
+                    office_id=self._extract_office_id_if_possible(msg),
+                )
+
+    async def _record_successful_message_processing(
+        self,
+        weather_message: WeatherWireMessage,
+        msg: Message,
+        message_start_time: float,
+    ) -> None:
+        """Record metrics and send message to callback."""
+        # Calculate metrics
+        processing_duration = time.time() - message_start_time
+        message_size = len(str(msg.xml))  # Raw XML size
+
+        # Calculate delay from issue timestamp
+        delay_seconds = 0.0
+        if weather_message.delay_stamp:
+            delay_seconds = (
+                datetime.now(UTC) - weather_message.delay_stamp
+            ).total_seconds()
+        elif weather_message.issue:
+            delay_seconds = (datetime.now(UTC) - weather_message.issue).total_seconds()
+
+        # Extract office ID
+        office_id = weather_message.cccc or "unknown"
+
+        # Record successful message processing
+        if self.stats_collector:
+            self.stats_collector.record_message_processed(
+                processing_duration_seconds=processing_duration,
+                message_delay_seconds=delay_seconds,
+                message_size_bytes=message_size,
+                office_id=office_id,
+            )
+
+            # Update last message timestamp
+            self.stats_collector.update_last_message_received_timestamp(
+                timestamp=time.time(),
+                office_id=office_id,
+            )
+
+        # Send to callback/pipeline
+        await self.callback(weather_message)
+
+    def _extract_office_id_if_possible(self, msg: Message) -> str | None:
+        """Try to extract office ID from message even if parsing failed."""
+        try:
+            x = msg.xml.find("{nwws-oi}x")
+            if x is not None:
+                return x.get("cccc")
+        except Exception:  # noqa: BLE001
+            logger.debug("Failed to extract office ID from message")
+        return None
+
+    async def _on_nwws_message(self, msg: Message) -> WeatherWireMessage | None:
         """Process group chat message containing weather data."""
         # Check for NWWS-OI namespace in the message
         x = msg.xml.find("{nwws-oi}x")
@@ -398,19 +440,17 @@ class WeatherWire(slixmpp.ClientXMPP):
                 msg_id=msg.get_id(),
             )
             if self.stats_collector:
-                self.stats_collector.record_message_error("missing_namespace")
-            return
+                self.stats_collector.record_message_processing_error(
+                    error_type="missing_namespace",
+                    office_id=None,
+                )
+            return None
 
         # Get the message subject from the body or subject field
         subject = str(msg.get("body", "")) or str(msg.get("subject", ""))
 
         # Get delay stamp if available
         delay_stamp: datetime | None = msg["delay"]["stamp"] if "delay" in msg else None
-        delay_ms = self._calculate_delay_ms(delay_stamp) if delay_stamp else None
-
-        # Calculate and record delay if present
-        if self.stats_collector and delay_ms is not None:
-            self.stats_collector.record_delayed_message(delay_ms)
 
         # Get the message body which should contain the weather data
         body = (x.text or "").strip()
@@ -419,12 +459,16 @@ class WeatherWire(slixmpp.ClientXMPP):
                 "No body text in NWWS-OI namespace, skipping",
                 msg_id=msg.get_id(),
             )
+            office_id = x.get("cccc")
             if self.stats_collector:
-                self.stats_collector.record_message_error("empty_body")
-            return
+                self.stats_collector.record_message_processing_error(
+                    error_type="empty_body",
+                    office_id=office_id,
+                )
+            return None
 
         # Get the metadata from the NWWS-OI namespace
-        event = WeatherWireMessage(
+        weather_message = WeatherWireMessage(
             subject=subject,
             noaaport=self._convert_to_noaaport(body),
             id=x.get("id", ""),
@@ -435,17 +479,20 @@ class WeatherWire(slixmpp.ClientXMPP):
             delay_stamp=delay_stamp,
         )
 
+        delay_ms = self._calculate_delay_ms(delay_stamp) if delay_stamp else None
+
         logger.info(
             "Received Event",
-            subject=event.subject,
-            id=event.id,
-            issue=event.issue,
-            ttaaii=event.ttaaii,
-            cccc=event.cccc,
-            awipsid=event.awipsid,
+            subject=weather_message.subject,
+            id=weather_message.id,
+            issue=weather_message.issue,
+            ttaaii=weather_message.ttaaii,
+            cccc=weather_message.cccc,
+            awipsid=weather_message.awipsid,
             delay_ms=delay_ms,
         )
-        await self.callback(event)
+
+        return weather_message
 
     async def _on_session_end(self, _event: object) -> None:
         """Handle session end."""
@@ -456,34 +503,24 @@ class WeatherWire(slixmpp.ClientXMPP):
 
     async def _on_disconnected(self, reason: str | Exception) -> None:
         """Handle disconnection."""
-        logger.warning("Disconnected from NWWS-OI server", reason=reason)
+        logger.warning("Disconnected from NWWS-OI server", reason=str(reason))
 
         if self.stats_collector:
             self.stats_collector.update_connection_status(is_connected=False)
-            self.stats_collector.record_disconnection(str(reason))
+            self.stats_collector.record_disconnection(reason=str(reason))
 
     async def _on_killed(self, _event: object) -> None:
         """Handle forceful connection termination."""
         logger.warning("Connection forcefully terminated")
+
         if self.stats_collector:
-            # Record killed connection event
-            event = self.stats_collector.receiver_id
-            labels = {"receiver": event}
-            self.stats_collector.collector.increment_counter(
-                "connections_killed_total",
-                labels=labels,
-                help_text="Total number of forcefully terminated connections",
-            )
+            self.stats_collector.record_disconnection(reason="connection_killed")
 
     async def _update_stats_periodically(self) -> None:
         """Periodically update gauge metrics that need regular refresh."""
         while not self.is_shutting_down:
             try:
                 if self.stats_collector:
-                    # Update last message age
-                    age_seconds = time.time() - self.last_message_time
-                    self.stats_collector.update_last_message_age(age_seconds)
-
                     # Update connection status
                     is_connected = self.is_client_connected()
                     self.stats_collector.update_connection_status(

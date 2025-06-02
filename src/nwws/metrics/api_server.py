@@ -52,11 +52,11 @@ class MetricApiServer:
             return RedirectResponse("/dashboard")
 
         # Add endpoints
+        app.add_api_route("/dashboard", self.dashboard, methods=["GET"])
         app.add_api_route("/health", self.health_check, methods=["GET"])
         app.add_api_route("/metrics", self.prometheus_metrics, methods=["GET"])
         app.add_api_route("/metrics/json", self.json_metrics, methods=["GET"])
         app.add_api_route("/metrics/summary", self.metrics_summary, methods=["GET"])
-        app.add_api_route("/dashboard", self.dashboard, methods=["GET"])
 
         return app
 

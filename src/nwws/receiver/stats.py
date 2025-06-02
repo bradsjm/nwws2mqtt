@@ -1,10 +1,17 @@
 # pyright: strict
-"""Weather Wire receiver statistics collection using the new metrics system."""
+"""Weather Wire receiver statistics collection using the metrics system."""
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+from loguru import logger
 
 from nwws.metrics import MetricRegistry, MetricsCollector
 
@@ -17,22 +24,22 @@ class ReceiverStatsEvent:
     """Identifier for the receiver instance."""
 
     metric_name: str
-    """Name of the metric being reported."""
+    """Prometheus-compliant name of the metric (e.g., 'nwws_xmpp_connection_attempts_total')."""
 
     metric_value: float | int | str
-    """Value of the metric."""
+    """Value of the metric being reported or observed."""
 
     timestamp: float = field(default_factory=time.time)
     """When this stat was recorded."""
 
-    duration_ms: float | None = None
-    """Operation duration in milliseconds."""
+    duration_seconds: float | None = None
+    """Operation duration in seconds, if applicable."""
 
     success: bool = True
-    """Whether the operation was successful."""
+    """Whether the underlying operation (if any) represented by the event was successful."""
 
-    details: dict[str, str | int | float] = field(default_factory=dict)
-    """Additional metric details."""
+    labels: dict[str, str] = field(default_factory=dict)
+    """Metric labels (tags) for dimensional analysis, including receiver_id."""
 
 
 class WeatherWireStatsCollector:
@@ -42,431 +49,486 @@ class WeatherWireStatsCollector:
         self,
         registry: MetricRegistry,
         receiver_id: str = "weather_wire",
+        metric_prefix: str = "nwws",
     ) -> None:
-        """Initialize with a registry instance and receiver identifier."""
+        """Initialize with a registry instance and receiver identifier.
+
+        Args:
+            registry: MetricRegistry instance for recording metrics
+            receiver_id: Identifier for the receiver instance
+            metric_prefix: Prefix for all metric names (default: "nwws")
+
+        """
         self.receiver_id = receiver_id
+        self.metric_prefix = metric_prefix
         self.registry = registry
-        self.collector = MetricsCollector(registry, prefix=receiver_id)
+        self.collector = MetricsCollector(registry)
 
-    def record_connection_attempt(self) -> ReceiverStatsEvent:
+    def _make_metric_name(self, name: str) -> str:
+        """Create a full metric name with prefix."""
+        return f"{self.metric_prefix}_{name}"
+
+    def _make_labels(
+        self, additional_labels: dict[str, str] | None = None
+    ) -> dict[str, str]:
+        """Create labels dict with receiver_id and any additional labels."""
+        base_labels: dict[str, str] = {"receiver": self.receiver_id}
+        if additional_labels:
+            # Sanitize label values
+            sanitized_labels = {
+                key: self._sanitize_label_value(str(value))
+                for key, value in additional_labels.items()
+            }
+            base_labels.update(sanitized_labels)
+        return base_labels
+
+    def _sanitize_label_value(self, value: str, max_length: int = 64) -> str:
+        """Sanitize label values for Prometheus compatibility."""
+        # Remove/replace problematic characters, truncate if needed
+        sanitized = re.sub(r"[^a-zA-Z0-9_-]", "_", value)
+        return sanitized[:max_length] if len(sanitized) > max_length else sanitized
+
+    def _safe_metric_operation(
+        self,
+        operation_name: str,
+        operation_func: Callable[..., Any],
+        *args: Any,
+        **kwargs: Any,
+    ) -> bool:
+        """Safely execute a metric operation with error handling."""
+        try:
+            operation_func(*args, **kwargs)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Failed to {operation_name}: {e}")
+            return False
+
+        return True
+
+    def record_connection_attempt(self) -> ReceiverStatsEvent | None:
         """Record a connection attempt."""
-        metric_name = "connection_attempts_total"
+        metric_name = self._make_metric_name("xmpp_connection_attempts_total")
+        labels = self._make_labels()
 
-        self.collector.increment_counter(
+        success = self._safe_metric_operation(
+            "record connection attempt",
+            self.collector.increment_counter,
             metric_name,
-            labels={"receiver": self.receiver_id},
-            help_text="Total number of connection attempts",
+            labels=labels,
+            help_text="Total number of XMPP connection attempts.",
         )
 
-        current_value = (
-            self.collector.get_metric_value(
-                metric_name,
-                labels={"receiver": self.receiver_id},
-            )
-            or 0
-        )
+        if not success:
+            return None
+
+        current_value = self.collector.get_metric_value(metric_name, labels=labels) or 1
 
         return ReceiverStatsEvent(
             receiver_id=self.receiver_id,
             metric_name=metric_name,
             metric_value=current_value,
-        )
-
-    def record_connection_success(self, duration_ms: float) -> ReceiverStatsEvent:
-        """Record a successful connection."""
-        labels = {"receiver": self.receiver_id}
-
-        # Record successful connection
-        self.collector.record_operation(
-            "connection",
-            success=True,
-            duration_ms=duration_ms,
             labels=labels,
         )
 
-        # Update connection status
-        self.collector.update_status("connection", "connected", labels=labels)
+    def record_connection_result(
+        self, *, success: bool, reason: str | None = None
+    ) -> ReceiverStatsEvent | None:
+        """Record a connection result (success or failure)."""
+        metric_name = self._make_metric_name("xmpp_connections_total")
+        result_str = "success" if success else "failure"
+        op_labels = {"result": result_str}
 
-        current_value = (
-            self.collector.get_metric_value(
-                "operation_results_total",
-                labels={**labels, "operation": "connection", "result": "success"},
-            )
-            or 0
+        if not success and reason:
+            op_labels["reason"] = reason
+
+        labels = self._make_labels(op_labels)
+
+        operation_success = self._safe_metric_operation(
+            "record connection result",
+            self.collector.increment_counter,
+            metric_name,
+            labels=labels,
+            help_text="Total XMPP connections established or failed.",
         )
+
+        if not operation_success:
+            return None
+
+        current_value = self.collector.get_metric_value(metric_name, labels=labels) or 1
 
         return ReceiverStatsEvent(
             receiver_id=self.receiver_id,
-            metric_name="connection_success_total",
+            metric_name=metric_name,
             metric_value=current_value,
-            duration_ms=duration_ms,
-        )
-
-    def record_connection_failure(self, reason: str) -> ReceiverStatsEvent:
-        """Record a connection failure."""
-        labels = {"receiver": self.receiver_id, "reason": reason}
-
-        # Record failed connection
-        self.collector.record_operation(
-            "connection",
-            success=False,
+            success=success,
             labels=labels,
         )
 
-        # Update connection status
-        self.collector.update_status(
-            "connection", "disconnected", labels={"receiver": self.receiver_id}
-        )
-
-        # Record specific error
-        self.collector.record_error(
-            "connection_failure", operation="connection", labels=labels
-        )
-
-        current_value = (
-            self.collector.get_metric_value(
-                "operation_results_total",
-                labels={
-                    "receiver": self.receiver_id,
-                    "operation": "connection",
-                    "result": "failure",
-                },
-            )
-            or 0
-        )
-
-        return ReceiverStatsEvent(
-            receiver_id=self.receiver_id,
-            metric_name="connection_failures_total",
-            metric_value=current_value,
-            success=False,
-            details={"reason": reason},
-        )
-
-    def record_authentication_failure(self) -> ReceiverStatsEvent:
-        """Record an authentication failure."""
-        labels = {"receiver": self.receiver_id}
-
-        # Record auth failure
-        self.collector.record_operation(
-            "authentication",
-            success=False,
-            labels=labels,
-        )
-
-        # Record specific error
-        self.collector.record_error(
-            "auth_failure", operation="authentication", labels=labels
-        )
-
-        current_value = (
-            self.collector.get_metric_value(
-                "operation_results_total",
-                labels={**labels, "operation": "authentication", "result": "failure"},
-            )
-            or 0
-        )
-
-        return ReceiverStatsEvent(
-            receiver_id=self.receiver_id,
-            metric_name="auth_failures_total",
-            metric_value=current_value,
-            success=False,
-        )
-
-    def record_disconnection(self, reason: str) -> ReceiverStatsEvent:
-        """Record a disconnection event."""
-        labels = {"receiver": self.receiver_id, "reason": reason}
-
-        self.collector.increment_counter(
-            "disconnections_total",
-            labels=labels,
-            help_text="Total number of disconnections",
-        )
-
-        # Update connection status
-        self.collector.update_status(
-            "connection", "disconnected", labels={"receiver": self.receiver_id}
-        )
-
-        current_value = (
-            self.collector.get_metric_value("disconnections_total", labels=labels) or 0
-        )
-
-        return ReceiverStatsEvent(
-            receiver_id=self.receiver_id,
-            metric_name="disconnections_total",
-            metric_value=current_value,
-            details={"reason": reason},
-        )
-
-    def record_message_received(self, duration_ms: float) -> ReceiverStatsEvent:
-        """Record a message received and processed."""
-        labels = {"receiver": self.receiver_id}
-
-        # Record message processing
-        self.collector.record_operation(
-            "message_processing",
-            success=True,
-            duration_ms=duration_ms,
-            labels=labels,
-        )
-
-        current_value = (
-            self.collector.get_metric_value(
-                "operation_results_total",
-                labels={
-                    **labels,
-                    "operation": "message_processing",
-                    "result": "success",
-                },
-            )
-            or 0
-        )
-
-        return ReceiverStatsEvent(
-            receiver_id=self.receiver_id,
-            metric_name="messages_received_total",
-            metric_value=current_value,
-            duration_ms=duration_ms,
-        )
-
-    def record_message_error(self, error_type: str) -> ReceiverStatsEvent:
-        """Record a message processing error."""
-        labels = {"receiver": self.receiver_id, "error_type": error_type}
-
-        # Record message processing failure
-        self.collector.record_operation(
-            "message_processing",
-            success=False,
-            labels=labels,
-        )
-
-        # Record specific error
-        self.collector.record_error(
-            "message_error", operation="message_processing", labels=labels
-        )
-
-        current_value = (
-            self.collector.get_metric_value(
-                "errors_total",
-                labels={**labels, "operation": "message_processing"},
-            )
-            or 0
-        )
-
-        return ReceiverStatsEvent(
-            receiver_id=self.receiver_id,
-            metric_name="message_errors_total",
-            metric_value=current_value,
-            success=False,
-            details={"error_type": error_type},
-        )
-
-    def record_idle_timeout(self, idle_duration_sec: float) -> ReceiverStatsEvent:
-        """Record an idle timeout event."""
-        labels = {"receiver": self.receiver_id}
-
-        self.collector.increment_counter(
-            "idle_timeouts_total",
-            labels=labels,
-            help_text="Total number of idle timeouts",
-        )
-
-        # Record the idle duration
-        self.collector.observe_histogram(
-            "idle_duration_seconds",
-            idle_duration_sec,
-            labels=labels,
-            help_text="Duration of idle periods in seconds",
-        )
-
-        current_value = (
-            self.collector.get_metric_value("idle_timeouts_total", labels=labels) or 0
-        )
-
-        return ReceiverStatsEvent(
-            receiver_id=self.receiver_id,
-            metric_name="idle_timeouts_total",
-            metric_value=current_value,
-            details={"idle_duration_sec": idle_duration_sec},
-        )
-
-    def record_reconnection(self) -> ReceiverStatsEvent:
-        """Record a forced reconnection."""
-        labels = {"receiver": self.receiver_id}
-
-        self.collector.increment_counter(
-            "reconnections_total",
-            labels=labels,
-            help_text="Total number of forced reconnections",
-        )
-
-        current_value = (
-            self.collector.get_metric_value("reconnections_total", labels=labels) or 0
-        )
-
-        return ReceiverStatsEvent(
-            receiver_id=self.receiver_id,
-            metric_name="reconnections_total",
-            metric_value=current_value,
-        )
-
-    def update_connection_status(self, *, is_connected: bool) -> ReceiverStatsEvent:
+    def update_connection_status(
+        self, *, is_connected: bool
+    ) -> ReceiverStatsEvent | None:
         """Update the connection status gauge."""
-        labels = {"receiver": self.receiver_id}
-        status = "connected" if is_connected else "disconnected"
-
-        self.collector.update_status("connection", status, labels=labels)
-
+        metric_name = self._make_metric_name("xmpp_connection_status")
         status_value = 1.0 if is_connected else 0.0
+        labels = self._make_labels()
+
+        operation_success = self._safe_metric_operation(
+            "update connection status",
+            self.collector.set_gauge,
+            metric_name,
+            value=status_value,
+            labels=labels,
+            help_text="Current XMPP connection status (1 for connected, 0 for disconnected).",
+        )
+
+        if not operation_success:
+            return None
 
         return ReceiverStatsEvent(
             receiver_id=self.receiver_id,
-            metric_name="connection_status",
+            metric_name=metric_name,
             metric_value=status_value,
-        )
-
-    def update_last_message_age(self, age_seconds: float) -> ReceiverStatsEvent:
-        """Update the age of the last received message."""
-        labels = {"receiver": self.receiver_id}
-
-        self.collector.set_gauge(
-            "last_message_age_seconds",
-            age_seconds,
             labels=labels,
-            help_text="Age of the last received message in seconds",
         )
+
+    def record_authentication_failure(
+        self, *, reason: str
+    ) -> ReceiverStatsEvent | None:
+        """Record an authentication failure."""
+        if not reason.strip():
+            error_msg = "reason cannot be empty"
+            raise ValueError(error_msg)
+
+        metric_name = self._make_metric_name("xmpp_auth_failures_total")
+        labels = self._make_labels({"reason": reason})
+
+        operation_success = self._safe_metric_operation(
+            "record authentication failure",
+            self.collector.increment_counter,
+            metric_name,
+            labels=labels,
+            help_text="Total XMPP authentication failures.",
+        )
+
+        if not operation_success:
+            return None
+
+        current_value = self.collector.get_metric_value(metric_name, labels=labels) or 1
 
         return ReceiverStatsEvent(
             receiver_id=self.receiver_id,
-            metric_name="last_message_age_seconds",
-            metric_value=age_seconds,
-        )
-
-    def record_delayed_message(self, delay_ms: float) -> ReceiverStatsEvent:
-        """Record a delayed message and its delay duration."""
-        labels = {"receiver": self.receiver_id}
-
-        # Record count of delayed messages
-        self.collector.increment_counter(
-            "delayed_messages_total",
-            labels=labels,
-            help_text="Total number of delayed messages",
-        )
-
-        # Record delay timing
-        self.collector.observe_histogram(
-            "message_delay_ms",
-            delay_ms,
-            labels=labels,
-            help_text="Message delay in milliseconds",
-        )
-
-        current_value = (
-            self.collector.get_metric_value("delayed_messages_total", labels=labels)
-            or 0
-        )
-
-        return ReceiverStatsEvent(
-            receiver_id=self.receiver_id,
-            metric_name="delayed_messages_total",
-            metric_value=current_value,
-            duration_ms=delay_ms,
-            details={"delay_ms": delay_ms},
-        )
-
-    def record_muc_join_success(self, duration_ms: float) -> ReceiverStatsEvent:
-        """Record a successful MUC room join."""
-        labels = {"receiver": self.receiver_id}
-
-        self.collector.record_operation(
-            "muc_join",
-            success=True,
-            duration_ms=duration_ms,
-            labels=labels,
-        )
-
-        current_value = (
-            self.collector.get_metric_value(
-                "operation_results_total",
-                labels={**labels, "operation": "muc_join", "result": "success"},
-            )
-            or 0
-        )
-
-        return ReceiverStatsEvent(
-            receiver_id=self.receiver_id,
-            metric_name="muc_join_success_total",
-            metric_value=current_value,
-            duration_ms=duration_ms,
-        )
-
-    def record_tls_success(self) -> ReceiverStatsEvent:
-        """Record successful TLS handshake."""
-        labels = {"receiver": self.receiver_id}
-
-        self.collector.increment_counter(
-            "tls_success_total",
-            labels=labels,
-            help_text="Total number of successful TLS handshakes",
-        )
-
-        current_value = (
-            self.collector.get_metric_value("tls_success_total", labels=labels) or 0
-        )
-
-        return ReceiverStatsEvent(
-            receiver_id=self.receiver_id,
-            metric_name="tls_success_total",
-            metric_value=current_value,
-        )
-
-    def record_ssl_invalid_chain(self, error: str) -> ReceiverStatsEvent:
-        """Record SSL certificate chain validation failure."""
-        labels = {"receiver": self.receiver_id, "error": error}
-
-        self.collector.record_error(
-            "ssl_invalid_chain",
-            operation="tls_handshake",
-            labels=labels,
-        )
-
-        current_value = (
-            self.collector.get_metric_value(
-                "errors_total",
-                labels={**labels, "operation": "tls_handshake"},
-            )
-            or 0
-        )
-
-        return ReceiverStatsEvent(
-            receiver_id=self.receiver_id,
-            metric_name="ssl_invalid_chain_total",
+            metric_name=metric_name,
             metric_value=current_value,
             success=False,
-            details={"error": error},
-        )
-
-    def record_stanza_not_sent(self, stanza_type: str) -> ReceiverStatsEvent:
-        """Record stanza send failure."""
-        labels = {"receiver": self.receiver_id, "stanza_type": stanza_type}
-
-        self.collector.increment_counter(
-            "stanzas_not_sent_total",
             labels=labels,
-            help_text="Total number of stanzas that failed to send",
         )
 
-        current_value = (
-            self.collector.get_metric_value("stanzas_not_sent_total", labels=labels)
-            or 0
+    def record_disconnection(self, *, reason: str) -> ReceiverStatsEvent | None:
+        """Record a disconnection event."""
+        if not reason.strip():
+            error_msg = "reason cannot be empty"
+            raise ValueError(error_msg)
+
+        metric_name = self._make_metric_name("xmpp_disconnections_total")
+        labels = self._make_labels({"reason": reason})
+
+        operation_success = self._safe_metric_operation(
+            "record disconnection",
+            self.collector.increment_counter,
+            metric_name,
+            labels=labels,
+            help_text="Total XMPP disconnections, categorized by reason.",
+        )
+
+        if not operation_success:
+            return None
+
+        current_value = self.collector.get_metric_value(metric_name, labels=labels) or 1
+
+        return ReceiverStatsEvent(
+            receiver_id=self.receiver_id,
+            metric_name=metric_name,
+            metric_value=current_value,
+            labels=labels,
+        )
+
+    def record_reconnect_attempt(self) -> ReceiverStatsEvent | None:
+        """Record a reconnection attempt."""
+        metric_name = self._make_metric_name("xmpp_reconnect_attempts_total")
+        labels = self._make_labels()
+
+        operation_success = self._safe_metric_operation(
+            "record reconnect attempt",
+            self.collector.increment_counter,
+            metric_name,
+            labels=labels,
+            help_text="Total number of XMPP reconnection attempts initiated.",
+        )
+
+        if not operation_success:
+            return None
+
+        current_value = self.collector.get_metric_value(metric_name, labels=labels) or 1
+
+        return ReceiverStatsEvent(
+            receiver_id=self.receiver_id,
+            metric_name=metric_name,
+            metric_value=current_value,
+            labels=labels,
+        )
+
+    def record_message_processed(
+        self,
+        *,
+        processing_duration_seconds: float,
+        message_delay_seconds: float,
+        message_size_bytes: int,
+        office_id: str,
+    ) -> ReceiverStatsEvent | None:
+        """Record a message that was successfully processed."""
+        # Validate inputs
+        if processing_duration_seconds < 0:
+            error_msg = "processing_duration_seconds must be non-negative"
+            raise ValueError(error_msg)
+        if message_delay_seconds < 0:
+            error_msg = "message_delay_seconds must be non-negative"
+            raise ValueError(error_msg)
+        if message_size_bytes < 0:
+            error_msg = "message_size_bytes must be non-negative"
+            raise ValueError(error_msg)
+        if not office_id.strip():
+            error_msg = "office_id cannot be empty"
+            raise ValueError(error_msg)
+
+        base_op_labels = {"office_id": office_id}
+        labels = self._make_labels(base_op_labels)
+
+        # Update all metrics
+        operations_successful = 0
+
+        # 1. Total processed counter
+        total_metric_name = self._make_metric_name("messages_processed_total")
+        if self._safe_metric_operation(
+            "increment messages processed counter",
+            self.collector.increment_counter,
+            total_metric_name,
+            labels=labels,
+            help_text="Total number of messages successfully processed.",
+        ):
+            operations_successful += 1
+
+        # 2. Processing duration histogram
+        proc_dur_metric_name = self._make_metric_name(
+            "message_processing_duration_seconds"
+        )
+        if self._safe_metric_operation(
+            "observe processing duration",
+            self.collector.observe_histogram,
+            proc_dur_metric_name,
+            processing_duration_seconds,
+            buckets=[0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5],
+            labels=labels,
+            help_text="Time taken to process a message from receipt to pipeline",
+        ):
+            operations_successful += 1
+
+        # 3. Reception delay histogram
+        rec_delay_metric_name = self._make_metric_name(
+            "message_reception_delay_seconds"
+        )
+        if self._safe_metric_operation(
+            "observe reception delay",
+            self.collector.observe_histogram,
+            rec_delay_metric_name,
+            message_delay_seconds,
+            buckets=[0.1, 0.5, 1, 5, 10, 30, 60, 300, 1800, 3600],
+            labels=labels,
+            help_text="Delay between message issue timestamp and its reception",
+        ):
+            operations_successful += 1
+
+        # 4. Message size histogram
+        size_metric_name = self._make_metric_name("message_size_bytes")
+        if self._safe_metric_operation(
+            "observe message size",
+            self.collector.observe_histogram,
+            size_metric_name,
+            float(message_size_bytes),
+            buckets=[256, 512, 1024, 2048, 4096, 8192, 16384],
+            labels=labels,
+            help_text="Size of received messages",
+        ):
+            operations_successful += 1
+
+        # Return None if all operations failed
+        if operations_successful == 0:
+            return None
+
+        # Return event for the primary metric (processed count)
+        current_total = (
+            self.collector.get_metric_value(total_metric_name, labels=labels) or 1
         )
 
         return ReceiverStatsEvent(
             receiver_id=self.receiver_id,
-            metric_name="stanzas_not_sent_total",
+            metric_name=total_metric_name,
+            metric_value=current_total,
+            duration_seconds=processing_duration_seconds,
+            labels=labels,
+        )
+
+    def record_message_processing_error(
+        self, *, error_type: str, office_id: str | None = None
+    ) -> ReceiverStatsEvent | None:
+        """Record a message processing error."""
+        if not error_type.strip():
+            error_msg = "error_type cannot be empty"
+            raise ValueError(error_msg)
+
+        metric_name = self._make_metric_name("message_processing_errors_total")
+        op_labels = {"error_type": error_type}
+
+        if office_id:
+            op_labels["office_id"] = office_id
+        else:
+            op_labels["office_id"] = "unknown"
+
+        labels = self._make_labels(op_labels)
+
+        operation_success = self._safe_metric_operation(
+            "record message processing error",
+            self.collector.increment_counter,
+            metric_name,
+            labels=labels,
+            help_text="Total errors encountered during message processing.",
+        )
+
+        if not operation_success:
+            return None
+
+        current_value = self.collector.get_metric_value(metric_name, labels=labels) or 1
+
+        return ReceiverStatsEvent(
+            receiver_id=self.receiver_id,
+            metric_name=metric_name,
             metric_value=current_value,
             success=False,
-            details={"stanza_type": stanza_type},
+            labels=labels,
+        )
+
+    def update_last_message_received_timestamp(
+        self, *, timestamp: float, office_id: str
+    ) -> ReceiverStatsEvent | None:
+        """Update the timestamp of the last successfully processed message."""
+        if not office_id.strip():
+            error_msg = "office_id cannot be empty"
+            raise ValueError(error_msg)
+
+        metric_name = self._make_metric_name("last_message_received_timestamp_seconds")
+        labels = self._make_labels({"office_id": office_id})
+
+        operation_success = self._safe_metric_operation(
+            "update last message timestamp",
+            self.collector.set_gauge,
+            metric_name,
+            value=timestamp,
+            labels=labels,
+            help_text="Unix timestamp of the last successfully processed message, by office.",
+        )
+
+        if not operation_success:
+            return None
+
+        return ReceiverStatsEvent(
+            receiver_id=self.receiver_id,
+            metric_name=metric_name,
+            metric_value=timestamp,
+            labels=labels,
+        )
+
+    def record_idle_timeout(self) -> ReceiverStatsEvent | None:
+        """Record an idle timeout event."""
+        metric_name = self._make_metric_name("xmpp_idle_timeouts_total")
+        labels = self._make_labels()
+
+        operation_success = self._safe_metric_operation(
+            "record idle timeout",
+            self.collector.increment_counter,
+            metric_name,
+            labels=labels,
+            help_text="Total number of XMPP idle timeouts detected.",
+        )
+
+        if not operation_success:
+            return None
+
+        current_value = self.collector.get_metric_value(metric_name, labels=labels) or 1
+
+        return ReceiverStatsEvent(
+            receiver_id=self.receiver_id,
+            metric_name=metric_name,
+            metric_value=current_value,
+            labels=labels,
+        )
+
+    def record_muc_join_result(
+        self, *, muc_room: str, success: bool
+    ) -> ReceiverStatsEvent | None:
+        """Record a MUC room join result."""
+        if not muc_room.strip():
+            error_msg = "muc_room cannot be empty"
+            raise ValueError(error_msg)
+
+        metric_name = self._make_metric_name("xmpp_muc_joins_total")
+        result_str = "success" if success else "failure"
+        labels = self._make_labels({"muc_room": muc_room, "result": result_str})
+
+        operation_success = self._safe_metric_operation(
+            "record MUC join result",
+            self.collector.increment_counter,
+            metric_name,
+            labels=labels,
+            help_text="Total MUC room join attempts, categorized by room and result.",
+        )
+
+        if not operation_success:
+            return None
+
+        current_value = self.collector.get_metric_value(metric_name, labels=labels) or 1
+
+        return ReceiverStatsEvent(
+            receiver_id=self.receiver_id,
+            metric_name=metric_name,
+            metric_value=current_value,
+            success=success,
+            labels=labels,
+        )
+
+    def record_stanza_not_sent(self, *, stanza_type: str) -> ReceiverStatsEvent | None:
+        """Record a stanza that failed to send."""
+        if not stanza_type.strip():
+            error_msg = "stanza_type cannot be empty"
+            raise ValueError(error_msg)
+
+        metric_name = self._make_metric_name("xmpp_stanzas_dropped_total")
+        labels = self._make_labels({"stanza_type": stanza_type})
+
+        operation_success = self._safe_metric_operation(
+            "record stanza not sent",
+            self.collector.increment_counter,
+            metric_name,
+            labels=labels,
+            help_text="Total number of XMPP stanzas that failed to send, by stanza type.",
+        )
+
+        if not operation_success:
+            return None
+
+        current_value = self.collector.get_metric_value(metric_name, labels=labels) or 1
+
+        return ReceiverStatsEvent(
+            receiver_id=self.receiver_id,
+            metric_name=metric_name,
+            metric_value=current_value,
+            success=False,
+            labels=labels,
         )
