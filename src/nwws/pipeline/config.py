@@ -10,6 +10,8 @@ from typing import Any
 
 from loguru import logger
 
+from nwws.metrics.registry import MetricRegistry
+
 from .core import Pipeline, PipelineManager
 from .errors import ErrorHandlingStrategy, PipelineError, PipelineErrorHandler
 from .filters import FilterConfig, FilterRegistry
@@ -48,8 +50,8 @@ class PipelineConfig:
     outputs: list[OutputConfig] = field(default_factory=list)
     """List of output configurations."""
 
-    enable_stats: bool = True
-    """Whether to enable statistics collection."""
+    stats_collector: PipelineStatsCollector | None = None
+    """Optional instance of PipelineStatsCollector for collection."""
 
     enable_error_handling: bool = True
     """Whether to enable error handling."""
@@ -145,14 +147,7 @@ class PipelineBuilder:
             ]
 
             # Create stats collector
-            stats_collector = None
-            if config.enable_stats:
-                from nwws.metrics import MetricRegistry
-
-                registry = MetricRegistry()
-                stats_collector = PipelineStatsCollector(
-                    registry, f"pipeline_{config.pipeline_id}"
-                )
+            stats_collector = config.stats_collector
 
             # Create error handler
             error_handler = None
@@ -179,7 +174,7 @@ class PipelineBuilder:
                 filter_count=len(filters),
                 has_transformer=transformer is not None,
                 output_count=len(outputs),
-                stats_enabled=config.enable_stats,
+                stats_enabled=config.stats_collector is not None,
                 error_handling_enabled=config.enable_error_handling,
             )
 
@@ -560,12 +555,16 @@ def config_from_dict(config_dict: dict[str, Any]) -> PipelineConfig:
                 config_dict["error_handling_strategy"]
             )
 
+        stats_collector: PipelineStatsCollector | None = None
+        if config_dict.get("enable_stats", False):
+            stats_collector = PipelineStatsCollector(MetricRegistry())
+
         return PipelineConfig(
             pipeline_id=config_dict["pipeline_id"],
             filters=filter_configs,
             transformer=transformer_config,
             outputs=output_configs,
-            enable_stats=config_dict.get("enable_stats", True),
+            stats_collector=stats_collector,
             enable_error_handling=config_dict.get("enable_error_handling", True),
             error_handling_strategy=error_strategy,
             max_retries=config_dict.get("max_retries", 3),

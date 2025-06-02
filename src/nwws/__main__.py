@@ -23,6 +23,7 @@ from nwws.pipeline.config import PipelineBuilder, PipelineConfig
 from nwws.pipeline.errors import ErrorHandlingStrategy
 from nwws.pipeline.filters import FilterConfig
 from nwws.pipeline.outputs import OutputConfig
+from nwws.pipeline.stats import PipelineStatsCollector
 from nwws.pipeline.transformers import TransformerConfig
 from nwws.pipeline.types import PipelineEventMetadata, PipelineStage
 from nwws.receiver import WeatherWire, WeatherWireConfig, WeatherWireMessage
@@ -111,6 +112,12 @@ class WeatherWireApp:
         # Parse configured outputs from environment
         output_configs = self._create_output_configs()
 
+        # Initialize pipeline stats collector
+        self.pipeline_stats_collector = PipelineStatsCollector(
+            self.metric_registry,
+            "pipeline",
+        )
+
         # Create pipeline configuration
         pipeline_config = PipelineConfig(
             pipeline_id="pipeline",
@@ -135,7 +142,7 @@ class WeatherWireApp:
                 },
             ),
             outputs=output_configs,
-            enable_stats=True,
+            stats_collector=self.pipeline_stats_collector,
             enable_error_handling=True,
             error_handling_strategy=ErrorHandlingStrategy.CIRCUIT_BREAKER,
         )
