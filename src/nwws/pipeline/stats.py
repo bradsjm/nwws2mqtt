@@ -1,494 +1,739 @@
 # pyright: strict
-"""Pipeline statistics and metrics collection using the new metrics system."""
+"""Pipeline statistics collector following receiver stats pattern."""
 
 from __future__ import annotations
 
-import time
-from dataclasses import dataclass, field
+import re
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
+
+from loguru import logger
 
 from nwws.metrics import MetricsCollector
 
-from .types import PipelineStage
-
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from nwws.metrics import MetricRegistry
 
-    from .types import EventId, StageId, Timestamp
 
-
-@dataclass(frozen=True)
+@dataclass
 class PipelineStatsEvent:
-    """Event representing pipeline statistics and metrics."""
+    """Statistics event for pipeline operations."""
 
-    event_id: EventId
-    """Unique identifier for the original event being tracked."""
-
-    stage: PipelineStage
-    """Pipeline stage that generated this stat."""
-
-    stage_id: StageId
-    """Specific component ID within the stage."""
+    pipeline_id: str
+    """Pipeline identifier."""
 
     metric_name: str
-    """Name of the metric being reported."""
+    """Name of the metric that was recorded."""
 
-    metric_value: float | int | str
-    """Value of the metric."""
+    metric_value: float
+    """Current value of the metric."""
 
-    timestamp: Timestamp = field(default_factory=time.time)
-    """When this stat was recorded."""
+    labels: dict[str, str]
+    """Labels associated with this metric."""
 
-    duration_ms: float | None = None
-    """Processing duration in milliseconds."""
+    success: bool | None = None
+    """Whether the operation was successful (if applicable)."""
 
-    success: bool = True
-    """Whether the operation was successful."""
-
-    details: dict[str, str | int | float | bool] = field(default_factory=dict)
-    """Additional metric details with simple values only."""
-
-
-@dataclass(frozen=True)
-class ProcessingTimeParams:
-    """Parameters for recording processing time to reduce function complexity."""
-
-    event_id: EventId
-    stage: PipelineStage
-    stage_id: StageId
-    duration_ms: float
-    success: bool = True
-    event_metadata: dict[str, Any] | None = None
-
-
-@dataclass(frozen=True)
-class ErrorParams:
-    """Parameters for recording errors to reduce function complexity."""
-
-    stage: PipelineStage
-    stage_id: StageId
-    error_type: str
-    operation: str = ""
-    event_metadata: dict[str, Any] | None = None
-    error_context: dict[str, Any] | None = None
-
-
-@dataclass(frozen=True)
-class FilterDecisionParams:
-    """Parameters for recording filter decisions to reduce function complexity."""
-
-    event_id: EventId
-    filter_id: StageId
-    decision: str
-    reason: str | None = None
-    duration_ms: float | None = None
-    event_metadata: dict[str, Any] | None = None
-
-
-@dataclass(frozen=True)
-class TransformationParams:
-    """Parameters for recording transformations to reduce function complexity."""
-
-    event_id: EventId
-    transformer_id: StageId
-    input_type: str
-    output_type: str
-    duration_ms: float
-    event_metadata: dict[str, Any] | None = None
-
-
-@dataclass(frozen=True)
-class OutputDeliveryParams:
-    """Parameters for recording output delivery to reduce function complexity."""
-
-    event_id: EventId
-    output_id: StageId
-    destination: str
-    success: bool
-    duration_ms: float
-    payload_size: int | None = None
-    event_metadata: dict[str, Any] | None = None
+    duration_seconds: float | None = None
+    """Duration of the operation in seconds (if applicable)."""
 
 
 class PipelineStatsCollector:
-    """Pipeline statistics collector using the new metrics system."""
+    """Statistics collector for pipeline operations following receiver pattern."""
 
-    def __init__(self, registry: MetricRegistry, pipeline_id: str = "pipeline") -> None:
-        """Initialize the pipeline stats collector."""
-        self.registry = registry
-        self.collector = MetricsCollector(registry, prefix=pipeline_id)
+    def __init__(
+        self,
+        registry: MetricRegistry,
+        pipeline_id: str = "pipeline",
+        metric_prefix: str = "pipeline",
+    ) -> None:
+        """Initialize with a registry instance and pipeline identifier.
+
+        Args:
+            registry: MetricRegistry instance for recording metrics
+            pipeline_id: Identifier for the pipeline instance
+            metric_prefix: Prefix for all metric names (default: "pipeline")
+
+        """
         self.pipeline_id = pipeline_id
+        self.metric_prefix = metric_prefix
+        self.registry = registry
+        self.collector = MetricsCollector(registry)
 
-    def _extract_simple_details(
-        self, event_metadata: dict[str, Any] | None
-    ) -> dict[str, str | int | float | bool]:
-        """Extract simple values from metadata for logging."""
-        if not event_metadata:
-            return {}
+    def _make_metric_name(self, name: str) -> str:
+        """Create a full metric name with prefix."""
+        return f"{self.metric_prefix}_{name}"
 
-        details: dict[str, str | int | float | bool] = {}
-        for key, value in event_metadata.items():
-            if isinstance(value, (str, int, float, bool)):
-                details[key] = value
-            elif hasattr(value, "__str__"):
-                details[key] = str(value)
+    def _make_labels(
+        self, additional_labels: dict[str, str] | None = None
+    ) -> dict[str, str]:
+        """Create labels dict with pipeline_id and any additional labels."""
+        base_labels: dict[str, str] = {"pipeline": self.pipeline_id}
+        if additional_labels:
+            # Sanitize label values
+            sanitized_labels = {
+                key: self._sanitize_label_value(str(value))
+                for key, value in additional_labels.items()
+            }
+            base_labels.update(sanitized_labels)
+        return base_labels
 
-        return details
+    def _sanitize_label_value(self, value: str, max_length: int = 64) -> str:
+        """Sanitize label values for Prometheus compatibility."""
+        # Remove/replace problematic characters, truncate if needed
+        sanitized = re.sub(r"[^a-zA-Z0-9_-]", "_", value)
+        return sanitized[:max_length] if len(sanitized) > max_length else sanitized
 
-    def record_processing_time(
-        self, params: ProcessingTimeParams
-    ) -> PipelineStatsEvent:
-        """Record processing time for a stage with enhanced metadata context."""
-        labels = {"stage": params.stage.value, "stage_id": params.stage_id}
-
-        # Add metadata-based labels if available
-        if params.event_metadata:
-            if "event_type" in params.event_metadata:
-                event_type = params.event_metadata["event_type"]
-                if isinstance(event_type, str):
-                    labels["event_type"] = event_type
-            if "source" in params.event_metadata:
-                source = params.event_metadata["source"]
-                if isinstance(source, str):
-                    labels["source"] = source
-            if "trace_id" in params.event_metadata:
-                trace_id = params.event_metadata["trace_id"]
-                if isinstance(trace_id, str):
-                    labels["trace_id"] = trace_id[:8]  # Truncate for cardinality
-
-        self.collector.record_operation(
-            f"{params.stage.value}_{params.stage_id}",
-            success=params.success,
-            duration_ms=params.duration_ms,
-            labels=labels,
-        )
-
-        # Extract simple details from metadata
-        details = self._extract_simple_details(params.event_metadata)
-
-        return PipelineStatsEvent(
-            event_id=params.event_id,
-            stage=params.stage,
-            stage_id=params.stage_id,
-            metric_name=f"{params.stage.value}_{params.stage_id}_processing_time",
-            metric_value=params.duration_ms,
-            duration_ms=params.duration_ms,
-            success=params.success,
-            details=details,
-        )
-
-    def record_throughput(
+    def _safe_metric_operation(
         self,
-        event_id: EventId,
-        stage: PipelineStage,
-        stage_id: StageId,
-        event_metadata: dict[str, Any] | None = None,
-    ) -> PipelineStatsEvent:
-        """Record throughput metric for a stage with metadata context."""
-        labels = {"stage": stage.value, "stage_id": stage_id}
+        operation_name: str,
+        operation_func: Callable[..., Any],
+        *args: Any,
+        **kwargs: Any,
+    ) -> bool:
+        """Safely execute a metric operation with error handling."""
+        try:
+            operation_func(*args, **kwargs)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Failed to {operation_name}: {e}")
+            return False
 
-        # Add metadata-based labels for better metrics segmentation
-        if event_metadata:
-            if "event_type" in event_metadata:
-                event_type = event_metadata["event_type"]
-                if isinstance(event_type, str):
-                    labels["event_type"] = event_type
-            if "source" in event_metadata:
-                source = event_metadata["source"]
-                if isinstance(source, str):
-                    labels["source"] = source
+        return True
 
-        self.collector.increment_counter(
-            "throughput_total",
+    def record_event_received(
+        self, *, source: str, event_type: str
+    ) -> PipelineStatsEvent | None:
+        """Record an event entering the pipeline."""
+        metric_name = self._make_metric_name("events_received_total")
+        op_labels = {"source": source, "event_type": event_type}
+        labels = self._make_labels(op_labels)
+
+        success = self._safe_metric_operation(
+            "record event received",
+            self.collector.increment_counter,
+            metric_name,
             labels=labels,
-            help_text="Total number of events processed",
+            help_text="Total number of events received by the pipeline.",
         )
 
-        current_value = self.collector.get_metric_value("throughput_total", labels) or 0
+        if not success:
+            return None
 
-        # Extract simple details from metadata
-        details = self._extract_simple_details(event_metadata)
+        current_value = self.collector.get_metric_value(metric_name, labels=labels) or 1
 
         return PipelineStatsEvent(
-            event_id=event_id,
-            stage=stage,
-            stage_id=stage_id,
-            metric_name=f"{stage.value}_{stage_id}_throughput",
+            pipeline_id=self.pipeline_id,
+            metric_name=metric_name,
             metric_value=current_value,
-            details=details,
-        )
-
-    def record_queue_size(
-        self,
-        stage: PipelineStage,
-        stage_id: StageId,
-        size: int,
-    ) -> PipelineStatsEvent:
-        """Record queue size gauge metric."""
-        labels = {"stage": stage.value, "stage_id": stage_id}
-
-        self.collector.set_gauge(
-            "queue_size",
-            size,
             labels=labels,
-            help_text="Current queue size for stage",
         )
+
+    def record_event_processed(
+        self,
+        *,
+        processing_duration_seconds: float,
+        event_type: str,
+        source: str,
+        event_age_seconds: float | None = None,
+    ) -> PipelineStatsEvent | None:
+        """Record an event that was successfully processed through the pipeline."""
+        # Validate inputs
+        if processing_duration_seconds < 0:
+            error_msg = "processing_duration_seconds must be non-negative"
+            raise ValueError(error_msg)
+        if not event_type.strip():
+            error_msg = "event_type cannot be empty"
+            raise ValueError(error_msg)
+        if not source.strip():
+            error_msg = "source cannot be empty"
+            raise ValueError(error_msg)
+
+        base_op_labels = {"event_type": event_type, "source": source}
+        labels = self._make_labels(base_op_labels)
+
+        # Update all metrics
+        operations_successful = 0
+
+        # 1. Total processed counter
+        total_metric_name = self._make_metric_name("events_processed_total")
+        if self._safe_metric_operation(
+            "record events processed total",
+            self.collector.increment_counter,
+            total_metric_name,
+            labels=labels,
+            help_text="Total number of events successfully processed by the pipeline.",
+        ):
+            operations_successful += 1
+
+        # 2. Processing duration histogram
+        duration_metric_name = self._make_metric_name("processing_duration_seconds")
+        duration_labels = self._make_labels({"event_type": event_type})
+        if self._safe_metric_operation(
+            "record processing duration",
+            self.collector.observe_histogram,
+            duration_metric_name,
+            processing_duration_seconds,
+            labels=duration_labels,
+            help_text="Pipeline processing duration in seconds.",
+            buckets=[0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10],
+        ):
+            operations_successful += 1
+
+        # 3. Event age histogram (if provided)
+        if event_age_seconds is not None:
+            if event_age_seconds < 0:
+                error_msg = "event_age_seconds must be non-negative"
+                raise ValueError(error_msg)
+
+            age_metric_name = self._make_metric_name("event_age_seconds")
+            age_labels = self._make_labels({"event_type": event_type})
+            if self._safe_metric_operation(
+                "record event age",
+                self.collector.observe_histogram,
+                age_metric_name,
+                event_age_seconds,
+                labels=age_labels,
+                help_text="Age of events when processed in seconds.",
+                buckets=[0.1, 0.5, 1, 5, 10, 30, 60, 300, 1800, 3600],
+            ):
+                operations_successful += 1
+
+        # Return event for the main processed counter
+        if operations_successful == 0:
+            return None
+
+        current_value = (
+            self.collector.get_metric_value(total_metric_name, labels=labels) or 1
+        )
+
+        event = PipelineStatsEvent(
+            pipeline_id=self.pipeline_id,
+            metric_name=total_metric_name,
+            metric_value=current_value,
+            success=True,
+            labels=labels,
+        )
+        event.duration_seconds = processing_duration_seconds
+        return event
+
+    def update_pipeline_status(self, *, is_healthy: bool) -> PipelineStatsEvent | None:
+        """Update the pipeline health status gauge."""
+        metric_name = self._make_metric_name("status")
+        status_value = 1.0 if is_healthy else 0.0
+        labels = self._make_labels()
+
+        operation_success = self._safe_metric_operation(
+            "update pipeline status",
+            self.collector.set_gauge,
+            metric_name,
+            value=status_value,
+            labels=labels,
+            help_text="Current pipeline health status (1 for healthy, 0 for unhealthy).",
+        )
+
+        if not operation_success:
+            return None
 
         return PipelineStatsEvent(
-            event_id="",  # Queue size is not tied to a specific event
-            stage=stage,
-            stage_id=stage_id,
-            metric_name=f"{stage.value}_{stage_id}_queue_size",
-            metric_value=size,
-        )
-
-    def _add_metadata_labels(
-        self, labels: dict[str, str], metadata: dict[str, Any] | None
-    ) -> None:
-        """Add metadata-based labels to the provided labels dict."""
-        if not metadata:
-            return
-
-        event_type = metadata.get("event_type")
-        if isinstance(event_type, str):
-            labels["event_type"] = event_type
-
-        source = metadata.get("source")
-        if isinstance(source, str):
-            labels["source"] = source
-
-        trace_id = metadata.get("trace_id")
-        if isinstance(trace_id, str):
-            labels["trace_id"] = trace_id[:8]  # Truncate for cardinality
-
-    def _add_error_context_labels(
-        self, labels: dict[str, str], context: dict[str, Any] | None
-    ) -> None:
-        """Add error context labels to the provided labels dict."""
-        if not context:
-            return
-
-        recoverable = context.get("recoverable")
-        if isinstance(recoverable, bool):
-            labels["recoverable"] = str(recoverable)
-
-        event_age_seconds = context.get("event_age_seconds")
-        if isinstance(event_age_seconds, (int, float)):
-            # Bucket event age for better aggregation
-            labels["age_bucket"] = self._get_age_bucket(event_age_seconds)
-
-    def _get_age_bucket(self, age_seconds: float) -> str:
-        """Get age bucket label for event age."""
-        if age_seconds < 1:
-            return "0-1s"
-        if age_seconds < 10:
-            return "1-10s"
-        if age_seconds < 60:
-            return "10-60s"
-        return "60s+"
-
-    def record_error(self, params: ErrorParams) -> None:
-        """Record an error for a specific stage with enhanced context."""
-        labels = {
-            "stage": params.stage.value,
-            "stage_id": params.stage_id,
-            "error_type": params.error_type,
-        }
-
-        self._add_metadata_labels(labels, params.event_metadata)
-        self._add_error_context_labels(labels, params.error_context)
-
-        self.collector.record_error(
-            params.error_type,
-            operation=params.operation or f"{params.stage.value}_{params.stage_id}",
+            pipeline_id=self.pipeline_id,
+            metric_name=metric_name,
+            metric_value=status_value,
             labels=labels,
         )
 
-    def update_stage_status(
-        self,
-        stage: PipelineStage,
-        stage_id: StageId,
-        status: str,
-    ) -> None:
-        """Update the status of a pipeline stage."""
-        labels = {"stage": stage.value, "stage_id": stage_id}
+    def record_stage_attempt(
+        self, *, stage: str, stage_id: str
+    ) -> PipelineStatsEvent | None:
+        """Record a stage processing attempt."""
+        metric_name = self._make_metric_name("stage_attempts_total")
+        op_labels = {"stage": stage, "stage_id": stage_id}
+        labels = self._make_labels(op_labels)
 
-        self.collector.update_status(
-            f"{stage.value}_{stage_id}",
-            status,
+        success = self._safe_metric_operation(
+            "record stage attempt",
+            self.collector.increment_counter,
+            metric_name,
+            labels=labels,
+            help_text="Total number of pipeline stage processing attempts.",
+        )
+
+        if not success:
+            return None
+
+        current_value = self.collector.get_metric_value(metric_name, labels=labels) or 1
+
+        return PipelineStatsEvent(
+            pipeline_id=self.pipeline_id,
+            metric_name=metric_name,
+            metric_value=current_value,
+            labels=labels,
+        )
+
+    def record_stage_result(
+        self,
+        *,
+        stage: str,
+        stage_id: str,
+        success: bool,
+        reason: str | None = None,
+    ) -> PipelineStatsEvent | None:
+        """Record a stage processing result (success or failure)."""
+        metric_name = self._make_metric_name("stage_results_total")
+        result_str = "success" if success else "failure"
+        op_labels = {"stage": stage, "stage_id": stage_id, "result": result_str}
+
+        if not success and reason:
+            op_labels["reason"] = reason
+
+        labels = self._make_labels(op_labels)
+
+        operation_success = self._safe_metric_operation(
+            "record stage result",
+            self.collector.increment_counter,
+            metric_name,
+            labels=labels,
+            help_text="Total pipeline stage processing results.",
+        )
+
+        if not operation_success:
+            return None
+
+        current_value = self.collector.get_metric_value(metric_name, labels=labels) or 1
+
+        return PipelineStatsEvent(
+            pipeline_id=self.pipeline_id,
+            metric_name=metric_name,
+            metric_value=current_value,
+            success=success,
+            labels=labels,
+        )
+
+    def record_stage_error(
+        self, *, stage: str, stage_id: str, error_type: str
+    ) -> PipelineStatsEvent | None:
+        """Record a stage error."""
+        metric_name = self._make_metric_name("stage_errors_total")
+        op_labels = {"stage": stage, "stage_id": stage_id, "error_type": error_type}
+        labels = self._make_labels(op_labels)
+
+        success = self._safe_metric_operation(
+            "record stage error",
+            self.collector.increment_counter,
+            metric_name,
+            labels=labels,
+            help_text="Total number of pipeline stage errors.",
+        )
+
+        if not success:
+            return None
+
+        current_value = self.collector.get_metric_value(metric_name, labels=labels) or 1
+
+        return PipelineStatsEvent(
+            pipeline_id=self.pipeline_id,
+            metric_name=metric_name,
+            metric_value=current_value,
+            success=False,
             labels=labels,
         )
 
     def record_filter_decision(
-        self, params: FilterDecisionParams
-    ) -> PipelineStatsEvent:
-        """Record filter decision metrics with enhanced context."""
-        labels = {
-            "stage": "filter",
-            "filter_id": params.filter_id,
-            "decision": params.decision,
+        self, *, filter_id: str, passed: bool, event_type: str
+    ) -> PipelineStatsEvent | None:
+        """Record a filter decision."""
+        metric_name = self._make_metric_name("filter_decisions_total")
+        decision_str = "passed" if passed else "filtered"
+        op_labels = {
+            "filter_id": filter_id,
+            "decision": decision_str,
+            "event_type": event_type,
         }
+        labels = self._make_labels(op_labels)
 
-        if params.reason:
-            labels["reason"] = params.reason
-
-        # Add metadata-based labels
-        if params.event_metadata and "event_type" in params.event_metadata:
-            event_type = params.event_metadata["event_type"]
-            if isinstance(event_type, str):
-                labels["event_type"] = event_type
-
-        self.collector.increment_counter(
-            "filter_decisions_total",
+        success = self._safe_metric_operation(
+            "record filter decision",
+            self.collector.increment_counter,
+            metric_name,
             labels=labels,
-            help_text="Total number of filter decisions made",
+            help_text="Total number of filter decisions made.",
         )
 
-        # Track filter performance if duration available
-        if params.duration_ms is not None:
-            self.collector.observe_histogram(
-                "filter_processing_duration_ms",
-                params.duration_ms,
-                labels={"filter_id": params.filter_id},
-                help_text="Filter processing duration in milliseconds",
-            )
+        if not success:
+            return None
 
-        details: dict[str, str | int | float | bool] = {"decision": params.decision}
-        if params.reason:
-            details["reason"] = params.reason
-
-        # Add simple metadata details
-        simple_metadata = self._extract_simple_details(params.event_metadata)
-        details.update(simple_metadata)
+        current_value = self.collector.get_metric_value(metric_name, labels=labels) or 1
 
         return PipelineStatsEvent(
-            event_id=params.event_id,
-            stage=PipelineStage.FILTER,
-            stage_id=params.filter_id,
-            metric_name=f"filter_{params.filter_id}_decision",
-            metric_value=params.decision,
-            duration_ms=params.duration_ms,
-            details=details,
-        )
-
-    def record_transformation_success(
-        self, params: TransformationParams
-    ) -> PipelineStatsEvent:
-        """Record successful transformation metrics."""
-        labels = {
-            "stage": "transform",
-            "transformer_id": params.transformer_id,
-            "input_type": params.input_type,
-            "output_type": params.output_type,
-        }
-
-        # Add metadata-based labels
-        if params.event_metadata and "source" in params.event_metadata:
-            source = params.event_metadata["source"]
-            if isinstance(source, str):
-                labels["source"] = source
-
-        self.collector.increment_counter(
-            "transformations_total",
+            pipeline_id=self.pipeline_id,
+            metric_name=metric_name,
+            metric_value=current_value,
+            success=passed,
             labels=labels,
-            help_text="Total number of transformations completed",
         )
 
-        self.collector.observe_histogram(
-            "transformation_duration_ms",
-            params.duration_ms,
-            labels={
-                "transformer_id": params.transformer_id,
-                "input_type": params.input_type,
-            },
-            help_text="Transformation processing duration in milliseconds",
+    def record_filter_processed(
+        self,
+        *,
+        filter_id: str,
+        processing_duration_seconds: float,
+        passed: bool,
+        event_type: str,
+    ) -> PipelineStatsEvent | None:
+        """Record a filter processing with duration."""
+        # Validate inputs
+        if processing_duration_seconds < 0:
+            error_msg = "processing_duration_seconds must be non-negative"
+            raise ValueError(error_msg)
+        if not filter_id.strip():
+            error_msg = "filter_id cannot be empty"
+            raise ValueError(error_msg)
+        if not event_type.strip():
+            error_msg = "event_type cannot be empty"
+            raise ValueError(error_msg)
+
+        # Record decision first
+        decision_event = self.record_filter_decision(
+            filter_id=filter_id, passed=passed, event_type=event_type
         )
 
-        details: dict[str, str | int | float | bool] = {
-            "input_type": params.input_type,
-            "output_type": params.output_type,
-            "transformation_successful": True,
+        # Record processing duration
+        duration_metric_name = self._make_metric_name(
+            "filter_processing_duration_seconds"
+        )
+        duration_labels = self._make_labels({"filter_id": filter_id})
+
+        duration_success = self._safe_metric_operation(
+            "record filter processing duration",
+            self.collector.observe_histogram,
+            duration_metric_name,
+            processing_duration_seconds,
+            labels=duration_labels,
+            help_text="Filter processing duration in seconds.",
+            buckets=[0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5],
+        )
+
+        if not duration_success:
+            return decision_event
+
+        # Return the decision event with duration info
+        if decision_event:
+            decision_event.duration_seconds = processing_duration_seconds
+
+        return decision_event
+
+    def record_transformation_result(
+        self,
+        *,
+        transformer_id: str,
+        success: bool,
+        input_type: str,
+        output_type: str,
+        reason: str | None = None,
+    ) -> PipelineStatsEvent | None:
+        """Record a transformation result (success or failure)."""
+        metric_name = self._make_metric_name("transformations_total")
+        result_str = "success" if success else "failure"
+        op_labels = {
+            "transformer_id": transformer_id,
+            "result": result_str,
+            "input_type": input_type,
+            "output_type": output_type,
         }
 
-        # Add simple metadata details
-        simple_metadata = self._extract_simple_details(params.event_metadata)
-        details.update(simple_metadata)
+        if not success and reason:
+            op_labels["reason"] = reason
+
+        labels = self._make_labels(op_labels)
+
+        operation_success = self._safe_metric_operation(
+            "record transformation result",
+            self.collector.increment_counter,
+            metric_name,
+            labels=labels,
+            help_text="Total transformation attempts and results.",
+        )
+
+        if not operation_success:
+            return None
+
+        current_value = self.collector.get_metric_value(metric_name, labels=labels) or 1
 
         return PipelineStatsEvent(
-            event_id=params.event_id,
-            stage=PipelineStage.TRANSFORM,
-            stage_id=params.transformer_id,
-            metric_name=f"transformer_{params.transformer_id}_success",
-            metric_value=1,
-            duration_ms=params.duration_ms,
-            details=details,
-        )
-
-    def record_output_delivery(
-        self, params: OutputDeliveryParams
-    ) -> PipelineStatsEvent:
-        """Record output delivery metrics."""
-        labels = {
-            "stage": "output",
-            "output_id": params.output_id,
-            "destination": params.destination,
-            "success": str(params.success),
-        }
-
-        # Add metadata-based labels
-        if params.event_metadata and "event_type" in params.event_metadata:
-            event_type = params.event_metadata["event_type"]
-            if isinstance(event_type, str):
-                labels["event_type"] = event_type
-
-        self.collector.increment_counter(
-            "output_deliveries_total",
+            pipeline_id=self.pipeline_id,
+            metric_name=metric_name,
+            metric_value=current_value,
+            success=success,
             labels=labels,
-            help_text="Total number of output deliveries attempted",
         )
 
-        if params.success:
-            self.collector.observe_histogram(
-                "output_delivery_duration_ms",
-                params.duration_ms,
-                labels={
-                    "output_id": params.output_id,
-                    "destination": params.destination,
-                },
-                help_text="Output delivery duration in milliseconds",
-            )
+    def record_transformation_processed(
+        self,
+        *,
+        transformer_id: str,
+        processing_duration_seconds: float,
+        input_type: str,
+        output_type: str,
+    ) -> PipelineStatsEvent | None:
+        """Record a transformation processing with duration."""
+        # Validate inputs
+        if processing_duration_seconds < 0:
+            error_msg = "processing_duration_seconds must be non-negative"
+            raise ValueError(error_msg)
+        if not transformer_id.strip():
+            error_msg = "transformer_id cannot be empty"
+            raise ValueError(error_msg)
+        if not input_type.strip():
+            error_msg = "input_type cannot be empty"
+            raise ValueError(error_msg)
+        if not output_type.strip():
+            error_msg = "output_type cannot be empty"
+            raise ValueError(error_msg)
 
-            if params.payload_size is not None:
-                self.collector.observe_histogram(
-                    "output_payload_size_bytes",
-                    params.payload_size,
-                    labels={
-                        "output_id": params.output_id,
-                        "destination": params.destination,
-                    },
-                    help_text="Output payload size in bytes",
-                )
+        # Record successful transformation
+        result_event = self.record_transformation_result(
+            transformer_id=transformer_id,
+            success=True,
+            input_type=input_type,
+            output_type=output_type,
+        )
 
-        details: dict[str, str | int | float | bool] = {
-            "destination": params.destination,
-            "success": params.success,
+        # Record processing duration
+        duration_metric_name = self._make_metric_name(
+            "transformation_processing_duration_seconds"
+        )
+        duration_labels = self._make_labels(
+            {
+                "transformer_id": transformer_id,
+                "input_type": input_type,
+            }
+        )
+
+        duration_success = self._safe_metric_operation(
+            "record transformation processing duration",
+            self.collector.observe_histogram,
+            duration_metric_name,
+            processing_duration_seconds,
+            labels=duration_labels,
+            help_text="Transformation processing duration in seconds.",
+            buckets=[0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5],
+        )
+
+        if not duration_success:
+            return result_event
+
+        # Return the result event with duration info
+        if result_event:
+            result_event.duration_seconds = processing_duration_seconds
+
+        return result_event
+
+    def record_output_delivery_result(
+        self,
+        *,
+        output_id: str,
+        success: bool,
+        destination: str,
+        reason: str | None = None,
+    ) -> PipelineStatsEvent | None:
+        """Record an output delivery result (success or failure)."""
+        metric_name = self._make_metric_name("output_deliveries_total")
+        result_str = "success" if success else "failure"
+        op_labels = {
+            "output_id": output_id,
+            "result": result_str,
+            "destination": destination,
         }
-        if params.payload_size is not None:
-            details["payload_size_bytes"] = params.payload_size
 
-        # Add simple metadata details
-        simple_metadata = self._extract_simple_details(params.event_metadata)
-        details.update(simple_metadata)
+        if not success and reason:
+            op_labels["reason"] = reason
+
+        labels = self._make_labels(op_labels)
+
+        operation_success = self._safe_metric_operation(
+            "record output delivery result",
+            self.collector.increment_counter,
+            metric_name,
+            labels=labels,
+            help_text="Total output delivery attempts and results.",
+        )
+
+        if not operation_success:
+            return None
+
+        current_value = self.collector.get_metric_value(metric_name, labels=labels) or 1
 
         return PipelineStatsEvent(
-            event_id=params.event_id,
-            stage=PipelineStage.OUTPUT,
-            stage_id=params.output_id,
-            metric_name=f"output_{params.output_id}_delivery",
-            metric_value=1 if params.success else 0,
-            duration_ms=params.duration_ms,
-            success=params.success,
-            details=details,
+            pipeline_id=self.pipeline_id,
+            metric_name=metric_name,
+            metric_value=current_value,
+            success=success,
+            labels=labels,
+        )
+
+    def record_output_delivered(
+        self,
+        *,
+        output_id: str,
+        processing_duration_seconds: float,
+        payload_size_bytes: int,
+        destination: str,
+    ) -> PipelineStatsEvent | None:
+        """Record a successful output delivery with metrics."""
+        # Validate inputs
+        if processing_duration_seconds < 0:
+            error_msg = "processing_duration_seconds must be non-negative"
+            raise ValueError(error_msg)
+        if payload_size_bytes < 0:
+            error_msg = "payload_size_bytes must be non-negative"
+            raise ValueError(error_msg)
+        if not output_id.strip():
+            error_msg = "output_id cannot be empty"
+            raise ValueError(error_msg)
+        if not destination.strip():
+            error_msg = "destination cannot be empty"
+            raise ValueError(error_msg)
+
+        # Update all metrics
+        operations_successful = 0
+
+        # 1. Record successful delivery
+        delivery_event = self.record_output_delivery_result(
+            output_id=output_id, success=True, destination=destination
+        )
+        if delivery_event:
+            operations_successful += 1
+
+        # 2. Delivery duration histogram
+        duration_metric_name = self._make_metric_name(
+            "output_delivery_duration_seconds"
+        )
+        duration_labels = self._make_labels(
+            {"output_id": output_id, "destination": destination}
+        )
+        if self._safe_metric_operation(
+            "record output delivery duration",
+            self.collector.observe_histogram,
+            duration_metric_name,
+            processing_duration_seconds,
+            labels=duration_labels,
+            help_text="Output delivery duration in seconds.",
+            buckets=[0.01, 0.05, 0.1, 0.5, 1, 5, 10, 30, 60],
+        ):
+            operations_successful += 1
+
+        # 3. Payload size histogram
+        size_metric_name = self._make_metric_name("output_payload_size_bytes")
+        size_labels = self._make_labels(
+            {"output_id": output_id, "destination": destination}
+        )
+        if self._safe_metric_operation(
+            "record output payload size",
+            self.collector.observe_histogram,
+            size_metric_name,
+            payload_size_bytes,
+            labels=size_labels,
+            help_text="Output payload size in bytes.",
+            buckets=[256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536],
+        ):
+            operations_successful += 1
+
+        if operations_successful == 0:
+            return None
+
+        # Return delivery event with additional metrics
+        if delivery_event:
+            delivery_event.duration_seconds = processing_duration_seconds
+
+        return delivery_event
+
+    def update_queue_size(self, *, stage: str, size: int) -> PipelineStatsEvent | None:
+        """Update the queue size gauge for a stage."""
+        metric_name = self._make_metric_name("queue_size")
+        op_labels = {"stage": stage}
+        labels = self._make_labels(op_labels)
+
+        operation_success = self._safe_metric_operation(
+            "update queue size",
+            self.collector.set_gauge,
+            metric_name,
+            value=float(size),
+            labels=labels,
+            help_text="Current queue size for pipeline stage.",
+        )
+
+        if not operation_success:
+            return None
+
+        return PipelineStatsEvent(
+            pipeline_id=self.pipeline_id,
+            metric_name=metric_name,
+            metric_value=float(size),
+            labels=labels,
+        )
+
+    def update_last_event_processed_timestamp(
+        self, *, timestamp: float, stage: str
+    ) -> PipelineStatsEvent | None:
+        """Update the timestamp of the last successfully processed event."""
+        # Validate inputs
+        if timestamp < 0:
+            error_msg = "timestamp must be non-negative"
+            raise ValueError(error_msg)
+        if not stage.strip():
+            error_msg = "stage cannot be empty"
+            raise ValueError(error_msg)
+
+        metric_name = self._make_metric_name("last_event_processed_timestamp_seconds")
+        op_labels = {"stage": stage}
+        labels = self._make_labels(op_labels)
+
+        operation_success = self._safe_metric_operation(
+            "update last event processed timestamp",
+            self.collector.set_gauge,
+            metric_name,
+            value=timestamp,
+            labels=labels,
+            help_text="Timestamp of the last successfully processed event.",
+        )
+
+        if not operation_success:
+            return None
+
+        return PipelineStatsEvent(
+            pipeline_id=self.pipeline_id,
+            metric_name=metric_name,
+            metric_value=timestamp,
+            labels=labels,
+        )
+
+    def record_backpressure_event(
+        self, *, stage: str, reason: str
+    ) -> PipelineStatsEvent | None:
+        """Record a backpressure event."""
+        metric_name = self._make_metric_name("backpressure_events_total")
+        op_labels = {"stage": stage, "reason": reason}
+        labels = self._make_labels(op_labels)
+
+        success = self._safe_metric_operation(
+            "record backpressure event",
+            self.collector.increment_counter,
+            metric_name,
+            labels=labels,
+            help_text="Total number of backpressure events.",
+        )
+
+        if not success:
+            return None
+
+        current_value = self.collector.get_metric_value(metric_name, labels=labels) or 1
+
+        return PipelineStatsEvent(
+            pipeline_id=self.pipeline_id,
+            metric_name=metric_name,
+            metric_value=current_value,
+            labels=labels,
         )
 
     def get_summary(self) -> dict[str, Any]:

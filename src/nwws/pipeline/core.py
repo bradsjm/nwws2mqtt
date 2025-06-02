@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Any, Self
 from loguru import logger
 
 from .errors import PipelineError, PipelineErrorHandler
-from .stats import ProcessingTimeParams
 from .types import PipelineEvent, PipelineStage
 
 if TYPE_CHECKING:
@@ -133,21 +132,16 @@ class Pipeline:
 
             # Record success stats
             if self.stats_collector:
-                duration_ms = (time.time() - start_time) * 1000
-                params = ProcessingTimeParams(
-                    event_id=event.metadata.event_id,
-                    stage=PipelineStage.OUTPUT,
-                    stage_id=self.pipeline_id,
-                    duration_ms=duration_ms,
-                    success=True,
-                    event_metadata=event.metadata.custom,
-                )
-                self.stats_collector.record_processing_time(params)
-                self.stats_collector.record_throughput(
-                    event.metadata.event_id,
-                    PipelineStage.OUTPUT,
-                    self.pipeline_id,
-                    event.metadata.custom,
+                processing_duration_seconds = time.time() - start_time
+                event_type = type(transformed_event).__name__
+                source = event.metadata.source
+                age_seconds = event.metadata.age_seconds
+
+                self.stats_collector.record_event_processed(
+                    processing_duration_seconds=processing_duration_seconds,
+                    event_type=event_type,
+                    source=source,
+                    event_age_seconds=age_seconds,
                 )
 
             # Log successful processing with journey summary
@@ -177,15 +171,11 @@ class Pipeline:
             )
 
             if self.stats_collector:
-                params = ProcessingTimeParams(
-                    event_id=event.metadata.event_id,
-                    stage=PipelineStage.OUTPUT,
+                self.stats_collector.record_stage_error(
+                    stage="pipeline",
                     stage_id=self.pipeline_id,
-                    duration_ms=duration_ms,
-                    success=False,
-                    event_metadata=event.metadata.custom,
+                    error_type=type(e).__name__,
                 )
-                self.stats_collector.record_processing_time(params)
 
             logger.error(
                 "Pipeline processing failed",
@@ -272,16 +262,15 @@ class Pipeline:
                 if not filter_instance(current_event):
                     # Event was filtered out
                     if self.stats_collector:
-                        duration_ms = (time.time() - start_time) * 1000
-                        params = ProcessingTimeParams(
-                            event_id=event.metadata.event_id,
-                            stage=PipelineStage.FILTER,
-                            stage_id=filter_instance.filter_id,
-                            duration_ms=duration_ms,
-                            success=True,
-                            event_metadata=event.metadata.custom,
+                        processing_duration_seconds = time.time() - start_time
+                        event_type = type(current_event).__name__
+
+                        self.stats_collector.record_filter_processed(
+                            filter_id=filter_instance.filter_id,
+                            processing_duration_seconds=processing_duration_seconds,
+                            passed=False,
+                            event_type=event_type,
                         )
-                        self.stats_collector.record_processing_time(params)
 
                     logger.debug(
                         "Event filtered out",
@@ -298,16 +287,15 @@ class Pipeline:
 
                 # Record successful filter application
                 if self.stats_collector:
-                    duration_ms = (time.time() - start_time) * 1000
-                    params = ProcessingTimeParams(
-                        event_id=event.metadata.event_id,
-                        stage=PipelineStage.FILTER,
-                        stage_id=filter_instance.filter_id,
-                        duration_ms=duration_ms,
-                        success=True,
-                        event_metadata=event.metadata.custom,
+                    processing_duration_seconds = time.time() - start_time
+                    event_type = type(current_event).__name__
+
+                    self.stats_collector.record_filter_processed(
+                        filter_id=filter_instance.filter_id,
+                        processing_duration_seconds=processing_duration_seconds,
+                        passed=True,
+                        event_type=event_type,
                     )
-                    self.stats_collector.record_processing_time(params)
 
             except Exception as e:
                 # Record filter error with enhanced context
@@ -345,15 +333,11 @@ class Pipeline:
                 )
 
                 if self.stats_collector:
-                    params = ProcessingTimeParams(
-                        event_id=event.metadata.event_id,
-                        stage=PipelineStage.FILTER,
+                    self.stats_collector.record_stage_error(
+                        stage="filter",
                         stage_id=filter_instance.filter_id,
-                        duration_ms=duration_ms,
-                        success=False,
-                        event_metadata=event.metadata.custom,
+                        error_type=type(e).__name__,
                     )
-                    self.stats_collector.record_processing_time(params)
 
                 # Re-raise filter errors
                 raise
@@ -388,16 +372,16 @@ class Pipeline:
             )
 
             if self.stats_collector:
-                duration_ms = (time.time() - start_time) * 1000
-                params = ProcessingTimeParams(
-                    event_id=event.metadata.event_id,
-                    stage=PipelineStage.TRANSFORM,
-                    stage_id=self.transformer.transformer_id,
-                    duration_ms=duration_ms,
-                    success=True,
-                    event_metadata=event.metadata.custom,
+                processing_duration_seconds = time.time() - start_time
+                input_type = type(current_event).__name__
+                output_type = type(transformed_event).__name__
+
+                self.stats_collector.record_transformation_processed(
+                    transformer_id=self.transformer.transformer_id,
+                    processing_duration_seconds=processing_duration_seconds,
+                    input_type=input_type,
+                    output_type=output_type,
                 )
-                self.stats_collector.record_processing_time(params)
 
         except Exception as e:
             # Record transformation error with enhanced context
@@ -434,15 +418,11 @@ class Pipeline:
             )
 
             if self.stats_collector:
-                params = ProcessingTimeParams(
-                    event_id=event.metadata.event_id,
-                    stage=PipelineStage.TRANSFORM,
+                self.stats_collector.record_stage_error(
+                    stage="transform",
                     stage_id=self.transformer.transformer_id,
-                    duration_ms=duration_ms,
-                    success=False,
-                    event_metadata=event.metadata.custom,
+                    error_type=type(e).__name__,
                 )
-                self.stats_collector.record_processing_time(params)
 
             # Re-raise transformation errors
             raise
@@ -504,16 +484,17 @@ class Pipeline:
             )
 
             if self.stats_collector:
-                duration_ms = (time.time() - start_time) * 1000
-                params = ProcessingTimeParams(
-                    event_id=event.metadata.event_id,
-                    stage=PipelineStage.OUTPUT,
-                    stage_id=output.output_id,
-                    duration_ms=duration_ms,
-                    success=True,
-                    event_metadata=event.metadata.custom,
+                processing_duration_seconds = time.time() - start_time
+                destination = type(output).__name__
+                # Estimate payload size (simplified)
+                payload_size_bytes = len(str(event))
+
+                self.stats_collector.record_output_delivered(
+                    output_id=output.output_id,
+                    processing_duration_seconds=processing_duration_seconds,
+                    payload_size_bytes=payload_size_bytes,
+                    destination=destination,
                 )
-                self.stats_collector.record_processing_time(params)
 
         except Exception as e:
             # Record output error with enhanced context
@@ -552,15 +533,11 @@ class Pipeline:
             )
 
             if self.stats_collector:
-                params = ProcessingTimeParams(
-                    event_id=event.metadata.event_id,
-                    stage=PipelineStage.OUTPUT,
+                self.stats_collector.record_stage_error(
+                    stage="output",
                     stage_id=output.output_id,
-                    duration_ms=duration_ms,
-                    success=False,
-                    event_metadata=event.metadata.custom,
+                    error_type=type(e).__name__,
                 )
-                self.stats_collector.record_processing_time(params)
 
             # Re-raise output errors
             raise
