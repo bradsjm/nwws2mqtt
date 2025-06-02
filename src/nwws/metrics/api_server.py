@@ -1,5 +1,3 @@
-# pyright: strict
-# pyright: reportUnusedFunction=false
 """FastAPI endpoints for metrics and health monitoring."""
 
 from __future__ import annotations
@@ -46,18 +44,23 @@ class MetricApiServer:
             redoc_url="/redoc",
         )
 
-        @app.get("/", include_in_schema=False)
-        async def root() -> RedirectResponse:
-            """Root endpoint to redirect to the dashboard."""
-            return RedirectResponse("/dashboard")
-
         # Add endpoints
-        app.add_api_route("/dashboard", self.dashboard, methods=["GET"])
+        app.add_api_route(
+            path="/", endpoint=self.redirect, methods=["GET"], include_in_schema=False
+        )
+        app.add_api_route(
+            "/dashboard", self.dashboard, methods=["GET"], include_in_schema=False
+        )
+
         app.add_api_route("/health", self.health_check, methods=["GET"])
         app.add_api_route("/metrics", self.prometheus_metrics, methods=["GET"])
         app.add_api_route("/metrics/json", self.json_metrics, methods=["GET"])
 
         return app
+
+    async def redirect(self) -> RedirectResponse:
+        """Root endpoint to redirect to the dashboard."""
+        return RedirectResponse("/dashboard")
 
     async def health_check(self) -> JSONResponse:
         """Return basic health check endpoint for Docker and load balancers.
