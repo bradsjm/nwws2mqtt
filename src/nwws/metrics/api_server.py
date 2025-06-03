@@ -13,7 +13,6 @@ from loguru import logger
 
 from .exporters import PrometheusExporter
 from .registry import MetricRegistry
-from .ui import DashboardUI
 
 
 class MetricApiServer:
@@ -28,7 +27,6 @@ class MetricApiServer:
         """
         self.registry = registry or MetricRegistry()
         self.prometheus_exporter = PrometheusExporter(self.registry)
-        self.dashboard_ui = DashboardUI()
         self.app = self._create_app()
         self._start_time = time.time()
         self.server = None
@@ -47,9 +45,6 @@ class MetricApiServer:
         # Add endpoints
         app.add_api_route(
             path="/", endpoint=self.redirect, methods=["GET"], include_in_schema=False
-        )
-        app.add_api_route(
-            "/dashboard", self.dashboard, methods=["GET"], include_in_schema=False
         )
 
         app.add_api_route("/health", self.health_check, methods=["GET"])
@@ -124,40 +119,6 @@ class MetricApiServer:
             logger.error("Failed to export JSON metrics", exception=e)
             raise HTTPException(
                 status_code=500, detail="Failed to export metrics"
-            ) from e
-
-    async def dashboard(self) -> Response:
-        """Render the interactive dashboard UI.
-
-        Returns:
-            HTMLResponse containing the complete dashboard interface.
-
-        """
-        try:
-            # Get current health and metrics data
-            health_data = {
-                "status": "healthy",
-                "service": "nwws2mqtt",
-                "version": "1.0.0",
-                "uptime_seconds": round(time.time() - self._start_time, 2),
-                "timestamp": time.time(),
-                "metrics_count": len(self.registry.list_metrics()),
-            }
-
-            metrics_data = {
-                "timestamp": time.time(),
-                "metrics": [
-                    metric.to_dict() for metric in self.registry.list_metrics()
-                ],
-            }
-
-            logger.debug("Dashboard rendered successfully")
-            return self.dashboard_ui.render(health_data, metrics_data)
-
-        except Exception as e:
-            logger.error("Failed to render dashboard", exception=e)
-            raise HTTPException(
-                status_code=500, detail="Failed to render dashboard"
             ) from e
 
     async def start_server(
