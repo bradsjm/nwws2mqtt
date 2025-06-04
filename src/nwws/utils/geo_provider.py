@@ -38,6 +38,14 @@ class WeatherGeoDataProvider:
             cwa_path_str = str(cwa_traversable)
             self._cwa_df = gpd.read_parquet(cwa_path_str)  # type: ignore[misc]
 
+            # Set geometry column properly for GeoDataFrame
+            if "geom" in self._cwa_df.columns:
+                self._cwa_df = self._cwa_df.set_geometry("geom")
+            else:
+                logger.error(
+                    f"'geom' column not found in CWA dataframe. Available columns: {list(self._cwa_df.columns)}"
+                )
+
             # Ensure CRS is WGS84 for web mapping
             if self._cwa_df.crs != "EPSG:4326":
                 self._cwa_df = self._cwa_df.to_crs("EPSG:4326")
@@ -73,9 +81,12 @@ class WeatherGeoDataProvider:
 
             cwa_str = str(cwa_id)
 
-            # Calculate centroid for office location
-            geometry = getattr(row, "geometry", None)
-            if geometry is not None and hasattr(geometry, "centroid"):
+            # Calculate centroid for office location - access geometry directly from DataFrame
+            try:
+                geometry: BaseGeometry | None = self._cwa_df.loc[cwa_str, "geom"]  # type: ignore[misc]
+            except (KeyError, IndexError):
+                geometry = None
+            if geometry is not None:
                 centroid = geometry.centroid
                 lat, lon = float(centroid.y), float(centroid.x)
             else:
@@ -100,7 +111,10 @@ class WeatherGeoDataProvider:
     def _create_simplified_geometries(self) -> None:
         """Create simplified geometries for different web zoom levels."""
         if self._cwa_df is None:
+            logger.warning("CWA DataFrame is None, cannot create simplified geometries")
             return
+
+        logger.debug(f"Creating simplified geometries for {len(self._cwa_df)} CWA features")
 
         simplification_levels = {
             "overview": 0.05,  # Very simplified for overview map
@@ -112,22 +126,44 @@ class WeatherGeoDataProvider:
 
         for level, tolerance in simplification_levels.items():
             level_data = {}
+            logger.debug(f"Processing simplification level '{level}' with tolerance {tolerance}")
 
-            for cwa_id, row in self._cwa_df.iterrows():  # type: ignore[misc]
+            for cwa_id, _row in self._cwa_df.iterrows():  # type: ignore[misc]
                 if not cwa_id or (isinstance(cwa_id, str) and pd.isna(cwa_id)):  # type: ignore[misc]
                     continue
 
-                geometry = (
-                    row.get("geometry") if hasattr(row, "get") else getattr(row, "geometry", None)
-                )  # type: ignore[misc]
-                if geometry and hasattr(geometry, "simplify"):
-                    # Simplify geometry for web performance
-                    simplified = geometry.simplify(tolerance, preserve_topology=True)  # type: ignore[misc]
-                    level_data[str(cwa_id)] = simplified
+                # Access geometry directly from DataFrame instead of row
+                try:
+                    geometry: BaseGeometry | None = self._cwa_df.loc[str(cwa_id), "geom"]  # type: ignore[misc]
+                except (KeyError, IndexError):
+                    geometry = None
 
+                logger.debug(
+                    f"CWA {cwa_id}: geometry type = {type(geometry)}, "
+                    f"has_simplify = {hasattr(geometry, 'simplify') if geometry else False}"
+                )
+
+                if geometry:
+                    try:
+                        # Simplify geometry for web performance
+                        simplified = geometry.simplify(tolerance, preserve_topology=True)  # type: ignore[misc]
+                        if simplified and not simplified.is_empty:
+                            level_data[str(cwa_id)] = simplified
+                            logger.debug(f"Successfully simplified {cwa_id} for {level}")
+                        else:
+                            logger.warning(f"Simplified geometry for {cwa_id} is empty or None")
+                    except (AttributeError, ValueError, TypeError) as e:
+                        logger.error(f"Failed to simplify geometry for {cwa_id}: {e}")
+                else:
+                    logger.warning(f"CWA {cwa_id}: geometry is None or lacks simplify method")
+
+            logger.info(f"Simplification level '{level}': created {len(level_data)} geometries")
             simplified_data[level] = level_data
 
         self._simplified_geometries = simplified_data
+        logger.info(
+            f"Created simplified geometries: {[f'{k}: {len(v)}' for k, v in simplified_data.items()]}"
+        )
 
     def _determine_region(self, cwa_id: str) -> str:  # noqa: PLR0911
         """Determine NWS region from CWA identifier."""

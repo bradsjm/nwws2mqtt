@@ -54,9 +54,12 @@ class WebServer:
         self.geo_provider = geo_provider or WeatherGeoDataProvider()
         self.templates_dir = templates_dir
         self.static_dir = static_dir
+
+        # Connection manager will be set when creating dashboard router
         self.app = self._create_app()
         self.server = None
         self.server_task = None
+        self._broadcast_task = None
 
     @asynccontextmanager
     async def _lifespan_context(self, _app: FastAPI) -> AsyncGenerator[None]:

@@ -18,8 +18,10 @@
     --white: #ffffff;
     --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
     --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    --shadow-md:
+        0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --shadow-lg:
+        0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 }
 
 * {
@@ -29,7 +31,9 @@
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+    font-family:
+        -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
+        "Ubuntu", "Cantarell", sans-serif;
     background-color: var(--gray-100);
     color: var(--gray-800);
     line-height: 1.6;
@@ -39,7 +43,7 @@ body {
 
 .dashboard-container {
     display: grid;
-    grid-template-areas: 
+    grid-template-areas:
         "header header header"
         "sidebar main main"
         "sidebar footer footer";
@@ -55,7 +59,11 @@ body {
 /* Header Styles */
 .header {
     grid-area: header;
-    background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+    background: linear-gradient(
+        135deg,
+        var(--primary-color) 0%,
+        var(--secondary-color) 100%
+    );
     color: var(--white);
     border-radius: 12px;
     padding: 1rem 2rem;
@@ -68,13 +76,17 @@ body {
 }
 
 .header::before {
-    content: '';
+    content: "";
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
     bottom: 0;
-    background: linear-gradient(45deg, rgba(255,255,255,0.1) 0%, transparent 50%);
+    background: linear-gradient(
+        45deg,
+        rgba(255, 255, 255, 0.1) 0%,
+        transparent 50%
+    );
     pointer-events: none;
 }
 
@@ -113,21 +125,36 @@ body {
     height: 8px;
     border-radius: 50%;
     background-color: var(--success-color);
-    box-shadow: 0 0 0 2px rgba(255,255,255,0.3);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.3);
     animation: pulse 2s ease-in-out infinite;
 }
 
-.status-dot.warning { 
+.status-dot.warning {
     background-color: var(--warning-color);
 }
 
-.status-dot.error { 
+.status-dot.error {
     background-color: var(--error-color);
 }
 
+.connection-indicator.warning {
+    background-color: var(--warning-color);
+    animation: pulse 1s ease-in-out infinite;
+}
+
+.connection-indicator.error {
+    background-color: var(--error-color);
+    animation: none;
+}
+
 @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.7; }
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
 }
 
 /* Sidebar Styles */
@@ -212,9 +239,15 @@ body {
     flex-shrink: 0;
 }
 
-.office-status.warning { background-color: var(--warning-color); }
-.office-status.error { background-color: var(--error-color); }
-.office-status.idle { background-color: var(--gray-400); }
+.office-status.warning {
+    background-color: var(--warning-color);
+}
+.office-status.error {
+    background-color: var(--error-color);
+}
+.office-status.idle {
+    background-color: var(--gray-400);
+}
 
 /* Main Content Styles */
 .main-content {
@@ -247,13 +280,17 @@ body {
 }
 
 .metric-card::before {
-    content: '';
+    content: "";
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
     height: 3px;
-    background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+    background: linear-gradient(
+        90deg,
+        var(--primary-color),
+        var(--secondary-color)
+    );
 }
 
 .metric-card:hover {
@@ -288,9 +325,15 @@ body {
     gap: 0.25rem;
 }
 
-.trend-up { color: var(--success-color); }
-.trend-down { color: var(--error-color); }
-.trend-stable { color: var(--gray-500); }
+.trend-up {
+    color: var(--success-color);
+}
+.trend-down {
+    color: var(--error-color);
+}
+.trend-stable {
+    color: var(--gray-500);
+}
 
 .trend-arrow {
     font-size: 0.7rem;
@@ -305,6 +348,38 @@ body {
     overflow: hidden;
     border: 1px solid var(--gray-200);
     position: relative;
+}
+
+.rain-toggle {
+    position: absolute;
+    bottom: 80px;
+    left: 10px;
+    z-index: 1000;
+    width: 44px;
+    height: 44px;
+    background: var(--white);
+    border: 2px solid var(--gray-300);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: var(--shadow-md);
+    transition: all 0.2s ease;
+}
+
+.rain-toggle:hover {
+    background: var(--gray-100);
+    border-color: var(--gray-400);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-lg);
+}
+
+.rain-toggle.active {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    color: var(--white);
 }
 
 #weather-map {
@@ -351,10 +426,14 @@ body {
 }
 
 .chart-title::before {
-    content: '';
+    content: "";
     width: 4px;
     height: 20px;
-    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    background: linear-gradient(
+        135deg,
+        var(--primary-color),
+        var(--secondary-color)
+    );
     border-radius: 2px;
 }
 
@@ -425,8 +504,12 @@ body {
 }
 
 @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
 }
 
 .error-message {
@@ -460,10 +543,18 @@ body {
 }
 
 /* Activity Level Indicators */
-.activity-high { background-color: var(--error-color) !important; }
-.activity-medium { background-color: var(--warning-color) !important; }
-.activity-low { background-color: var(--success-color) !important; }
-.activity-idle { background-color: var(--gray-400) !important; }
+.activity-high {
+    background-color: var(--error-color) !important;
+}
+.activity-medium {
+    background-color: var(--warning-color) !important;
+}
+.activity-low {
+    background-color: var(--success-color) !important;
+}
+.activity-idle {
+    background-color: var(--gray-400) !important;
+}
 
 /* Responsive Design */
 @media (max-width: 1400px) {
@@ -474,7 +565,7 @@ body {
 
 @media (max-width: 1200px) {
     .dashboard-container {
-        grid-template-areas: 
+        grid-template-areas:
             "header header"
             "main main"
             "sidebar sidebar"
@@ -482,18 +573,18 @@ body {
         grid-template-columns: 1fr 1fr;
         grid-template-rows: auto 1fr auto auto;
     }
-    
+
     .main-content {
         grid-template-areas:
             "metrics-overview metrics-overview"
             "weather-map charts-panel";
         grid-template-columns: 1fr 1fr;
     }
-    
+
     .sidebar {
         max-height: 300px;
     }
-    
+
     .office-list {
         max-height: 200px;
     }
@@ -501,7 +592,7 @@ body {
 
 @media (max-width: 768px) {
     .dashboard-container {
-        grid-template-areas: 
+        grid-template-areas:
             "header"
             "main"
             "sidebar"
@@ -509,7 +600,7 @@ body {
         grid-template-columns: 1fr;
         padding: 0.5rem;
     }
-    
+
     .main-content {
         grid-template-areas:
             "metrics-overview"
@@ -517,19 +608,19 @@ body {
             "charts-panel";
         grid-template-columns: 1fr;
     }
-    
+
     .metrics-overview {
         grid-template-columns: 1fr 1fr;
     }
-    
+
     .charts-panel {
         grid-template-rows: auto auto;
     }
-    
+
     #weather-map {
         height: 300px;
     }
-    
+
     .header {
         padding: 1rem;
         flex-direction: column;
@@ -537,7 +628,7 @@ body {
         height: auto;
         text-align: center;
     }
-    
+
     .system-status {
         flex-wrap: wrap;
         justify-content: center;
@@ -548,19 +639,19 @@ body {
     .metrics-overview {
         grid-template-columns: 1fr;
     }
-    
+
     .metric-card {
         padding: 1rem;
     }
-    
+
     .metric-value {
         font-size: 2rem;
     }
-    
+
     .sidebar {
         padding: 1rem;
     }
-    
+
     .chart-container {
         padding: 1rem;
     }
@@ -585,7 +676,7 @@ body {
 /* Print styles */
 @media print {
     .dashboard-container {
-        grid-template-areas: 
+        grid-template-areas:
             "header header"
             "metrics-overview metrics-overview"
             "weather-map charts-panel";
@@ -593,17 +684,17 @@ body {
         grid-template-rows: auto auto 1fr;
         gap: 1rem;
     }
-    
+
     .sidebar,
     .footer {
         display: none;
     }
-    
+
     .header {
         background: var(--gray-800) !important;
         color: var(--white) !important;
     }
-    
+
     .connection-status {
         display: none;
     }
