@@ -3,22 +3,20 @@
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
 import os
-import time
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import paho.mqtt.client as mqtt
 from loguru import logger
-from paho.mqtt.packettypes import PacketTypes
-from paho.mqtt.properties import Properties
 
 from nwws.models.events import TextProductEventData
 from nwws.models.events.xml_event_data import XmlEventData
 from nwws.pipeline import Output, PipelineEvent
 from nwws.utils import build_topic
+
+if TYPE_CHECKING:
+    import asyncio
 
 
 @dataclass
@@ -32,9 +30,7 @@ class MQTTConfig:
     mqtt_password: str | None = None
     mqtt_topic_prefix: str = "nwws"
     mqtt_qos: int = 1
-    mqtt_retain: bool = False
     mqtt_client_id: str = "nwws-oi-client"
-    mqtt_message_expiry_minutes: int = 60  # Message expiry time in minutes
 
     @classmethod
     def from_env(cls) -> MQTTConfig:
@@ -46,9 +42,7 @@ class MQTTConfig:
             mqtt_password=os.getenv("MQTT_PASSWORD"),
             mqtt_topic_prefix=os.getenv("MQTT_TOPIC_PREFIX", "nwws"),
             mqtt_qos=int(os.getenv("MQTT_QOS", "1")),
-            mqtt_retain=os.getenv("MQTT_RETAIN", "false").lower() in ("true", "1", "yes"),
             mqtt_client_id=os.getenv("MQTT_CLIENT_ID", "nwws-oi-client"),
-            mqtt_message_expiry_minutes=int(os.getenv("MQTT_MESSAGE_EXPIRY_MINUTES", "60")),
         )
 
 
@@ -69,8 +63,6 @@ class MQTTOutput(Output):
         self._client: mqtt.Client | None = None
         self._connected = False
         self._connect_future: asyncio.Future[bool] | None = None
-        self._published_topics: dict[str, float] = {}  # topic -> timestamp
-        self._cleanup_task: asyncio.Task[None] | None = None
 
         logger.info("MQTT Output initialized", output_id=self.output_id)
 
@@ -81,8 +73,6 @@ class MQTTOutput(Output):
         self._client = None
         self._connected = False
         self._connect_future = None
-        self._published_topics = {}
-        self._cleanup_task = None
 
         try:
             # Create MQTT client
@@ -109,12 +99,6 @@ class MQTTOutput(Output):
 
             self._client.connect(self.config.mqtt_broker, self.config.mqtt_port, 60)
 
-            # Start cleanup task if retention is enabled
-            if self.config.mqtt_retain:
-                self._cleanup_task = asyncio.create_task(
-                    self._cleanup_expired_messages(),
-                )
-
         except (ConnectionError, TimeoutError, OSError) as e:
             logger.error(
                 "Failed to start MQTT output",
@@ -129,16 +113,6 @@ class MQTTOutput(Output):
     async def stop(self) -> None:
         """Stop MQTT client and cleanup."""
         logger.info("Stopping MQTT output", output_id=self.output_id)
-
-        # Stop cleanup task
-        if self._cleanup_task and not self._cleanup_task.done():
-            self._cleanup_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._cleanup_task
-
-        # Cleanup retained messages if configured
-        if self.config.mqtt_retain:
-            await self._cleanup_all_messages()
 
         if self._client:
             try:
@@ -182,13 +156,6 @@ class MQTTOutput(Output):
             # Create topic using configured pattern and dynamic component resolution
             topics = [build_topic(event=event, prefix=self.config.mqtt_topic_prefix)]
 
-            # Create properties for message expiry only if retain is enabled
-            properties = None
-            if self.config.mqtt_retain:
-                properties = Properties(PacketTypes.PUBLISH)
-                expiry_seconds = self.config.mqtt_message_expiry_minutes * 60
-                properties.MessageExpiryInterval = expiry_seconds
-
             # The event's __str__ method should return a valid string representation
             payload = str(event)
 
@@ -198,14 +165,9 @@ class MQTTOutput(Output):
                     topic,
                     payload,
                     qos=self.config.mqtt_qos,
-                    retain=self.config.mqtt_retain,
-                    properties=properties,
                 )
 
                 if result.rc == mqtt.MQTT_ERR_SUCCESS:
-                    # Track the published topic with timestamp only if retain is enabled
-                    if self.config.mqtt_retain:
-                        self._published_topics[topic] = time.time()
                     logger.info(
                         "Published to MQTT",
                         output_id=self.output_id,
@@ -265,100 +227,6 @@ class MQTTOutput(Output):
         else:
             logger.info("Disconnected from MQTT broker", output_id=self.output_id)
 
-    async def _cleanup_expired_messages(self) -> None:
-        """Periodically clean up expired messages."""
-        cleanup_interval = 60  # Check every minute
-        expiry_seconds = self.config.mqtt_message_expiry_minutes * 60
-
-        while True:
-            try:
-                await asyncio.sleep(cleanup_interval)
-
-                if not self._connected or not self._client:
-                    continue
-
-                current_time = time.time()
-                expired_topics: list[str] = []
-
-                # Find expired topics
-                for topic, publish_time in self._published_topics.items():
-                    if current_time - publish_time >= expiry_seconds:
-                        expired_topics.append(topic)
-
-                # Remove expired messages
-                for topic in expired_topics:
-                    try:
-                        # Publish empty retained message to remove it
-                        result = self._client.publish(topic, "", qos=0, retain=True)
-                        if result.rc == mqtt.MQTT_ERR_SUCCESS:
-                            del self._published_topics[topic]
-                            logger.debug(
-                                "Removed expired message from topic",
-                                output_id=self.output_id,
-                                topic=topic,
-                            )
-                        else:
-                            logger.warning(
-                                "Failed to remove expired message from topic",
-                                output_id=self.output_id,
-                                topic=topic,
-                                return_code=result.rc,
-                            )
-                    except (ConnectionError, OSError) as e:
-                        logger.error(
-                            "Error removing expired message from topic",
-                            output_id=self.output_id,
-                            topic=topic,
-                            error=str(e),
-                        )
-
-            except asyncio.CancelledError:
-                break
-            except (ConnectionError, OSError) as e:
-                logger.error(
-                    "Error in cleanup task",
-                    output_id=self.output_id,
-                    error=str(e),
-                )
-
-    async def _cleanup_all_messages(self) -> None:
-        """Remove all tracked retained messages."""
-        if not self._connected or not self._client:
-            return
-
-        logger.info(
-            "Cleaning up retained messages",
-            output_id=self.output_id,
-            count=len(self._published_topics),
-        )
-
-        for topic in list(self._published_topics.keys()):
-            try:
-                # Publish empty retained message to remove it
-                result = self._client.publish(topic, "", qos=0, retain=True)
-                if result.rc == mqtt.MQTT_ERR_SUCCESS:
-                    logger.debug(
-                        "Removed retained message from topic",
-                        output_id=self.output_id,
-                        topic=topic,
-                    )
-                else:
-                    logger.warning(
-                        "Failed to remove retained message from topic",
-                        output_id=self.output_id,
-                        topic=topic,
-                        return_code=result.rc,
-                    )
-            except (ConnectionError, OSError) as e:
-                logger.error(
-                    "Error removing retained message from topic",
-                    output_id=self.output_id,
-                    topic=topic,
-                    error=str(e),
-                )
-
-        self._published_topics.clear()
-
     def get_output_metadata(self, event: PipelineEvent) -> dict[str, Any]:
         """Get metadata about the MQTT output operation."""
         metadata = super().get_output_metadata(event)
@@ -368,8 +236,6 @@ class MQTTOutput(Output):
         metadata[f"{self.output_id}_port"] = self.config.mqtt_port
         metadata[f"{self.output_id}_connected"] = self._connected
         metadata[f"{self.output_id}_qos"] = self.config.mqtt_qos
-        metadata[f"{self.output_id}_retain"] = self.config.mqtt_retain
-        metadata[f"{self.output_id}_total_published_topics"] = len(self._published_topics)
 
         if isinstance(event, (XmlEventData, TextProductEventData)):
             # Build the topic that would be used

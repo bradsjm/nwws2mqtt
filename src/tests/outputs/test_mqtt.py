@@ -18,9 +18,7 @@ class TestMqttConfig:
         assert config.mqtt_password is None
         assert config.mqtt_topic_prefix == "nwws"
         assert config.mqtt_qos == 1
-        assert config.mqtt_retain is False
         assert config.mqtt_client_id == "nwws-oi-pipeline-client"
-        assert config.mqtt_message_expiry_minutes == 60
 
     def test_config_custom_values(self) -> None:
         """Test MqttConfig with custom values."""
@@ -32,9 +30,7 @@ class TestMqttConfig:
             mqtt_password="testpass",
             mqtt_topic_prefix="custom",
             mqtt_qos=2,
-            mqtt_retain=True,
             mqtt_client_id="custom-client",
-            mqtt_message_expiry_minutes=30,
         )
 
         assert config.mqtt_broker == "custom-broker"
@@ -43,9 +39,7 @@ class TestMqttConfig:
         assert config.mqtt_password == "testpass"
         assert config.mqtt_topic_prefix == "custom"
         assert config.mqtt_qos == 2
-        assert config.mqtt_retain is True
         assert config.mqtt_client_id == "custom-client"
-        assert config.mqtt_message_expiry_minutes == 30
 
 
 class TestMQTTOutput:
@@ -235,41 +229,6 @@ class TestMQTTOutput:
 
         # Verify publish was NOT called
         mock_client.publish.assert_not_called()
-
-    @patch("nwws.outputs.mqtt.isinstance")
-    async def test_send_with_retain_enabled(self, mock_isinstance: Mock) -> None:
-        """Test sending with retain enabled."""
-        from nwws.outputs.mqtt import MQTTOutput, MQTTConfig
-
-        # Make isinstance return True for our mock event
-        mock_isinstance.return_value = True
-
-        config = MQTTConfig(mqtt_retain=True)
-        output = MQTTOutput(config=config)
-
-        # Mock the client and connection
-        mock_client = MagicMock()
-        output._client = mock_client
-        output._connected = True
-
-        # Create mock event that looks like TextProductEventData
-        mock_event = Mock()
-        mock_event.cccc = "KTEST"
-        mock_event.awipsid = "TESTAID"
-        mock_event.id = "TEST123"
-        mock_event.metadata = Mock()
-        mock_event.metadata.event_id = "test-event-123"
-        mock_product = Mock()
-        mock_product.model_dump_json.return_value = '{"test": "data"}'
-        mock_product.segments = []  # Empty segments list for fallback to AWIPS ID
-        mock_event.product = mock_product
-
-        await output.send(mock_event)
-
-        # Verify publish was called with retain=True
-        call_args = mock_client.publish.call_args
-        assert call_args[1]["retain"] is True
-        assert call_args[1]["properties"] is not None
 
     def test_on_connect_callback_success(self) -> None:
         """Test successful connection callback."""
