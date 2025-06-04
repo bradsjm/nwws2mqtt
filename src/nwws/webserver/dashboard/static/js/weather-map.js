@@ -11,13 +11,11 @@ class WeatherOfficeMap {
 
         // Map configuration
         this.config = {
-            center: [39.8283, -98.5795], // Geographic center of US
-            zoom: 4,
-            minZoom: 3,
+            minZoom: 4,
             maxZoom: 10,
             maxBounds: [
-                [15.0, -180.0], // Southwest bound
-                [72.0, -60.0], // Northeast bound
+                [16, -170.0], // Southwest bound
+                [50.0, -47.0], // Northeast bound
             ],
         };
 
@@ -34,25 +32,29 @@ class WeatherOfficeMap {
                 fillColor: "#e5e7eb",
                 color: "#9ca3af",
                 weight: 1,
-                fillOpacity: 0.6,
+                fillOpacity: 0.8,
+                opacity: 1,
             },
             low: {
                 fillColor: "#10b981",
                 color: "#059669",
                 weight: 2,
-                fillOpacity: 0.7,
+                fillOpacity: 0.9,
+                opacity: 1,
             },
             medium: {
                 fillColor: "#f59e0b",
                 color: "#d97706",
                 weight: 2,
-                fillOpacity: 0.7,
+                fillOpacity: 0.9,
+                opacity: 1,
             },
             high: {
                 fillColor: "#ef4444",
                 color: "#dc2626",
-                weight: 2,
-                fillOpacity: 0.8,
+                weight: 3,
+                fillOpacity: 0.9,
+                opacity: 1,
             },
         };
 
@@ -62,7 +64,7 @@ class WeatherOfficeMap {
             color: "#6b7280",
             weight: 1,
             opacity: 1,
-            fillOpacity: 0.6,
+            fillOpacity: 0.8,
         };
 
         // Highlighted style for selected office
@@ -95,8 +97,6 @@ class WeatherOfficeMap {
 
             // Initialize RainViewer
             this.initializeRainViewer();
-
-            console.log("Weather office map initialized successfully");
         } catch (error) {
             console.error("Failed to initialize weather map:", error);
             throw error;
@@ -174,58 +174,100 @@ class WeatherOfficeMap {
             div.innerHTML = `
                 <div class="legend-title">Office Activity</div>
                 <div class="legend-item">
-                    <div class="legend-color" style="background-color: #ef4444"></div>
+                    <div class="legend-color legend-color-high"></div>
                     <span>High (100+ msg/min)</span>
                 </div>
                 <div class="legend-item">
-                    <div class="legend-color" style="background-color: #f59e0b"></div>
+                    <div class="legend-color legend-color-medium"></div>
                     <span>Medium (20-100 msg/min)</span>
                 </div>
                 <div class="legend-item">
-                    <div class="legend-color" style="background-color: #10b981"></div>
+                    <div class="legend-color legend-color-low"></div>
                     <span>Low (1-20 msg/min)</span>
                 </div>
                 <div class="legend-item">
-                    <div class="legend-color" style="background-color: #e5e7eb"></div>
+                    <div class="legend-color legend-color-idle"></div>
                     <span>Idle (0 msg/min)</span>
                 </div>
             `;
 
-            // Add CSS styles
+            // Add CSS styles with higher specificity
             div.style.cssText = `
-                background: white;
-                border-radius: 8px;
-                padding: 12px;
-                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                font-size: 12px;
-                line-height: 1.4;
-                max-width: 200px;
+                background: white !important;
+                border-radius: 8px !important;
+                padding: 12px !important;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1) !important;
+                font-size: 12px !important;
+                line-height: 1.4 !important;
+                max-width: 200px !important;
+                border: 1px solid #e5e7eb !important;
             `;
 
             const legendTitle = div.querySelector(".legend-title");
             if (legendTitle) {
                 legendTitle.style.cssText = `
-                    font-weight: 600;
-                    margin-bottom: 8px;
-                    color: #374151;
+                    font-weight: 600 !important;
+                    margin-bottom: 8px !important;
+                    color: #374151 !important;
                 `;
             }
 
             for (const item of div.querySelectorAll(".legend-item")) {
                 item.style.cssText = `
-                    display: flex;
-                    align-items: center;
-                    margin-bottom: 4px;
+                    display: flex !important;
+                    align-items: center !important;
+                    margin-bottom: 4px !important;
                 `;
             }
 
-            for (const color of div.querySelectorAll(".legend-color")) {
-                color.style.cssText = `
-                    width: 12px;
-                    height: 12px;
-                    border-radius: 2px;
-                    margin-right: 8px;
-                    border: 1px solid #d1d5db;
+            // Set individual colors with !important to override CSS
+            const colors = div.querySelectorAll(".legend-color");
+            if (colors[0]) {
+                // High
+                colors[0].style.cssText = `
+                    width: 16px !important;
+                    height: 16px !important;
+                    border-radius: 3px !important;
+                    margin-right: 8px !important;
+                    border: 1px solid #d1d5db !important;
+                    background-color: #ef4444 !important;
+                    flex-shrink: 0 !important;
+                `;
+            }
+            if (colors[1]) {
+                // Medium
+                colors[1].style.cssText = `
+                    width: 16px !important;
+                    height: 16px !important;
+                    border-radius: 3px !important;
+                    margin-right: 8px !important;
+                    border: 1px solid #d1d5db !important;
+                    background-color: #f59e0b !important;
+                    flex-shrink: 0 !important;
+                `;
+            }
+            if (colors[2]) {
+                // Low
+                colors[2].style.cssText = `
+                    width: 16px !important;
+                    height: 16px !important;
+                    border-radius: 3px !important;
+                    margin-right: 8px !important;
+                    border: 1px solid #d1d5db !important;
+                    background-color: #10b981 !important;
+                    flex-shrink: 0 !important;
+                `;
+            }
+            if (colors[3]) {
+                // Idle
+                colors[3].style.cssText = `
+                    width: 16px !important;
+                    height: 16px !important;
+                    border-radius: 3px !important;
+                    margin-right: 8px !important;
+                    border: 1px solid #d1d5db !important;
+                    background-color: #e5e7eb !important;
+                    flex-shrink: 0 !important;
                 `;
             }
 
@@ -233,6 +275,61 @@ class WeatherOfficeMap {
         };
 
         legend.addTo(this.map);
+
+        // Add Leaflet-specific CSS overrides to prevent conflicts
+        const style = document.createElement("style");
+        style.textContent = `
+            .leaflet-control.activity-legend {
+                background: white !important;
+                border: 1px solid #e5e7eb !important;
+                border-radius: 8px !important;
+                padding: 12px !important;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1) !important;
+                font-size: 12px !important;
+                line-height: 1.4 !important;
+                max-width: 200px !important;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+            }
+
+            .leaflet-control.activity-legend .legend-title {
+                font-weight: 600 !important;
+                margin-bottom: 8px !important;
+                color: #374151 !important;
+            }
+
+            .leaflet-control.activity-legend .legend-item {
+                display: flex !important;
+                align-items: center !important;
+                margin-bottom: 4px !important;
+            }
+
+            .leaflet-control.activity-legend .legend-color {
+                width: 16px !important;
+                height: 16px !important;
+                border-radius: 3px !important;
+                margin-right: 8px !important;
+                border: 1px solid #d1d5db !important;
+                flex-shrink: 0 !important;
+                display: block !important;
+            }
+
+            .leaflet-control.activity-legend .legend-color-high {
+                background-color: #ef4444 !important;
+            }
+
+            .leaflet-control.activity-legend .legend-color-medium {
+                background-color: #f59e0b !important;
+            }
+
+            .leaflet-control.activity-legend .legend-color-low {
+                background-color: #10b981 !important;
+            }
+
+            .leaflet-control.activity-legend .legend-color-idle {
+                background-color: #e5e7eb !important;
+            }
+        `;
+        document.head.appendChild(style);
     }
 
     async loadOfficeBoundaries(geoData) {
@@ -263,10 +360,6 @@ class WeatherOfficeMap {
                     padding: [20, 20],
                 });
             }
-
-            console.log(
-                `Loaded ${geoData.features.length} weather office boundaries`,
-            );
         } catch (error) {
             console.error("Failed to load office boundaries:", error);
             throw error;
@@ -293,8 +386,30 @@ class WeatherOfficeMap {
     }
 
     _createOfficePopup(properties, officeId) {
-        const activity = this.activityData[officeId] || {};
+        const activity = this._getActivityData(officeId);
         const activityLevel = this._getActivityLevel(activity);
+
+        // Extract metrics with fallback field names
+        const messages =
+            activity.messages_processed_total ??
+            activity.total_messages ??
+            activity.messages ??
+            activity.message_count ??
+            0;
+
+        const latency =
+            activity.avg_processing_latency_ms ??
+            activity.average_latency_ms ??
+            activity.latency_ms ??
+            activity.avg_latency ??
+            0;
+
+        const errors =
+            activity.errors_total ??
+            activity.total_errors ??
+            activity.errors ??
+            activity.error_count ??
+            0;
 
         return `
             <div class="office-popup">
@@ -314,15 +429,15 @@ class WeatherOfficeMap {
                     </div>
                     <div class="popup-row">
                         <span class="popup-label">Messages:</span>
-                        <span class="popup-value">${activity.messages_processed_total ?? 0}</span>
+                        <span class="popup-value">${messages}</span>
                     </div>
                     <div class="popup-row">
                         <span class="popup-label">Avg Latency:</span>
-                        <span class="popup-value">${(activity.avg_processing_latency_ms ?? 0).toFixed(1)}ms</span>
+                        <span class="popup-value">${latency.toFixed(1)}ms</span>
                     </div>
                     <div class="popup-row">
                         <span class="popup-label">Errors:</span>
-                        <span class="popup-value">${activity.errors_total ?? 0}</span>
+                        <span class="popup-value">${errors}</span>
                     </div>
                 </div>
             </div>
@@ -349,7 +464,7 @@ class WeatherOfficeMap {
 
         if (layer !== this.selectedOffice) {
             const officeId = layer.officeId;
-            const activity = this.activityData[officeId] || {};
+            const activity = this._getActivityData(officeId);
             const activityLevel = this._getActivityLevel(activity);
             const style =
                 this.activityStyles[activityLevel] || this.defaultStyle;
@@ -375,7 +490,7 @@ class WeatherOfficeMap {
 
     _resetOfficeStyle(layer) {
         const officeId = layer.officeId;
-        const activity = this.activityData[officeId] || {};
+        const activity = this._getActivityData(officeId);
         const activityLevel = this._getActivityLevel(activity);
         const style = this.activityStyles[activityLevel] || this.defaultStyle;
 
@@ -385,12 +500,14 @@ class WeatherOfficeMap {
     updateActivityLevels(activityData) {
         this.activityData = activityData || {};
 
-        if (!this.officeLayers) return;
+        if (!this.officeLayers) {
+            return;
+        }
 
         // Update each office layer with new activity data
         this.officeLayers.eachLayer((layer) => {
             const officeId = layer.officeId;
-            const activity = this.activityData[officeId] || {};
+            const activity = this._getActivityData(officeId);
             const activityLevel = this._getActivityLevel(activity);
 
             // Skip selected office
@@ -399,30 +516,65 @@ class WeatherOfficeMap {
             // Update style based on activity level
             const style =
                 this.activityStyles[activityLevel] || this.defaultStyle;
+
             layer.setStyle(style);
 
-            // Update popup content if it's open
-            if (layer.getPopup()?.isOpen()) {
-                const newContent = this._createOfficePopup(
-                    layer.feature.properties,
-                    officeId,
-                );
-                layer.setPopupContent(newContent);
+            // Force redraw to ensure colors are applied
+            if (layer.redraw) {
+                layer.redraw();
             }
+
+            // Update popup layr content
+            const newContent = this._createOfficePopup(
+                layer.feature.properties,
+                officeId,
+            );
+            layer.setPopupContent(newContent);
         });
     }
 
+    _getActivityData(officeId) {
+        // Try direct lookup first
+        if (this.activityData[officeId]) {
+            return this.activityData[officeId];
+        }
+
+        // Convert 3-letter to 4-letter office ID (e.g., ABQ -> KABQ)
+        const fourLetterOfficeId =
+            officeId.length === 3 ? `K${officeId}` : officeId;
+        if (this.activityData[fourLetterOfficeId]) {
+            return this.activityData[fourLetterOfficeId];
+        }
+
+        // Convert 4-letter to 3-letter office ID (e.g., KABQ -> ABQ)
+        const threeLetterOfficeId =
+            officeId.length === 4 && officeId.startsWith("K")
+                ? officeId.slice(1)
+                : officeId;
+        if (this.activityData[threeLetterOfficeId]) {
+            return this.activityData[threeLetterOfficeId];
+        }
+        return {};
+    }
+
     _getActivityLevel(activity) {
+        // Use API-provided activity level if available
+        if (activity.activity_level) {
+            return activity.activity_level;
+        }
         const messageCount = activity.messages_processed_total || 0;
         const messagesPerMinute = activity.messages_per_minute || 0;
 
         // Use messages per minute if available, otherwise estimate from total
         const rate = messagesPerMinute > 0 ? messagesPerMinute : messageCount;
 
-        if (rate >= 100) return "high";
-        if (rate >= 20) return "medium";
-        if (rate > 0) return "low";
-        return "idle";
+        let level;
+        if (rate >= 100) level = "high";
+        else if (rate >= 20) level = "medium";
+        else if (rate > 0) level = "low";
+        else level = "idle";
+
+        return level;
     }
 
     focusOnOffice(officeId) {
@@ -539,7 +691,7 @@ class WeatherOfficeMap {
 
         this.officeLayers.eachLayer((layer) => {
             const officeId = layer.officeId;
-            const activity = this.activityData[officeId] || {};
+            const activity = this._getActivityData(officeId);
             const activityLevel = this._getActivityLevel(activity);
             const levelIndex = levelOrder.indexOf(activityLevel);
 
@@ -553,7 +705,7 @@ class WeatherOfficeMap {
                 layer.setStyle({
                     ...layer.options.style,
                     opacity: 0.3,
-                    fillOpacity: 0.2,
+                    fillOpacity: 0.1,
                 });
             }
         });

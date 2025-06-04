@@ -68,9 +68,7 @@ class WeatherWireStatsCollector:
         """Create a full metric name with prefix."""
         return f"{self.metric_prefix}_{name}"
 
-    def _make_labels(
-        self, additional_labels: dict[str, str] | None = None
-    ) -> dict[str, str]:
+    def _make_labels(self, additional_labels: dict[str, str] | None = None) -> dict[str, str]:
         """Create labels dict with receiver_id and any additional labels."""
         base_labels: dict[str, str] = {"receiver": self.receiver_id}
         if additional_labels:
@@ -163,9 +161,7 @@ class WeatherWireStatsCollector:
             labels=labels,
         )
 
-    def update_connection_status(
-        self, *, is_connected: bool
-    ) -> ReceiverStatsEvent | None:
+    def update_connection_status(self, *, is_connected: bool) -> ReceiverStatsEvent | None:
         """Update the connection status gauge."""
         metric_name = self._make_metric_name("xmpp_connection_status")
         status_value = 1.0 if is_connected else 0.0
@@ -190,9 +186,7 @@ class WeatherWireStatsCollector:
             labels=labels,
         )
 
-    def record_authentication_failure(
-        self, *, reason: str
-    ) -> ReceiverStatsEvent | None:
+    def record_authentication_failure(self, *, reason: str) -> ReceiverStatsEvent | None:
         """Record an authentication failure."""
         if not reason.strip():
             error_msg = "reason cannot be empty"
@@ -282,7 +276,7 @@ class WeatherWireStatsCollector:
         processing_duration_seconds: float,
         message_delay_seconds: float,
         message_size_bytes: int,
-        office_id: str,
+        wmo_id: str,
     ) -> ReceiverStatsEvent | None:
         """Record a message that was successfully processed."""
         # Validate inputs
@@ -295,11 +289,11 @@ class WeatherWireStatsCollector:
         if message_size_bytes < 0:
             error_msg = "message_size_bytes must be non-negative"
             raise ValueError(error_msg)
-        if not office_id.strip():
-            error_msg = "office_id cannot be empty"
+        if not wmo_id.strip():
+            error_msg = "wmo_id cannot be empty"
             raise ValueError(error_msg)
 
-        base_op_labels = {"office_id": office_id}
+        base_op_labels = {"wmo_id": wmo_id}
         labels = self._make_labels(base_op_labels)
 
         # Update all metrics
@@ -320,9 +314,7 @@ class WeatherWireStatsCollector:
         labels = self._make_labels()
 
         # 2. Processing duration histogram
-        proc_dur_metric_name = self._make_metric_name(
-            "message_processing_duration_seconds"
-        )
+        proc_dur_metric_name = self._make_metric_name("message_processing_duration_seconds")
         if self._safe_metric_operation(
             "observe processing duration",
             self.collector.observe_histogram,
@@ -335,9 +327,7 @@ class WeatherWireStatsCollector:
             operations_successful += 1
 
         # 3. Reception delay histogram
-        rec_delay_metric_name = self._make_metric_name(
-            "message_reception_delay_seconds"
-        )
+        rec_delay_metric_name = self._make_metric_name("message_reception_delay_seconds")
         if self._safe_metric_operation(
             "observe reception delay",
             self.collector.observe_histogram,
@@ -367,9 +357,7 @@ class WeatherWireStatsCollector:
             return None
 
         # Return event for the primary metric (processed count)
-        current_total = (
-            self.collector.get_metric_value(total_metric_name, labels=labels) or 1
-        )
+        current_total = self.collector.get_metric_value(total_metric_name, labels=labels) or 1
 
         return ReceiverStatsEvent(
             receiver_id=self.receiver_id,
@@ -380,7 +368,7 @@ class WeatherWireStatsCollector:
         )
 
     def record_message_processing_error(
-        self, *, error_type: str, office_id: str | None = None
+        self, *, error_type: str, wmo_id: str | None = None
     ) -> ReceiverStatsEvent | None:
         """Record a message processing error."""
         if not error_type.strip():
@@ -390,10 +378,10 @@ class WeatherWireStatsCollector:
         metric_name = self._make_metric_name("message_processing_errors_total")
         op_labels = {"error_type": error_type}
 
-        if office_id:
-            op_labels["office_id"] = office_id
+        if wmo_id:
+            op_labels["wmo_id"] = wmo_id
         else:
-            op_labels["office_id"] = "unknown"
+            op_labels["wmo_id"] = "unknown"
 
         labels = self._make_labels(op_labels)
 
@@ -419,15 +407,15 @@ class WeatherWireStatsCollector:
         )
 
     def update_last_message_received_timestamp(
-        self, *, timestamp: float, office_id: str
+        self, *, timestamp: float, wmo_id: str
     ) -> ReceiverStatsEvent | None:
         """Update the timestamp of the last successfully processed message."""
-        if not office_id.strip():
-            error_msg = "office_id cannot be empty"
+        if not wmo_id.strip():
+            error_msg = "wmo_id cannot be empty"
             raise ValueError(error_msg)
 
         metric_name = self._make_metric_name("last_message_received_timestamp_seconds")
-        labels = self._make_labels({"office_id": office_id})
+        labels = self._make_labels({"wmo_id": wmo_id})
 
         operation_success = self._safe_metric_operation(
             "update last message timestamp",
@@ -473,9 +461,7 @@ class WeatherWireStatsCollector:
             labels=labels,
         )
 
-    def record_muc_join_result(
-        self, *, muc_room: str, success: bool
-    ) -> ReceiverStatsEvent | None:
+    def record_muc_join_result(self, *, muc_room: str, success: bool) -> ReceiverStatsEvent | None:
         """Record a MUC room join result."""
         if not muc_room.strip():
             error_msg = "muc_room cannot be empty"

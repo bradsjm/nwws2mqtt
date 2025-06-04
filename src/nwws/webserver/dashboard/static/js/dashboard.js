@@ -78,7 +78,6 @@ class WeatherDashboard {
             }
 
             const geoData = await response.json();
-            console.log("Received boundary data:", geoData);
             await this.weatherMap.loadOfficeBoundaries(geoData);
         } catch (error) {
             console.error("Map initialization failed:", error);
@@ -108,15 +107,9 @@ class WeatherDashboard {
                 "Fetching office metadata from /dashboard/api/geo/metadata...",
             );
             const officeResponse = await fetch("/dashboard/api/geo/metadata");
-            console.log(
-                "Office metadata response status:",
-                officeResponse.status,
-                officeResponse.statusText,
-            );
 
             if (officeResponse.ok) {
                 const officeData = await officeResponse.json();
-                console.log("Received office data:", officeData);
                 this.officeData = officeData.offices || {};
                 this._updateOfficeList();
             } else {
@@ -131,17 +124,10 @@ class WeatherDashboard {
             // Load current metrics
             const metricsEndpoint =
                 this.config.api_endpoints?.metrics || "/dashboard/api/metrics";
-            console.log("Fetching metrics from:", metricsEndpoint);
             const metricsResponse = await fetch(metricsEndpoint);
-            console.log(
-                "Metrics response status:",
-                metricsResponse.status,
-                metricsResponse.statusText,
-            );
 
             if (metricsResponse.ok) {
                 const metricsData = await metricsResponse.json();
-                console.log("Received metrics data:", metricsData);
                 this._updateMetricsDisplay(metricsData);
             } else {
                 const errorText = await metricsResponse.text();
@@ -195,8 +181,6 @@ class WeatherDashboard {
         try {
             const metricsEndpoint =
                 this.config.api_endpoints?.metrics || "/dashboard/api/metrics";
-            console.log("Polling metrics from:", metricsEndpoint);
-
             const response = await fetch(metricsEndpoint);
 
             if (!response.ok) {
@@ -206,7 +190,6 @@ class WeatherDashboard {
             }
 
             const data = await response.json();
-            console.log("Received metrics data:", data);
 
             // Success - reset failure counter and update status
             this.consecutiveFailures = 0;
@@ -254,34 +237,53 @@ class WeatherDashboard {
         const throughput = data.throughput || {};
         const latency = data.latency || {};
         const errors = data.errors || {};
-        const geographic = data.by_office || {};
+        const geographic = data.by_wmo || {};
+        const system = data.system || {};
 
-        // Messages per minute
+        // Messages per minute with trend
         const messagesPerMin = throughput.messages_per_minute || 0;
+        const messagesTrend = this._calculateTrend(
+            "messages_per_minute",
+            messagesPerMin,
+        );
         this._updateMetricCard(
             "messages-per-minute",
             this._formatNumber(messagesPerMin),
+            messagesTrend,
         );
 
-        // Active offices
-        const activeOffices = Object.keys(geographic).filter(
-            (office) => geographic[office].messages_processed_total > 0,
-        ).length;
-        this._updateMetricCard("active-offices", activeOffices);
+        // Active offices with trend
+        const activeOffices =
+            system.active_offices ||
+            Object.keys(geographic).filter(
+                (office) => geographic[office].messages_processed_total > 0,
+            ).length;
+        const officesTrend = this._calculateTrend(
+            "active_offices",
+            activeOffices,
+        );
+        this._updateMetricCard("active-offices", activeOffices, officesTrend);
 
-        // Average latency
+        // Average latency with trend
         const avgLatency = latency.avg_ms || 0;
+        const latencyTrend = this._calculateTrend("avg_latency", avgLatency);
         this._updateMetricCard(
             "avg-latency",
             this._formatNumber(avgLatency, 1),
+            latencyTrend,
         );
 
-        // Error rate
+        // Error rate with trend
         const errorRate = errors.rate_percent || 0;
-        this._updateMetricCard("error-rate", this._formatNumber(errorRate, 2));
+        const errorTrend = this._calculateTrend("error_rate", errorRate);
+        this._updateMetricCard(
+            "error-rate",
+            this._formatNumber(errorRate, 2),
+            errorTrend,
+        );
 
-        // Update system health indicator
-        this._updateSystemHealth(errorRate);
+        // Update system health and connection status
+        this._updateSystemHealth(data);
     }
 
     _updateMetricCard(elementId, value, trend = null) {
@@ -291,12 +293,21 @@ class WeatherDashboard {
         }
 
         if (trend !== null) {
-            const trendElement = document.getElementById(
-                elementId.replace("-", "-trend-"),
-            );
-            if (trendElement) {
-                trendElement.textContent = trend;
-                trendElement.className = `metric-trend ${this._getTrendClass(trend)}`;
+            // Map element IDs to their corresponding trend element IDs
+            const trendElementMap = {
+                "messages-per-minute": "messages-trend",
+                "active-offices": "offices-trend",
+                "avg-latency": "latency-trend",
+                "error-rate": "error-trend",
+            };
+
+            const trendElementId = trendElementMap[elementId];
+            if (trendElementId) {
+                const trendElement = document.getElementById(trendElementId);
+                if (trendElement) {
+                    trendElement.textContent = trend;
+                    trendElement.className = `metric-trend ${this._getTrendClass(trend)}`;
+                }
             }
         }
     }
@@ -314,8 +325,8 @@ class WeatherDashboard {
     }
 
     _updateMapActivity(data) {
-        if (this.weatherMap && data.by_office) {
-            this.weatherMap.updateActivityLevels(data.by_office);
+        if (this.weatherMap && data.by_wmo) {
+            this.weatherMap.updateActivityLevels(data.by_wmo);
         }
     }
 
@@ -404,14 +415,25 @@ class WeatherDashboard {
         }
     }
 
-    _updateSystemHealth(errorRate) {
+    _updateSystemHealth(data) {
         const healthDot = document.getElementById("system-health-status");
         const healthText = document.getElementById("system-health-text");
 
-        let healthStatus = "healthy";
+        const system = data.system || {};
+        const errors = data.errors || {};
+        const errorRate = errors.rate_percent || 0;
+
+        let healthStatus = "Healthy";
         let healthClass = "";
 
-        if (errorRate > 10) {
+        // Determine health status based on multiple factors
+        const pipelineHealthy = system.pipeline_status === "healthy";
+        const connectionActive = system.connection_status === "connected";
+
+        if (!pipelineHealthy || !connectionActive) {
+            healthStatus = "Critical";
+            healthClass = "error";
+        } else if (errorRate > 10) {
             healthStatus = "Critical";
             healthClass = "error";
         } else if (errorRate > 5) {
@@ -428,6 +450,32 @@ class WeatherDashboard {
 
         if (healthText) {
             healthText.textContent = healthStatus;
+        }
+    }
+
+    _calculateTrend(metricName, currentValue) {
+        // Store previous values for trend calculation
+        if (!this.previousMetrics) {
+            this.previousMetrics = {};
+        }
+
+        const previousValue = this.previousMetrics[metricName];
+        this.previousMetrics[metricName] = currentValue;
+
+        if (previousValue === undefined) {
+            return "--";
+        }
+
+        const difference = currentValue - previousValue;
+        const percentChange =
+            previousValue !== 0 ? (difference / previousValue) * 100 : 0;
+
+        if (Math.abs(percentChange) < 1) {
+            return "stable";
+        } else if (percentChange > 0) {
+            return `+${Math.abs(percentChange).toFixed(1)}%`;
+        } else {
+            return `-${Math.abs(percentChange).toFixed(1)}%`;
         }
     }
 
@@ -547,7 +595,7 @@ class WeatherDashboard {
     }
 
     getOfficeMetrics(officeId) {
-        return this.currentMetrics?.by_office?.[officeId] || null;
+        return this.currentMetrics?.by_wmo?.[officeId] || null;
     }
 
     setupRainViewerControls() {

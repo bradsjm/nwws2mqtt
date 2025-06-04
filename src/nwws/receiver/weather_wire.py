@@ -31,15 +31,9 @@ class WeatherWireMessage(BaseModel):
     id: str = Field(
         description="Unique identifier for the product (server process ID and sequence number)."
     )
-    issue: datetime = Field(
-        description="Issue time of the product as a datetime object."
-    )
-    ttaaii: str = Field(
-        description="TTAAII code representing the WMO product type and time."
-    )
-    cccc: str = Field(
-        description="CCCC code representing the issuing office or center."
-    )
+    issue: datetime = Field(description="Issue time of the product as a datetime object.")
+    ttaaii: str = Field(description="TTAAII code representing the WMO product type and time.")
+    cccc: str = Field(description="CCCC code representing the issuing office or center.")
     awipsid: str = Field(
         description="AWIPS ID (AFOS PIL) of the product if available.", default="NONE"
     )
@@ -173,9 +167,7 @@ class WeatherWire(slixmpp.ClientXMPP):
         logger.error("Authentication failed for NWWS-OI client")
 
         if self.stats_collector:
-            self.stats_collector.record_authentication_failure(
-                reason="invalid_credentials"
-            )
+            self.stats_collector.record_authentication_failure(reason="invalid_credentials")
 
     async def _on_connection_failed(self, reason: str | Exception) -> None:
         """Handle connection failure."""
@@ -186,9 +178,7 @@ class WeatherWire(slixmpp.ClientXMPP):
             self.stats_collector.update_connection_status(is_connected=False)
 
             # Record failed connection with reason
-            self.stats_collector.record_connection_result(
-                success=False, reason=str(reason)
-            )
+            self.stats_collector.record_connection_result(success=False, reason=str(reason))
 
     async def _on_connected(self, _event: object) -> None:
         """Handle successful connection."""
@@ -285,9 +275,7 @@ class WeatherWire(slixmpp.ClientXMPP):
                 maxhistory=str(max_history),
             )
             if self.stats_collector:
-                self.stats_collector.record_muc_join_result(
-                    muc_room=MUC_ROOM, success=True
-                )
+                self.stats_collector.record_muc_join_result(muc_room=MUC_ROOM, success=True)
         except XMPPError as err:
             logger.error(
                 "Failed to join NWWS room",
@@ -296,9 +284,7 @@ class WeatherWire(slixmpp.ClientXMPP):
                 error=str(err),
             )
             if self.stats_collector:
-                self.stats_collector.record_muc_join_result(
-                    muc_room=MUC_ROOM, success=False
-                )
+                self.stats_collector.record_muc_join_result(muc_room=MUC_ROOM, success=False)
 
     async def _send_subscription_presence(self) -> None:
         """Send subscription presence."""
@@ -367,7 +353,7 @@ class WeatherWire(slixmpp.ClientXMPP):
             if self.stats_collector:
                 self.stats_collector.record_message_processing_error(
                     error_type="ValueError",
-                    office_id=self._extract_office_id_if_possible(msg),
+                    wmo_id=self._extract_wmo_id_if_possible(msg),
                 )
 
         except Exception as e:  # noqa: BLE001
@@ -376,7 +362,7 @@ class WeatherWire(slixmpp.ClientXMPP):
             if self.stats_collector:
                 self.stats_collector.record_message_processing_error(
                     error_type=type(e).__name__,
-                    office_id=self._extract_office_id_if_possible(msg),
+                    wmo_id=self._extract_wmo_id_if_possible(msg),
                 )
 
     async def _record_successful_message_processing(
@@ -394,7 +380,7 @@ class WeatherWire(slixmpp.ClientXMPP):
         delay_seconds = self._calculate_delay_secs(weather_message.delay_stamp)
 
         # Extract office ID
-        office_id = weather_message.cccc or "unknown"
+        wmo_id = weather_message.cccc[-3:] or "unknown"
 
         # Record successful message processing
         if self.stats_collector:
@@ -402,19 +388,19 @@ class WeatherWire(slixmpp.ClientXMPP):
                 processing_duration_seconds=processing_duration,
                 message_delay_seconds=delay_seconds or 0.0,
                 message_size_bytes=message_size,
-                office_id=office_id,
+                wmo_id=wmo_id,
             )
 
             # Update last message timestamp
             self.stats_collector.update_last_message_received_timestamp(
                 timestamp=time.time(),
-                office_id=office_id,
+                wmo_id=wmo_id,
             )
 
         # Send to callback/pipeline
         await self.callback(weather_message)
 
-    def _extract_office_id_if_possible(self, msg: Message) -> str | None:
+    def _extract_wmo_id_if_possible(self, msg: Message) -> str | None:
         """Try to extract office ID from message even if parsing failed."""
         try:
             x = msg.xml.find("{nwws-oi}x")
@@ -436,7 +422,7 @@ class WeatherWire(slixmpp.ClientXMPP):
             if self.stats_collector:
                 self.stats_collector.record_message_processing_error(
                     error_type="missing_namespace",
-                    office_id=None,
+                    wmo_id=None,
                 )
             return None
 
@@ -453,11 +439,11 @@ class WeatherWire(slixmpp.ClientXMPP):
                 "No body text in NWWS-OI namespace, skipping",
                 msg_id=msg.get_id(),
             )
-            office_id = x.get("cccc")
+            wmo_id = x.get("cccc")
             if self.stats_collector:
                 self.stats_collector.record_message_processing_error(
                     error_type="empty_body",
-                    office_id=office_id,
+                    wmo_id=wmo_id,
                 )
             return None
 

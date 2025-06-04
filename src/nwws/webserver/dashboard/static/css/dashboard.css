@@ -556,6 +556,58 @@ body {
     background-color: var(--gray-400) !important;
 }
 
+/* Legend Styles */
+.activity-legend {
+    background: white !important;
+    border-radius: 8px !important;
+    padding: 12px !important;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1) !important;
+    font-size: 12px !important;
+    line-height: 1.4 !important;
+    max-width: 200px !important;
+    border: 1px solid #e5e7eb !important;
+    font-family:
+        -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+}
+
+.activity-legend .legend-title {
+    font-weight: 600 !important;
+    margin-bottom: 8px !important;
+    color: #374151 !important;
+}
+
+.activity-legend .legend-item {
+    display: flex !important;
+    align-items: center !important;
+    margin-bottom: 4px !important;
+}
+
+.activity-legend .legend-color {
+    width: 16px !important;
+    height: 16px !important;
+    border-radius: 3px !important;
+    margin-right: 8px !important;
+    border: 1px solid #d1d5db !important;
+    flex-shrink: 0 !important;
+    display: block !important;
+}
+
+.activity-legend .legend-color-high {
+    background-color: #ef4444 !important;
+}
+
+.activity-legend .legend-color-medium {
+    background-color: #f59e0b !important;
+}
+
+.activity-legend .legend-color-low {
+    background-color: #10b981 !important;
+}
+
+.activity-legend .legend-color-idle {
+    background-color: #e5e7eb !important;
+}
+
 /* Responsive Design */
 @media (max-width: 1400px) {
     .dashboard-container {

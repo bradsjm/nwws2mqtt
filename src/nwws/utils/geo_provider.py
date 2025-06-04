@@ -582,7 +582,7 @@ class WeatherGeoDataProvider:
             properties = feature.get("properties", {}).copy()
 
             # Add activity metrics if available
-            office_metrics = metrics_data.get("by_office", {}).get(cwa_id, {})
+            office_metrics = metrics_data.get("by_wmo", {}).get(cwa_id, {})
 
             properties.update(
                 {
