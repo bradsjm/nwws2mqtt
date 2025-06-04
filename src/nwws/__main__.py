@@ -8,16 +8,16 @@ import traceback
 from collections.abc import Callable
 from pathlib import Path
 from types import FrameType, TracebackType
+from typing import Any
 
 from dotenv import load_dotenv
 from loguru import logger
-from utils import WeatherGeoDataProvider
 
 from nwws.filters import DuplicateFilter, TestMessageFilter
 from nwws.metrics import MetricRegistry
 from nwws.models import Config
 from nwws.models.events import NoaaPortEventData
-from nwws.outputs import ConsoleOutput, DatabaseConfig, DatabaseOutput, MQTTConfig, MQTTOutput
+from nwws.outputs import ConsoleOutput, DatabaseOutput, MQTTOutput
 from nwws.pipeline import (
     ErrorHandlingStrategy,
     FilterConfig,
@@ -36,7 +36,7 @@ from nwws.receiver import (
     WeatherWireStatsCollector,
 )
 from nwws.transformers import NoaaPortTransformer, XmlTransformer
-from nwws.utils import LoggingConfig
+from nwws.utils import LoggingConfig, WeatherGeoDataProvider
 from nwws.webserver import WebServer
 
 # Load environment variables from .env file
@@ -44,6 +44,9 @@ load_dotenv(override=True)
 
 # Type alias for signal handlers
 type SignalHandler = Callable[[int, FrameType | None], None]
+
+# Type alias for output configuration factories
+type OutputConfigFactory = Callable[[], dict[str, Any] | None]
 
 
 class WeatherWireApp:
@@ -111,23 +114,38 @@ class WeatherWireApp:
         builder = PipelineBuilder()
 
         # Register application-specific filters at runtime
-        builder.filter_registry.register("duplicate", self._create_duplicate_filter)
-        builder.filter_registry.register("test_msg", self._create_test_msg_filter)
+        builder.filter_registry.register(filter_type="duplicate", factory=DuplicateFilter)
+        builder.filter_registry.register(filter_type="test_msg", factory=TestMessageFilter)
 
         # Register application-specific transformers at runtime
-        builder.transformer_registry.register("noaaport", self._create_noaaport_transformer)
-        builder.transformer_registry.register("xml", self._create_xml_transformer)
+        builder.transformer_registry.register(
+            transformer_type="noaaport",
+            factory=NoaaPortTransformer,
+        )
+        builder.transformer_registry.register(
+            transformer_type="xml",
+            factory=XmlTransformer,
+        )
 
         # Register application-specific outputs at runtime
-        builder.output_registry.register("console", self._create_console_output)
-        builder.output_registry.register("mqtt", self._create_mqtt_output)
-        builder.output_registry.register("database", self._create_database_output)
+        builder.output_registry.register(
+            output_type="console",
+            factory=ConsoleOutput,
+        )
+        builder.output_registry.register(
+            "mqtt",
+            factory=MQTTOutput,
+        )
+        builder.output_registry.register(
+            "database",
+            factory=DatabaseOutput,
+        )
 
         # Parse configured outputs from environment
         output_configs = self._create_output_configs()
 
         # Initialize pipeline stats collector
-        self.pipeline_stats_collector = PipelineStatsCollector(
+        pipeline_stats_collector = PipelineStatsCollector(
             self.metric_registry,
             "pipeline",
         )
@@ -156,7 +174,7 @@ class WeatherWireApp:
                 },
             ),
             outputs=output_configs,
-            stats_collector=self.pipeline_stats_collector,
+            stats_collector=pipeline_stats_collector,
             enable_error_handling=True,
             error_handling_strategy=ErrorHandlingStrategy.CIRCUIT_BREAKER,
         )
@@ -164,90 +182,18 @@ class WeatherWireApp:
         # Build pipeline using configuration
         self.pipeline = builder.build_pipeline(pipeline_config)
 
-        # Store stats collector for metrics
-        self.pipeline_stats_collector = self.pipeline.stats_collector
-
         logger.info("Pipeline configured", pipeline_id=self.pipeline.pipeline_id)
 
     def _create_output_configs(self) -> list[OutputConfig]:
         """Create output configurations based on environment settings."""
-        output_configs: list[OutputConfig] = []
         output_names = [name.strip().lower() for name in self.config.outputs.split(",")]
-
-        for output_name in output_names:
-            if output_name == "console":
-                output_configs.append(
-                    OutputConfig(
-                        output_type="console",
-                        output_id="console",
-                        config={"pretty": True},
-                    )
-                )
-            elif output_name == "mqtt":
-                mqtt_config = MQTTConfig.from_env()
-                if mqtt_config:
-                    output_configs.append(
-                        OutputConfig(
-                            output_type="mqtt",
-                            output_id="mqtt",
-                            config={"config": mqtt_config},
-                        )
-                    )
-            elif output_name == "database":
-                database_config = DatabaseConfig.from_env()
-                if database_config:
-                    output_configs.append(
-                        OutputConfig(
-                            output_type="database",
-                            output_id="database",
-                            config={"config": database_config},
-                        )
-                    )
-                else:
-                    logger.warning("Database output requested but no Database config provided")
-            else:
-                logger.warning("Unknown output type", output_type=output_name)
-
-        return output_configs
-
-    def _create_mqtt_output(self, output_id: str, **kwargs: object) -> MQTTOutput:
-        """Create MQTT output instances."""
-        config = kwargs.get("config")
-        if not isinstance(config, MQTTConfig):
-            error_msg = "MQTT output requires valid MqttConfig"
-            raise TypeError(error_msg)
-        return MQTTOutput(output_id=output_id, config=config)
-
-    def _create_database_output(self, output_id: str, **kwargs: object) -> DatabaseOutput:
-        """Create database output instances."""
-        config = kwargs.get("config")
-        if not isinstance(config, DatabaseConfig):
-            error_msg = "Database output requires valid DatabaseConfig"
-            raise TypeError(error_msg)
-        return DatabaseOutput(output_id=output_id, config=config)
-
-    def _create_duplicate_filter(self, filter_id: str, **_kwargs: object) -> DuplicateFilter:
-        """Create duplicate filter instances."""
-        return DuplicateFilter(filter_id=filter_id)
-
-    def _create_test_msg_filter(self, filter_id: str, **_kwargs: object) -> TestMessageFilter:
-        """Create test message filter instances."""
-        return TestMessageFilter(filter_id=filter_id)
-
-    def _create_noaaport_transformer(
-        self, transformer_id: str, **_kwargs: object
-    ) -> NoaaPortTransformer:
-        """Create NOAA Port transformer instances."""
-        return NoaaPortTransformer(transformer_id=transformer_id)
-
-    def _create_xml_transformer(self, transformer_id: str, **_kwargs: object) -> XmlTransformer:
-        """Create XML transformer instances."""
-        return XmlTransformer(transformer_id=transformer_id)
-
-    def _create_console_output(self, output_id: str, **kwargs: object) -> ConsoleOutput:
-        """Create console output instances."""
-        pretty = kwargs.get("pretty", True)
-        return ConsoleOutput(output_id=output_id, pretty=bool(pretty))
+        return [
+            OutputConfig(
+                output_type=output_name,
+                output_id=output_name,
+            )
+            for output_name in output_names
+        ]
 
     async def _start_services(self) -> None:
         """Start all application services in the correct order."""

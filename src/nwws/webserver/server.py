@@ -18,7 +18,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
-from utils import WeatherGeoDataProvider
+
+from nwws.utils import WeatherGeoDataProvider
 
 from .api import create_health_router, create_metrics_router
 from .dashboard import create_dashboard_router

@@ -606,7 +606,7 @@ class WeatherProductCleanupService:
 class DatabaseOutput(Output):
     """Output that stores pipeline events in a relational database."""
 
-    def __init__(self, output_id: str = "database", *, config: DatabaseConfig) -> None:
+    def __init__(self, output_id: str = "database", *, config: DatabaseConfig | None) -> None:
         """Initialize the database output.
 
         Args:
@@ -615,7 +615,7 @@ class DatabaseOutput(Output):
 
         """
         super().__init__(output_id)
-        self.config = config
+        self.config = config or DatabaseConfig.from_env()
         self._engine: Engine | None = None
         self._cleanup_service: WeatherProductCleanupService | None = None
         self._stats: dict[str, int | float | None] = {

@@ -49,7 +49,7 @@ class MQTTConfig:
 class MQTTOutput(Output):
     """Output that publishes pipeline events to MQTT broker."""
 
-    def __init__(self, output_id: str = "mqtt", *, config: MQTTConfig) -> None:
+    def __init__(self, output_id: str = "mqtt", *, config: MQTTConfig | None) -> None:
         """Initialize the MQTT output.
 
         Args:
@@ -58,7 +58,7 @@ class MQTTOutput(Output):
 
         """
         super().__init__(output_id)
-        self.config = config
+        self.config = config or MQTTConfig.from_env()
 
         self._client: mqtt.Client | None = None
         self._connected = False
