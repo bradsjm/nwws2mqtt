@@ -22,15 +22,16 @@ from .errors import (
     PipelineErrorEvent,
     PipelineErrorHandler,
 )
-from .filters import Filter, FilterRegistry
-from .outputs import Output, OutputRegistry
+from .filters import Filter, FilterConfig, FilterRegistry
+from .outputs import Output, OutputConfig, OutputRegistry
 from .stats import PipelineStatsCollector, PipelineStatsEvent
-from .transformers import Transformer, TransformerRegistry
+from .transformers import Transformer, TransformerConfig, TransformerRegistry
 from .types import PipelineEvent, PipelineEventMetadata, PipelineStage
 
 __all__ = [  # noqa: RUF022
     # Base interfaces
     "Filter",
+    "FilterConfig",
     "Output",
     "Transformer",
     # Core pipeline components
@@ -56,7 +57,9 @@ __all__ = [  # noqa: RUF022
     # Registries
     "FilterRegistry",
     "OutputRegistry",
+    "OutputConfig",
     "TransformerRegistry",
+    "TransformerConfig",
     # Stats and errors
     "PipelineErrorHandler",
     "PipelineError",
