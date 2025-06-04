@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
 import time
-from typing import TYPE_CHECKING, Any
+from dataclasses import dataclass
+from typing import Any
 
 import paho.mqtt.client as mqtt
 from loguru import logger
@@ -18,8 +20,36 @@ from nwws.models.events.xml_event_data import XmlEventData
 from nwws.pipeline import Output, PipelineEvent
 from nwws.utils import build_topic
 
-if TYPE_CHECKING:
-    from models.mqtt_config import MqttConfig
+
+@dataclass
+class MqttConfig:
+    """Configuration class for output handlers."""
+
+    # MQTT Configuration
+    mqtt_broker: str = "localhost"
+    mqtt_port: int = 1883
+    mqtt_username: str | None = None
+    mqtt_password: str | None = None
+    mqtt_topic_prefix: str = "nwws"
+    mqtt_qos: int = 1
+    mqtt_retain: bool = False
+    mqtt_client_id: str = "nwws-oi-client"
+    mqtt_message_expiry_minutes: int = 60  # Message expiry time in minutes
+
+    @classmethod
+    def from_env(cls) -> MqttConfig:
+        """Create output config from environment variables."""
+        return cls(
+            mqtt_broker=os.getenv("MQTT_BROKER", "localhost"),
+            mqtt_port=int(os.getenv("MQTT_PORT", "1883")),
+            mqtt_username=os.getenv("MQTT_USERNAME"),
+            mqtt_password=os.getenv("MQTT_PASSWORD"),
+            mqtt_topic_prefix=os.getenv("MQTT_TOPIC_PREFIX", "nwws"),
+            mqtt_qos=int(os.getenv("MQTT_QOS", "1")),
+            mqtt_retain=os.getenv("MQTT_RETAIN", "false").lower() in ("true", "1", "yes"),
+            mqtt_client_id=os.getenv("MQTT_CLIENT_ID", "nwws-oi-client"),
+            mqtt_message_expiry_minutes=int(os.getenv("MQTT_MESSAGE_EXPIRY_MINUTES", "60")),
+        )
 
 
 class MQTTOutput(Output):
@@ -64,9 +94,7 @@ class MQTTOutput(Output):
 
             # Set credentials if provided
             if self.config.mqtt_username and self.config.mqtt_password:
-                self._client.username_pw_set(
-                    self.config.mqtt_username, self.config.mqtt_password
-                )
+                self._client.username_pw_set(self.config.mqtt_username, self.config.mqtt_password)
 
             # Start the client loop
             self._client.loop_start()
@@ -341,9 +369,7 @@ class MQTTOutput(Output):
         metadata[f"{self.output_id}_connected"] = self._connected
         metadata[f"{self.output_id}_qos"] = self.config.mqtt_qos
         metadata[f"{self.output_id}_retain"] = self.config.mqtt_retain
-        metadata[f"{self.output_id}_total_published_topics"] = len(
-            self._published_topics
-        )
+        metadata[f"{self.output_id}_total_published_topics"] = len(self._published_topics)
 
         if isinstance(event, (XmlEventData, TextProductEventData)):
             # Build the topic that would be used

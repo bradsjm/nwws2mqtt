@@ -18,7 +18,7 @@ from nwws.metrics.api_server import MetricApiServer
 from nwws.models import Config
 from nwws.models.events import NoaaPortEventData
 from nwws.outputs.console import ConsoleOutput
-from nwws.outputs.mqtt import MQTTOutput
+from nwws.outputs.mqtt import MqttConfig, MQTTOutput
 from nwws.pipeline.config import PipelineBuilder, PipelineConfig
 from nwws.pipeline.errors import ErrorHandlingStrategy
 from nwws.pipeline.filters import FilterConfig
@@ -100,9 +100,7 @@ class WeatherWireApp:
         builder.filter_registry.register("test_msg", self._create_test_msg_filter)
 
         # Register application-specific transformers at runtime
-        builder.transformer_registry.register(
-            "noaaport", self._create_noaaport_transformer
-        )
+        builder.transformer_registry.register("noaaport", self._create_noaaport_transformer)
         builder.transformer_registry.register("xml", self._create_xml_transformer)
 
         # Register console and mqtt outputs at runtime
@@ -170,12 +168,13 @@ class WeatherWireApp:
                     )
                 )
             elif output_name == "mqtt":
-                if self.config.mqtt_config:
+                mqtt_config = MqttConfig.from_env()
+                if mqtt_config:
                     output_configs.append(
                         OutputConfig(
                             output_type="mqtt",
                             output_id="mqtt",
-                            config={"config": self.config.mqtt_config},
+                            config={"config": mqtt_config},
                         )
                     )
                 else:
@@ -187,23 +186,17 @@ class WeatherWireApp:
 
     def _create_mqtt_output(self, output_id: str, **kwargs: object) -> MQTTOutput:
         """Create MQTT output instances."""
-        from nwws.models.mqtt_config import MqttConfig
-
         config = kwargs.get("config")
         if not isinstance(config, MqttConfig):
             error_msg = "MQTT output requires valid MqttConfig"
             raise TypeError(error_msg)
         return MQTTOutput(output_id=output_id, config=config)
 
-    def _create_duplicate_filter(
-        self, filter_id: str, **_kwargs: object
-    ) -> DuplicateFilter:
+    def _create_duplicate_filter(self, filter_id: str, **_kwargs: object) -> DuplicateFilter:
         """Create duplicate filter instances."""
         return DuplicateFilter(filter_id=filter_id)
 
-    def _create_test_msg_filter(
-        self, filter_id: str, **_kwargs: object
-    ) -> TestMessageFilter:
+    def _create_test_msg_filter(self, filter_id: str, **_kwargs: object) -> TestMessageFilter:
         """Create test message filter instances."""
         return TestMessageFilter(filter_id=filter_id)
 
@@ -213,9 +206,7 @@ class WeatherWireApp:
         """Create NOAA Port transformer instances."""
         return NoaaPortTransformer(transformer_id=transformer_id)
 
-    def _create_xml_transformer(
-        self, transformer_id: str, **_kwargs: object
-    ) -> XmlTransformer:
+    def _create_xml_transformer(self, transformer_id: str, **_kwargs: object) -> XmlTransformer:
         """Create XML transformer instances."""
         return XmlTransformer(transformer_id=transformer_id)
 
@@ -248,11 +239,7 @@ class WeatherWireApp:
         await asyncio.gather(
             self.receiver.stop(),
             self.pipeline.stop(),
-            (
-                self.metric_api.stop_server()
-                if self.config.metric_server
-                else asyncio.sleep(0)
-            ),
+            (self.metric_api.stop_server() if self.config.metric_server else asyncio.sleep(0)),
         )
 
     async def _handle_weather_wire_message(self, event: WeatherWireMessage) -> None:
@@ -390,18 +377,13 @@ class WeatherWireApp:
             server_error = "XMPP server is required"
             raise ValueError(server_error)
         if config.nwws_port <= 0 or config.nwws_port > 65535:
-            port_error = (
-                f"Invalid port number: {config.nwws_port}. Must be between 1 and 65535"
-            )
+            port_error = f"Invalid port number: {config.nwws_port}. Must be between 1 and 65535"
             raise ValueError(port_error)
 
         # Validate metrics server configuration
-        if config.metric_server and (
-            config.metric_port <= 0 or config.metric_port > 65535
-        ):
+        if config.metric_server and (config.metric_port <= 0 or config.metric_port > 65535):
             metrics_port_error = (
-                f"Invalid metrics port: {config.metric_port}. "
-                f"Must be between 1 and 65535"
+                f"Invalid metrics port: {config.metric_port}. Must be between 1 and 65535"
             )
             raise ValueError(metrics_port_error)
 
