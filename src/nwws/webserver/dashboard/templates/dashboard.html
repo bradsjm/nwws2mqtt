@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+          crossorigin=""/>
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f5f7fa;
+            color: #2d3748;
+            line-height: 1.6;
+        }
+        
+        .dashboard-container {
+            display: grid;
+            grid-template-areas: 
+                "header header header"
+                "sidebar main main"
+                "sidebar footer footer";
+            grid-template-rows: 80px 1fr 60px;
+            grid-template-columns: 300px 1fr 1fr;
+            min-height: 100vh;
+            gap: 1rem;
+            padding: 1rem;
+        }
+        
+        .header {
+            grid-area: header;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 8px;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+        
+        .system-status {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+        
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            font-size: 0.9rem;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #10b981;
+        }
+        
+        .status-dot.warning { background-color: #f59e0b; }
+        .status-dot.error { background-color: #ef4444; }
+        
+        .sidebar {
+            grid-area: sidebar;
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            overflow-y: auto;
+        }
+        
+        .main-content {
+            grid-area: main;
+            display: grid;
+            grid-template-areas:
+                "metrics-overview metrics-overview"
+                "weather-map charts-panel";
+            grid-template-rows: auto 1fr;
+            gap: 1rem;
+        }
+        
+        .metrics-overview {
+            grid-area: metrics-overview;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+        
+        .metric-card {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+        
+        .metric-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #1f2937;
+            margin-bottom: 0.5rem;
+        }
+        
+        .metric-label {
+            color: #6b7280;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .metric-trend {
+            margin-top: 0.5rem;
+            font-size: 0.8rem;
+        }
+        
+        .trend-up { color: #10b981; }
+        .trend-down { color: #ef4444; }
+        .trend-stable { color: #6b7280; }
+        
+        .weather-map {
+            grid-area: weather-map;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .charts-panel {
+            grid-area: charts-panel;
+            display: grid;
+            grid-template-rows: 1fr 1fr;
+            gap: 1rem;
+        }
+        
+        .chart-container {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .chart-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #1f2937;
+        }
+        
+        #weather-map {
+            width: 100%;
+            height: 500px;
+            border-radius: 8px;
+        }
+        
+        .office-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .office-item {
+            padding: 0.75rem 0;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .office-name {
+            font-weight: 500;
+        }
+        
+        .office-status {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #10b981;
+        }
+        
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            padding: 0.5rem;
+            background-color: #f3f4f6;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+        
+        .connection-indicator {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background-color: #10b981;
+        }
+        
+        .connection-indicator.disconnected {
+            background-color: #ef4444;
+        }
+        
+        .footer {
+            grid-area: footer;
+            background: white;
+            border-radius: 8px;
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            font-size: 0.9rem;
+            color: #6b7280;
+        }
+        
+        .error-message {
+            background-color: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #dc2626;
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+        }
+        
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+            color: #6b7280;
+        }
+        
+        .spinner {
+            border: 2px solid #f3f4f6;
+            border-top: 2px solid #3b82f6;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            margin-right: 0.5rem;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        @media (max-width: 1200px) {
+            .dashboard-container {
+                grid-template-areas: 
+                    "header"
+                    "main"
+                    "sidebar"
+                    "footer";
+                grid-template-columns: 1fr;
+                grid-template-rows: auto 1fr auto auto;
+            }
+            
+            .main-content {
+                grid-template-areas:
+                    "metrics-overview"
+                    "weather-map"
+                    "charts-panel";
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .metrics-overview {
+                grid-template-columns: 1fr 1fr;
+            }
+            
+            .charts-panel {
+                grid-template-rows: auto auto;
+            }
+            
+            #weather-map {
+                height: 300px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Header -->
+        <header class="header">
+            <h1>{{ title }}</h1>
+            <div class="system-status">
+                <div class="status-indicator">
+                    <div class="status-dot" id="connection-status"></div>
+                    <span id="connection-text">Connected</span>
+                </div>
+                <div class="status-indicator">
+                    <div class="status-dot" id="system-health-status"></div>
+                    <span id="system-health-text">Healthy</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <h3>Weather Forecast Offices</h3>
+            <div class="office-list" id="office-list">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    Loading offices...
+                </div>
+            </div>
+            
+            <div class="connection-status">
+                <div class="connection-indicator" id="ws-indicator"></div>
+                <span id="ws-status">Connecting...</span>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Metrics Overview -->
+            <section class="metrics-overview">
+                <div class="metric-card">
+                    <div class="metric-value" id="messages-per-minute">--</div>
+                    <div class="metric-label">Messages/Minute</div>
+                    <div class="metric-trend trend-stable" id="messages-trend">--</div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-value" id="active-offices">--</div>
+                    <div class="metric-label">Active Offices</div>
+                    <div class="metric-trend trend-stable" id="offices-trend">--</div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-value" id="avg-latency">--</div>
+                    <div class="metric-label">Avg Latency (ms)</div>
+                    <div class="metric-trend trend-stable" id="latency-trend">--</div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-value" id="error-rate">--</div>
+                    <div class="metric-label">Error Rate (%)</div>
+                    <div class="metric-trend trend-stable" id="error-trend">--</div>
+                </div>
+            </section>
+
+            <!-- Weather Map -->
+            <section class="weather-map">
+                <div id="weather-map"></div>
+            </section>
+
+            <!-- Charts Panel -->
+            <section class="charts-panel">
+                <div class="chart-container">
+                    <h3 class="chart-title">Message Throughput</h3>
+                    <canvas id="throughput-chart" width="400" height="200"></canvas>
+                </div>
+                
+                <div class="chart-container">
+                    <h3 class="chart-title">Processing Latency</h3>
+                    <canvas id="latency-chart" width="400" height="200"></canvas>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <span>NWWS2MQTT Dashboard v1.0.0</span>
+            <span id="last-update">Last updated: --</span>
+        </footer>
+    </div>
+
+    <!-- Error Message Template -->
+    <div id="error-template" class="error-message" style="display: none;">
+        <strong>Error:</strong> <span id="error-text"></span>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+            crossorigin=""></script>
+
+    <!-- Dashboard JavaScript -->
+    <script>
+        // Initial data from server
+        const initialData = {{ initial_data | tojson }};
+        
+        // Global dashboard instance
+        let dashboard;
+        
+        // Initialize dashboard when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            dashboard = new WeatherDashboard(initialData);
+            dashboard.initialize();
+        });
+    </script>
+    
+    <script src="/static/js/dashboard.js"></script>
+    <script src="/static/js/weather-map.js"></script>
+    <script src="/static/js/charts.js"></script>
+</body>
+</html>

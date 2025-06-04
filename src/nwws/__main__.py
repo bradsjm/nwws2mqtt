@@ -6,13 +6,15 @@ import sys
 import time
 import traceback
 from collections.abc import Callable
+from pathlib import Path
 from types import FrameType, TracebackType
 
 from dotenv import load_dotenv
 from loguru import logger
+from utils import WeatherGeoDataProvider
 
 from nwws.filters import DuplicateFilter, TestMessageFilter
-from nwws.metrics import MetricApiServer, MetricRegistry
+from nwws.metrics import MetricRegistry
 from nwws.models import Config
 from nwws.models.events import NoaaPortEventData
 from nwws.outputs import ConsoleOutput, DatabaseConfig, DatabaseOutput, MQTTConfig, MQTTOutput
@@ -35,6 +37,7 @@ from nwws.receiver import (
 )
 from nwws.transformers import NoaaPortTransformer, XmlTransformer
 from nwws.utils import LoggingConfig
+from nwws.webserver import WebServer
 
 # Load environment variables from .env file
 load_dotenv(override=True)
@@ -59,7 +62,14 @@ class WeatherWireApp:
 
         # Initialize metric registry for application metrics
         self.metric_registry = MetricRegistry()
-        self.metric_api = MetricApiServer(self.metric_registry)
+
+        # Initialize web server with dashboard capabilities
+        self.web_server = WebServer(
+            registry=self.metric_registry,
+            geo_provider=WeatherGeoDataProvider(),
+            templates_dir=str(Path(__file__).parent / "webserver" / "dashboard" / "templates"),
+            static_dir=str(Path(__file__).parent / "webserver" / "dashboard" / "static"),
+        )
 
         # Setup signal handlers for graceful shutdown
         signal_handler: SignalHandler = self._signal_handler
@@ -247,9 +257,9 @@ class WeatherWireApp:
         # Start weather wire receiver
         await self.receiver.start()
 
-        # Start metrics API server if enabled
+        # Start web server if enabled
         await (
-            self.metric_api.start_server(
+            self.web_server.start(
                 host=self.config.metric_host,
                 port=self.config.metric_port,
                 log_level=self.config.log_level,
@@ -263,7 +273,7 @@ class WeatherWireApp:
         await asyncio.gather(
             self.receiver.stop(),
             self.pipeline.stop(),
-            (self.metric_api.stop_server() if self.config.metric_server else asyncio.sleep(0)),
+            (self.web_server.stop() if self.config.metric_server else asyncio.sleep(0)),
         )
 
     async def _handle_weather_wire_message(self, event: WeatherWireMessage) -> None:
