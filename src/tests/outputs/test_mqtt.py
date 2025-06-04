@@ -9,8 +9,8 @@ class TestMqttConfig:
 
     def test_config_defaults(self) -> None:
         """Test MqttConfig with default values."""
-        from nwws.models import MqttConfig
-        config = MqttConfig()
+        from nwws.outputs import MQTTConfig
+        config = MQTTConfig()
 
         assert config.mqtt_broker == "localhost"
         assert config.mqtt_port == 1883
@@ -24,8 +24,8 @@ class TestMqttConfig:
 
     def test_config_custom_values(self) -> None:
         """Test MqttConfig with custom values."""
-        from nwws.outputs.mqtt import MqttConfig
-        config = MqttConfig(
+        from nwws.outputs.mqtt import MQTTConfig
+        config = MQTTConfig(
             mqtt_broker="custom-broker",
             mqtt_port=8883,
             mqtt_username="testuser",
@@ -53,8 +53,8 @@ class TestMQTTOutput:
 
     def test_init_default_parameters(self) -> None:
         """Test MQTTOutput initialization with default parameters."""
-        from nwws.outputs.mqtt import MQTTOutput, MqttConfig
-        config = MqttConfig()
+        from nwws.outputs.mqtt import MQTTOutput, MQTTConfig
+        config = MQTTConfig()
         output = MQTTOutput(config=config)
 
         assert output.output_id == "mqtt"
@@ -64,8 +64,8 @@ class TestMQTTOutput:
 
     def test_init_custom_parameters(self) -> None:
         """Test MQTTOutput initialization with custom parameters."""
-        from nwws.outputs.mqtt import MQTTOutput, MqttConfig
-        config = MqttConfig()
+        from nwws.outputs.mqtt import MQTTOutput, MQTTConfig
+        config = MQTTConfig()
         output = MQTTOutput(output_id="custom-mqtt", config=config)
 
         assert output.output_id == "custom-mqtt"
@@ -73,8 +73,8 @@ class TestMQTTOutput:
 
     def test_is_connected_property(self) -> None:
         """Test is_connected property."""
-        from nwws.outputs.mqtt import MQTTOutput, MqttConfig
-        config = MqttConfig()
+        from nwws.outputs.mqtt import MQTTOutput, MQTTConfig
+        config = MQTTConfig()
         output = MQTTOutput(config=config)
 
         assert output.is_connected is False
@@ -85,11 +85,11 @@ class TestMQTTOutput:
     @patch("nwws.outputs.mqtt.mqtt.Client")
     async def test_start_success(self, mock_client_class: Mock) -> None:
         """Test successful start operation."""
-        from nwws.outputs.mqtt import MQTTOutput, MqttConfig
+        from nwws.outputs.mqtt import MQTTOutput, MQTTConfig
         mock_client = MagicMock()
         mock_client_class.return_value = mock_client
 
-        config = MqttConfig()
+        config = MQTTConfig()
         output = MQTTOutput(config=config)
 
         await output.start()
@@ -107,11 +107,11 @@ class TestMQTTOutput:
     @patch("nwws.outputs.mqtt.mqtt.Client")
     async def test_start_with_credentials(self, mock_client_class: Mock) -> None:
         """Test start with username and password."""
-        from nwws.outputs.mqtt import MQTTOutput, MqttConfig
+        from nwws.outputs.mqtt import MQTTOutput, MQTTConfig
         mock_client = MagicMock()
         mock_client_class.return_value = mock_client
 
-        config = MqttConfig(
+        config = MQTTConfig(
             mqtt_broker="test-broker",
             mqtt_username="testuser",
             mqtt_password="testpass",
@@ -125,11 +125,11 @@ class TestMQTTOutput:
     @patch("nwws.outputs.mqtt.mqtt.Client")
     async def test_stop_success(self, mock_client_class: Mock) -> None:
         """Test successful stop operation."""
-        from nwws.outputs.mqtt import MQTTOutput, MqttConfig
+        from nwws.outputs.mqtt import MQTTOutput, MQTTConfig
         mock_client = MagicMock()
         mock_client_class.return_value = mock_client
 
-        config = MqttConfig()
+        config = MQTTConfig()
         output = MQTTOutput(config=config)
 
         await output.start()
@@ -141,12 +141,12 @@ class TestMQTTOutput:
     @patch("nwws.outputs.mqtt.isinstance")
     async def test_send_text_product_event(self, mock_isinstance: Mock) -> None:
         """Test sending TextProductEventData."""
-        from nwws.outputs.mqtt import MQTTOutput, MqttConfig
+        from nwws.outputs.mqtt import MQTTOutput, MQTTConfig
 
         # Make isinstance return True for our mock event
         mock_isinstance.return_value = True
 
-        config = MqttConfig()
+        config = MQTTConfig()
         output = MQTTOutput(config=config)
 
         # Mock the client and connection
@@ -189,12 +189,12 @@ class TestMQTTOutput:
     @patch("nwws.outputs.mqtt.isinstance")
     async def test_send_non_text_product_event(self, mock_isinstance: Mock) -> None:
         """Test sending non-TextProductEventData does nothing."""
-        from nwws.outputs.mqtt import MQTTOutput, MqttConfig
+        from nwws.outputs.mqtt import MQTTOutput, MQTTConfig
 
         # Make isinstance return False for our mock event
         mock_isinstance.return_value = False
 
-        config = MqttConfig()
+        config = MQTTConfig()
         output = MQTTOutput(config=config)
 
         # Mock the client and connection
@@ -213,12 +213,12 @@ class TestMQTTOutput:
     @patch("nwws.outputs.mqtt.isinstance")
     async def test_send_when_not_connected(self, mock_isinstance: Mock) -> None:
         """Test sending when client is not connected."""
-        from nwws.outputs.mqtt import MQTTOutput, MqttConfig
+        from nwws.outputs.mqtt import MQTTOutput, MQTTConfig
 
         # Make isinstance return True for our mock event
         mock_isinstance.return_value = True
 
-        config = MqttConfig()
+        config = MQTTConfig()
         output = MQTTOutput(config=config)
 
         # Mock the client but set as not connected
@@ -239,12 +239,12 @@ class TestMQTTOutput:
     @patch("nwws.outputs.mqtt.isinstance")
     async def test_send_with_retain_enabled(self, mock_isinstance: Mock) -> None:
         """Test sending with retain enabled."""
-        from nwws.outputs.mqtt import MQTTOutput, MqttConfig
+        from nwws.outputs.mqtt import MQTTOutput, MQTTConfig
 
         # Make isinstance return True for our mock event
         mock_isinstance.return_value = True
 
-        config = MqttConfig(mqtt_retain=True)
+        config = MQTTConfig(mqtt_retain=True)
         output = MQTTOutput(config=config)
 
         # Mock the client and connection
@@ -273,8 +273,8 @@ class TestMQTTOutput:
 
     def test_on_connect_callback_success(self) -> None:
         """Test successful connection callback."""
-        from nwws.outputs.mqtt import MQTTOutput, MqttConfig
-        config = MqttConfig()
+        from nwws.outputs.mqtt import MQTTOutput, MQTTConfig
+        config = MQTTConfig()
         output = MQTTOutput(config=config)
 
         # Simulate successful connection (rc=0)
@@ -284,8 +284,8 @@ class TestMQTTOutput:
 
     def test_on_connect_callback_failure(self) -> None:
         """Test failed connection callback."""
-        from nwws.outputs.mqtt import MQTTOutput, MqttConfig
-        config = MqttConfig()
+        from nwws.outputs.mqtt import MQTTOutput, MQTTConfig
+        config = MQTTConfig()
         output = MQTTOutput(config=config)
 
         # Simulate failed connection (rc!=0)
@@ -295,8 +295,8 @@ class TestMQTTOutput:
 
     def test_on_disconnect_callback(self) -> None:
         """Test disconnect callback."""
-        from nwws.outputs.mqtt import MQTTOutput, MqttConfig
-        config = MqttConfig()
+        from nwws.outputs.mqtt import MQTTOutput, MQTTConfig
+        config = MQTTConfig()
         output = MQTTOutput(config=config)
         output._connected = True
 

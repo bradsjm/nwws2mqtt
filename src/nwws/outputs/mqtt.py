@@ -22,7 +22,7 @@ from nwws.utils import build_topic
 
 
 @dataclass
-class MqttConfig:
+class MQTTConfig:
     """Configuration class for output handlers."""
 
     # MQTT Configuration
@@ -37,7 +37,7 @@ class MqttConfig:
     mqtt_message_expiry_minutes: int = 60  # Message expiry time in minutes
 
     @classmethod
-    def from_env(cls) -> MqttConfig:
+    def from_env(cls) -> MQTTConfig:
         """Create output config from environment variables."""
         return cls(
             mqtt_broker=os.getenv("MQTT_BROKER", "localhost"),
@@ -55,7 +55,7 @@ class MqttConfig:
 class MQTTOutput(Output):
     """Output that publishes pipeline events to MQTT broker."""
 
-    def __init__(self, output_id: str = "mqtt", *, config: MqttConfig) -> None:
+    def __init__(self, output_id: str = "mqtt", *, config: MQTTConfig) -> None:
         """Initialize the MQTT output.
 
         Args:

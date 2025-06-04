@@ -2,11 +2,12 @@
 
 from .console import ConsoleOutput
 from .database import DatabaseConfig, DatabaseOutput
-from .mqtt import MQTTOutput
+from .mqtt import MQTTConfig, MQTTOutput
 
 __all__ = [
     "ConsoleOutput",
     "DatabaseConfig",
     "DatabaseOutput",
+    "MQTTConfig",
     "MQTTOutput",
 ]

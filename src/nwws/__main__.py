@@ -18,7 +18,8 @@ from nwws.metrics.api_server import MetricApiServer
 from nwws.models import Config
 from nwws.models.events import NoaaPortEventData
 from nwws.outputs.console import ConsoleOutput
-from nwws.outputs.mqtt import MqttConfig, MQTTOutput
+from nwws.outputs.database import DatabaseConfig, DatabaseOutput
+from nwws.outputs.mqtt import MQTTConfig, MQTTOutput
 from nwws.pipeline.config import PipelineBuilder, PipelineConfig
 from nwws.pipeline.errors import ErrorHandlingStrategy
 from nwws.pipeline.filters import FilterConfig
@@ -103,9 +104,10 @@ class WeatherWireApp:
         builder.transformer_registry.register("noaaport", self._create_noaaport_transformer)
         builder.transformer_registry.register("xml", self._create_xml_transformer)
 
-        # Register console and mqtt outputs at runtime
+        # Register application-specific outputs at runtime
         builder.output_registry.register("console", self._create_console_output)
         builder.output_registry.register("mqtt", self._create_mqtt_output)
+        builder.output_registry.register("database", self._create_database_output)
 
         # Parse configured outputs from environment
         output_configs = self._create_output_configs()
@@ -168,7 +170,7 @@ class WeatherWireApp:
                     )
                 )
             elif output_name == "mqtt":
-                mqtt_config = MqttConfig.from_env()
+                mqtt_config = MQTTConfig.from_env()
                 if mqtt_config:
                     output_configs.append(
                         OutputConfig(
@@ -187,10 +189,18 @@ class WeatherWireApp:
     def _create_mqtt_output(self, output_id: str, **kwargs: object) -> MQTTOutput:
         """Create MQTT output instances."""
         config = kwargs.get("config")
-        if not isinstance(config, MqttConfig):
+        if not isinstance(config, MQTTConfig):
             error_msg = "MQTT output requires valid MqttConfig"
             raise TypeError(error_msg)
         return MQTTOutput(output_id=output_id, config=config)
+
+    def _create_database_output(self, output_id: str, **kwargs: object) -> DatabaseOutput:
+        """Create database output instances."""
+        config = kwargs.get("config")
+        if not isinstance(config, DatabaseConfig):
+            error_msg = "Database output requires valid DatabaseConfig"
+            raise TypeError(error_msg)
+        return DatabaseOutput(output_id=output_id, config=config)
 
     def _create_duplicate_filter(self, filter_id: str, **_kwargs: object) -> DuplicateFilter:
         """Create duplicate filter instances."""

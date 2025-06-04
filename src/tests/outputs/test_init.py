@@ -38,9 +38,8 @@ class TestOutputsPackage:
 
     def test_mqtt_output_instantiation(self) -> None:
         """Test that MQTTOutput can be instantiated with minimal config."""
-        from nwws.outputs import MQTTOutput
-        from nwws.models import MqttConfig
+        from nwws.outputs import MQTTOutput, MQTTConfig
 
-        config = MqttConfig()
+        config = MQTTConfig()
         output = MQTTOutput(config=config)
         assert output.output_id == "mqtt"

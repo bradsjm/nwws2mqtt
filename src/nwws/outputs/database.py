@@ -35,7 +35,7 @@ class Base(DeclarativeBase):
     """Base class for all database models."""
 
 
-class WeatherEvent(Base):
+class WeatherEventModel(Base):
     """Weather event database model."""
 
     __tablename__ = "weather_events"
@@ -87,7 +87,7 @@ class WeatherEventContent(Base):
     processed_content: Mapped[str | None] = mapped_column(Text)
 
     # Relationship back to event
-    event: Mapped[WeatherEvent] = relationship("WeatherEvent", back_populates="raw_content")
+    event: Mapped[WeatherEventModel] = relationship("WeatherEvent", back_populates="raw_content")
 
     def __repr__(self) -> str:
         """Return string representation of content."""
@@ -110,7 +110,9 @@ class WeatherEventMetadata(Base):
     value: Mapped[str] = mapped_column(Text)
 
     # Relationship back to event
-    event: Mapped[WeatherEvent] = relationship("WeatherEvent", back_populates="metadata_entries")
+    event: Mapped[WeatherEventModel] = relationship(
+        "WeatherEvent", back_populates="metadata_entries"
+    )
 
     def __repr__(self) -> str:
         """Return string representation of metadata."""
@@ -349,7 +351,7 @@ class WeatherProductCleanupService:
             current_time = datetime.now(UTC)
 
             expired_products = (
-                session.query(WeatherEvent.id)
+                session.query(WeatherEventModel.id)
                 .join(WeatherEventMetadata)
                 .filter(
                     and_(
@@ -387,7 +389,7 @@ class WeatherProductCleanupService:
 
             # VTEC ending times from P-VTEC strings
             expired_events = (
-                session.query(WeatherEvent.id)
+                session.query(WeatherEventModel.id)
                 .join(WeatherEventMetadata)
                 .filter(
                     and_(
@@ -428,11 +430,11 @@ class WeatherProductCleanupService:
                 cutoff_time = current_time - retention_period
 
                 expired_ids = (
-                    session.query(WeatherEvent.id)
+                    session.query(WeatherEventModel.id)
                     .filter(
                         and_(
-                            WeatherEvent.awipsid.like(f"{awipsid_pattern}%"),
-                            WeatherEvent.created_at < cutoff_time,
+                            WeatherEventModel.awipsid.like(f"{awipsid_pattern}%"),
+                            WeatherEventModel.created_at < cutoff_time,
                         )
                     )
                     .all()
@@ -467,8 +469,8 @@ class WeatherProductCleanupService:
 
             # Find old events not already cleaned up by other methods
             old_events = (
-                session.query(WeatherEvent.id)
-                .filter(WeatherEvent.created_at < cutoff_time)
+                session.query(WeatherEventModel.id)
+                .filter(WeatherEventModel.created_at < cutoff_time)
                 .limit(self.config.max_deletions_per_cycle)
                 .all()
             )
@@ -527,8 +529,8 @@ class WeatherProductCleanupService:
 
             # Delete the events themselves
             events_deleted = (
-                session.query(WeatherEvent)
-                .filter(WeatherEvent.id.in_(event_ids))
+                session.query(WeatherEventModel)
+                .filter(WeatherEventModel.id.in_(event_ids))
                 .delete(synchronize_session=False)
             )
 
@@ -723,7 +725,9 @@ class DatabaseOutput(Output):
             try:
                 # Check if event already exists
                 existing = (
-                    session.query(WeatherEvent).filter_by(event_id=event.metadata.event_id).first()
+                    session.query(WeatherEventModel)
+                    .filter_by(event_id=event.metadata.event_id)
+                    .first()
                 )
 
                 if existing:
@@ -739,7 +743,7 @@ class DatabaseOutput(Output):
                 event_type = self._get_event_type(event)
 
                 # Create weather event record
-                weather_event = WeatherEvent(
+                weather_event = WeatherEventModel(
                     event_id=event.metadata.event_id,
                     awipsid=event.awipsid,
                     cccc=event.cccc,

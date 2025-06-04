@@ -5,8 +5,7 @@ from unittest.mock import MagicMock
 
 from nwws.models.events import TextProductEventData
 from nwws.models.weather import TextProductModel, TextProductSegmentModel, VTECModel
-from nwws.outputs.mqtt import MQTTOutput
-from nwws.models import MqttConfig
+from nwws.outputs.mqtt import MQTTOutput, MQTTConfig
 from nwws.pipeline import PipelineEventMetadata
 from nwws.utils import build_topic
 
@@ -16,12 +15,12 @@ from typing import List, Optional, Dict, TypedDict
 class TestMQTTTopicStructure:
     """Test MQTT topic structure construction."""
 
-    config: MqttConfig
+    config: MQTTConfig
     mqtt_output: MQTTOutput
 
     def setup_method(self) -> None:
         """Set up test fixtures."""
-        self.config = MqttConfig(
+        self.config = MQTTConfig(
             mqtt_broker="localhost",
             mqtt_topic_prefix="nwws"
         )

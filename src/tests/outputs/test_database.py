@@ -16,7 +16,7 @@ from nwws.outputs.database import (
     Base,
     DatabaseConfig,
     DatabaseOutput,
-    WeatherEvent,
+    WeatherEventModel,
     WeatherEventContent,
     WeatherEventMetadata,
 )
@@ -93,7 +93,7 @@ class TestDatabaseModels:
         issue_time = datetime.now(timezone.utc)
 
         with Session(engine) as session:
-            weather_event = WeatherEvent(
+            weather_event = WeatherEventModel(
                 event_id=event_id,
                 awipsid="CAPTEST",
                 cccc="KBOU",
@@ -109,7 +109,7 @@ class TestDatabaseModels:
             session.commit()
 
             # Verify storage
-            stored = session.query(WeatherEvent).filter_by(event_id=event_id).first()
+            stored = session.query(WeatherEventModel).filter_by(event_id=event_id).first()
             assert stored is not None
             assert stored.event_id == event_id
             assert stored.awipsid == "CAPTEST"
@@ -127,7 +127,7 @@ class TestDatabaseModels:
         event_id = str(uuid4())
 
         with Session(engine) as session:
-            weather_event = WeatherEvent(
+            weather_event = WeatherEventModel(
                 event_id=event_id,
                 awipsid="CAPTEST",
                 cccc="KBOU",
@@ -152,7 +152,7 @@ class TestDatabaseModels:
             session.commit()
 
             # Test relationship
-            stored_event = session.query(WeatherEvent).filter_by(event_id=event_id).first()
+            stored_event = session.query(WeatherEventModel).filter_by(event_id=event_id).first()
             assert stored_event is not None
             assert stored_event.raw_content is not None
             assert stored_event.raw_content.noaaport_content == "Raw NOAA Port content"
@@ -163,7 +163,7 @@ class TestDatabaseModels:
         event_id = str(uuid4())
 
         with Session(engine) as session:
-            weather_event = WeatherEvent(
+            weather_event = WeatherEventModel(
                 event_id=event_id,
                 awipsid="CAPTEST",
                 cccc="KBOU",
@@ -194,7 +194,7 @@ class TestDatabaseModels:
             session.commit()
 
             # Test relationship
-            stored_event = session.query(WeatherEvent).filter_by(event_id=event_id).first()
+            stored_event = session.query(WeatherEventModel).filter_by(event_id=event_id).first()
             assert stored_event is not None
             assert len(stored_event.metadata_entries) == 2
 
@@ -337,7 +337,7 @@ class TestDatabaseOutput:
 
         # Verify event was stored
         with Session(output._engine) as session:
-            stored_event = session.query(WeatherEvent).filter_by(
+            stored_event = session.query(WeatherEventModel).filter_by(
                 event_id=mock_text_product_event.metadata.event_id
             ).first()
 
@@ -363,7 +363,7 @@ class TestDatabaseOutput:
 
         # Verify event was stored
         with Session(output._engine) as session:
-            stored_event = session.query(WeatherEvent).filter_by(
+            stored_event = session.query(WeatherEventModel).filter_by(
                 event_id=mock_xml_event.metadata.event_id
             ).first()
 
@@ -386,7 +386,7 @@ class TestDatabaseOutput:
 
         # Verify event was stored
         with Session(output._engine) as session:
-            stored_event = session.query(WeatherEvent).filter_by(
+            stored_event = session.query(WeatherEventModel).filter_by(
                 event_id=mock_noaa_port_event.metadata.event_id
             ).first()
 
@@ -411,7 +411,7 @@ class TestDatabaseOutput:
 
         # Verify only one event was stored
         with Session(output._engine) as session:
-            count = session.query(WeatherEvent).filter_by(
+            count = session.query(WeatherEventModel).filter_by(
                 event_id=mock_text_product_event.metadata.event_id
             ).count()
 
@@ -432,7 +432,7 @@ class TestDatabaseOutput:
 
         # Verify no events were stored
         with Session(output._engine) as session:
-            count = session.query(WeatherEvent).count()
+            count = session.query(WeatherEventModel).count()
             assert count == 0
 
         assert output.stats["events_stored"] == 0
@@ -469,7 +469,7 @@ class TestDatabaseOutput:
 
         # Verify metadata was stored
         with Session(output._engine) as session:
-            stored_event = session.query(WeatherEvent).filter_by(
+            stored_event = session.query(WeatherEventModel).filter_by(
                 event_id=mock_text_product_event.metadata.event_id
             ).first()
 
