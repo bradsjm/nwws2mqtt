@@ -4,31 +4,35 @@ import asyncio
 import signal
 import sys
 import time
-from asyncio import CancelledError
+import traceback
 from collections.abc import Callable
 from types import FrameType, TracebackType
 
 from dotenv import load_dotenv
 from loguru import logger
 
-from nwws.filters.duplicate_filter import DuplicateFilter
-from nwws.filters.test_msg_filter import TestMessageFilter
-from nwws.metrics import MetricRegistry
-from nwws.metrics.api_server import MetricApiServer
+from nwws.filters import DuplicateFilter, TestMessageFilter
+from nwws.metrics import MetricApiServer, MetricRegistry
 from nwws.models import Config
 from nwws.models.events import NoaaPortEventData
-from nwws.outputs.console import ConsoleOutput
-from nwws.outputs.database import DatabaseConfig, DatabaseOutput
-from nwws.outputs.mqtt import MQTTConfig, MQTTOutput
-from nwws.pipeline.config import PipelineBuilder, PipelineConfig
-from nwws.pipeline.errors import ErrorHandlingStrategy
-from nwws.pipeline.filters import FilterConfig
-from nwws.pipeline.outputs import OutputConfig
-from nwws.pipeline.stats import PipelineStatsCollector
-from nwws.pipeline.transformers import TransformerConfig
-from nwws.pipeline.types import PipelineEventMetadata, PipelineStage
-from nwws.receiver import WeatherWire, WeatherWireConfig, WeatherWireMessage
-from nwws.receiver.stats import WeatherWireStatsCollector
+from nwws.outputs import ConsoleOutput, DatabaseConfig, DatabaseOutput, MQTTConfig, MQTTOutput
+from nwws.pipeline import (
+    ErrorHandlingStrategy,
+    FilterConfig,
+    OutputConfig,
+    PipelineBuilder,
+    PipelineConfig,
+    PipelineEventMetadata,
+    PipelineStage,
+    PipelineStatsCollector,
+    TransformerConfig,
+)
+from nwws.receiver import (
+    WeatherWire,
+    WeatherWireConfig,
+    WeatherWireMessage,
+    WeatherWireStatsCollector,
+)
 from nwws.transformers import NoaaPortTransformer, XmlTransformer
 from nwws.utils import LoggingConfig
 
@@ -179,8 +183,18 @@ class WeatherWireApp:
                             config={"config": mqtt_config},
                         )
                     )
+            elif output_name == "database":
+                database_config = DatabaseConfig.from_env()
+                if database_config:
+                    output_configs.append(
+                        OutputConfig(
+                            output_type="database",
+                            output_id="database",
+                            config={"config": database_config},
+                        )
+                    )
                 else:
-                    logger.warning("MQTT output requested but no MQTT config provided")
+                    logger.warning("Database output requested but no Database config provided")
             else:
                 logger.warning("Unknown output type", output_type=output_name)
 
@@ -458,13 +472,14 @@ async def main() -> None:
             stage="startup",
         )
         sys.exit(1)
-    except (TimeoutError, OSError, ConnectionError, RuntimeError, CancelledError) as e:
+    except Exception as e:  # noqa: BLE001
         logger.error(
             "Runtime error - application failed",
             error=str(e),
             error_type=type(e).__name__,
             stage="runtime",
         )
+        traceback.print_exc(limit=0)
         sys.exit(1)
     finally:
         logger.info("NWWS-OI application shutdown completed")

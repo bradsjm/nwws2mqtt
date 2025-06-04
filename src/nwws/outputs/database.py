@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -174,6 +175,52 @@ class DatabaseConfig:
     long_duration_retention_hours: int = field(default=72)  # WSW, watches
     routine_retention_hours: int = field(default=12)  # ZFP, NOW
     administrative_retention_days: int = field(default=30)  # PNS, LSR, PSH
+
+    @classmethod
+    def from_env(cls) -> DatabaseConfig:
+        """Create output config from environment variables."""
+        return cls(
+            database_url=os.getenv("DATABASE_URL", "sqlite:///weather_events.db"),
+            echo_sql=os.getenv("DATABASE_ECHO_SQL", "false").lower() == "true",
+            create_tables=os.getenv("DATABASE_CREATE_TABLES", "true").lower() == "true",
+            pool_size=int(os.getenv("DATABASE_POOL_SIZE", "5")),
+            max_overflow=int(os.getenv("DATABASE_MAX_OVERFLOW", "10")),
+            pool_timeout=int(os.getenv("DATABASE_POOL_TIMEOUT", "30")),
+            pool_recycle=int(os.getenv("DATABASE_POOL_RECYCLE", "3600")),
+            cleanup_enabled=os.getenv("DATABASE_CLEANUP_ENABLED", "false").lower() == "true",
+            cleanup_interval_hours=int(os.getenv("DATABASE_CLEANUP_INTERVAL_HOURS", "6")),
+            respect_product_expiration=os.getenv(
+                "DATABASE_RESPECT_PRODUCT_EXPIRATION", "true"
+            ).lower()
+            == "true",
+            respect_vtec_expiration=os.getenv("DATABASE_RESPECT_VTEC_EXPIRATION", "true").lower()
+            == "true",
+            respect_ugc_expiration=os.getenv("DATABASE_RESPECT_UGC_EXPIRATION", "true").lower()
+            == "true",
+            use_product_specific_retention=os.getenv(
+                "DATABASE_USE_PRODUCT_SPECIFIC_RETENTION", "true"
+            ).lower()
+            == "true",
+            vtec_expiration_buffer_hours=int(
+                os.getenv("DATABASE_VTEC_EXPIRATION_BUFFER_HOURS", "2")
+            ),
+            max_deletions_per_cycle=int(os.getenv("DATABASE_MAX_DELETIONS_PER_CYCLE", "500")),
+            dry_run_mode=os.getenv("DATABASE_DRY_RUN_MODE", "false").lower() == "true",
+            default_retention_days=int(os.getenv("DATABASE_DEFAULT_RETENTION_DAYS", "7")),
+            short_duration_retention_hours=int(
+                os.getenv("DATABASE_SHORT_DURATION_RETENTION_HOURS", "1")
+            ),
+            medium_duration_retention_hours=int(
+                os.getenv("DATABASE_MEDIUM_DURATION_RETENTION_HOURS", "24")
+            ),
+            long_duration_retention_hours=int(
+                os.getenv("DATABASE_LONG_DURATION_RETENTION_HOURS", "72")
+            ),
+            routine_retention_hours=int(os.getenv("DATABASE_ROUTINE_RETENTION_HOURS", "12")),
+            administrative_retention_days=int(
+                os.getenv("DATABASE_ADMINISTRATIVE_RETENTION_DAYS", "30")
+            ),
+        )
 
     @property
     def engine_kwargs(self) -> dict[str, Any]:
