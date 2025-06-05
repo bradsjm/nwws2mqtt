@@ -26,6 +26,9 @@ services:
             - METRIC_HOST=0.0.0.0
             - METRIC_PORT=8080
 
+            # Output Configuration
+            - OUTPUTS=console
+
             # MQTT Configuration (optional)
             - MQTT_BROKER=${MQTT_BROKER}
             - MQTT_PORT=${MQTT_PORT:-1883}
@@ -35,19 +38,10 @@ services:
             - MQTT_QOS=${MQTT_QOS:-1}
             - MQTT_RETAIN=${MQTT_RETAIN:-true}
             - MQTT_CLIENT_ID=${MQTT_CLIENT_ID:-nwws-oi-client}
-        volumes:
-            # Optional: Mount logs directory
-            - ../logs:/app/logs:rw
         networks:
             - nwws-network
         healthcheck:
-            test:
-                [
-                    "CMD",
-                    "python",
-                    "-c",
-                    "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')",
-                ]
+            test: ["CMD", "python", "/app/healthcheck.py"]
             interval: 30s
             timeout: 10s
             retries: 3

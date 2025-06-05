@@ -1,0 +1,295 @@
+name: Docker Development Workflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Type of test to run'
+        required: false
+        default: 'build'
+        type: choice
+        options:
+          - 'build'
+          - 'test'
+          - 'integration'
+          - 'full'
+      python_version:
+        description: 'Python version to test'
+        required: false
+        default: '3.13'
+        type: string
+      cleanup:
+        description: 'Clean up after tests'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  IMAGE_NAME: nwws2mqtt-dev
+  COMPOSE_PROJECT_NAME: nwws2mqtt-dev
+
+jobs:
+  docker-dev-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Create test environment file
+        run: |
+          cat > .env.test << EOF
+          # Test configuration for NWWS2MQTT
+          NWWS_USERNAME=test_user
+          NWWS_PASSWORD=test_password
+          NWWS_SERVER=localhost
+          NWWS_PORT=5222
+          MQTT_BROKER_HOST=localhost
+          MQTT_BROKER_PORT=1883
+          MQTT_TOPIC_PREFIX=nwws/test
+          LOG_LEVEL=DEBUG
+          METRICS_PORT=8080
+          HEALTH_CHECK_INTERVAL=30
+          EOF
+
+      - name: Build development image
+        if: ${{ inputs.test_type == 'build' || inputs.test_type == 'full' }}
+        run: |
+          echo "🔨 Building development Docker image..."
+          docker build \
+            -f ./docker/Dockerfile \
+            --build-arg PYTHON_VERSION=${{ inputs.python_version }} \
+            --tag ${{ env.IMAGE_NAME }}:${{ inputs.python_version }} \
+            --tag ${{ env.IMAGE_NAME }}:latest \
+            .
+
+          echo "✅ Build completed successfully"
+          docker images ${{ env.IMAGE_NAME }}
+
+      - name: Test image functionality
+        if: ${{ inputs.test_type == 'test' || inputs.test_type == 'full' }}
+        run: |
+          echo "🧪 Testing Docker image functionality..."
+
+          # Test Python environment
+          docker run --rm ${{ env.IMAGE_NAME }}:latest python --version
+
+          # Test module imports
+          docker run --rm ${{ env.IMAGE_NAME }}:latest python -c "
+          import sys
+          print(f'Python version: {sys.version}')
+
+          # Test critical imports
+          try:
+              import nwws
+              print('✅ NWWS module imported successfully')
+          except ImportError as e:
+              print(f'❌ Failed to import NWWS module: {e}')
+              sys.exit(1)
+
+          # Test dependencies
+          import asyncio
+          import logging
+          import json
+          import xml.etree.ElementTree as ET
+          print('✅ Core dependencies available')
+
+          # Test MQTT client
+          try:
+              import paho.mqtt.client as mqtt
+              print('✅ MQTT client available')
+          except ImportError as e:
+              print(f'❌ MQTT client not available: {e}')
+              sys.exit(1)
+
+          print('✅ All functionality tests passed')
+          "
+
+      - name: Integration tests with Docker Compose
+        if: ${{ inputs.test_type == 'integration' || inputs.test_type == 'full' }}
+        run: |
+          echo "🔗 Running integration tests..."
+
+          cd docker
+
+          # Start test environment
+          export COMPOSE_PROJECT_NAME=${{ env.COMPOSE_PROJECT_NAME }}
+          docker compose -f docker-compose.yml up -d mosquitto
+
+          # Wait for MQTT broker to be ready
+          echo "Waiting for MQTT broker to start..."
+          timeout 60s bash -c 'until docker compose -f docker-compose.yml exec mosquitto mosquitto_pub -h localhost -t test -m "ready"; do sleep 2; done'
+
+          # Test MQTT connectivity
+          echo "Testing MQTT connectivity..."
+          docker compose -f docker-compose.yml exec mosquitto mosquitto_pub -h localhost -t nwws/test -m "Integration test message"
+
+          # Start the application
+          docker run -d \
+            --name nwws2mqtt-test \
+            --network ${COMPOSE_PROJECT_NAME}_default \
+            --env-file ..//.env.test \
+            -e MQTT_BROKER_HOST=mosquitto \
+            ${{ env.IMAGE_NAME }}:latest
+
+          # Wait for application to start
+          echo "Waiting for application to start..."
+          sleep 15
+
+          # Check application health
+          if docker exec nwws2mqtt-test python -c "
+          import requests
+          import sys
+          try:
+              response = requests.get('http://localhost:8080/api/v1/health', timeout=10)
+              if response.status_code == 200:
+                  print('✅ Health check passed')
+              else:
+                  print(f'❌ Health check failed: {response.status_code}')
+                  sys.exit(1)
+          except Exception as e:
+              print(f'❌ Health check error: {e}')
+              sys.exit(1)
+          "; then
+            echo "✅ Integration tests passed"
+          else
+            echo "❌ Integration tests failed"
+            echo "Application logs:"
+            docker logs nwws2mqtt-test
+            exit 1
+          fi
+
+      - name: Performance and resource tests
+        if: ${{ inputs.test_type == 'full' }}
+        run: |
+          echo "📊 Running performance tests..."
+
+          # Test memory usage
+          echo "Memory usage test:"
+          docker stats --no-stream nwws2mqtt-test | grep -v CONTAINER
+
+          # Test startup time
+          echo "Testing startup time..."
+          start_time=$(date +%s)
+          docker run --rm \
+            --env-file .env.test \
+            ${{ env.IMAGE_NAME }}:latest \
+            python -c "print('Application started'); import sys; sys.exit(0)" &
+          wait
+          end_time=$(date +%s)
+          startup_time=$((end_time - start_time))
+          echo "Startup time: ${startup_time}s"
+
+          if [ $startup_time -gt 30 ]; then
+            echo "⚠️ Slow startup time detected (${startup_time}s)"
+          else
+            echo "✅ Startup time acceptable (${startup_time}s)"
+          fi
+
+      - name: Generate test report
+        if: always()
+        run: |
+          echo "## 🐳 Docker Development Test Report" >> $GITHUB_STEP_SUMMARY
+          echo "- **Test Type**: ${{ inputs.test_type }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Python Version**: ${{ inputs.python_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Test Date**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image**: ${{ env.IMAGE_NAME }}:${{ inputs.python_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Image details
+          if docker images ${{ env.IMAGE_NAME }} --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}" | grep -v REPOSITORY; then
+            echo "### Image Details" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            docker images ${{ env.IMAGE_NAME }} --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Container logs if available
+          if docker ps -a --format "{{.Names}}" | grep -q "nwws2mqtt-test"; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Application Logs (Last 50 lines)" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            docker logs --tail 50 nwws2mqtt-test 2>&1 || echo "No logs available" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Security scan
+        if: ${{ inputs.test_type == 'full' }}
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:latest
+          format: 'table'
+          output: 'trivy-results.txt'
+
+      - name: Upload security scan results
+        if: ${{ inputs.test_type == 'full' }}
+        continue-on-error: true
+        run: |
+          if [ -f trivy-results.txt ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Security Scan Results" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            head -50 trivy-results.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Cleanup test environment
+        if: always() && inputs.cleanup
+        run: |
+          echo "🧹 Cleaning up test environment..."
+
+          # Stop and remove test containers
+          docker stop nwws2mqtt-test 2>/dev/null || true
+          docker rm nwws2mqtt-test 2>/dev/null || true
+
+          # Cleanup compose environment
+          if [ -d docker ]; then
+            cd docker
+            export COMPOSE_PROJECT_NAME=${{ env.COMPOSE_PROJECT_NAME }}
+            docker compose down -v --remove-orphans 2>/dev/null || true
+          fi
+
+          # Remove test images if requested
+          if [ "${{ inputs.cleanup }}" == "true" ]; then
+            docker rmi ${{ env.IMAGE_NAME }}:latest 2>/dev/null || true
+            docker rmi ${{ env.IMAGE_NAME }}:${{ inputs.python_version }} 2>/dev/null || true
+          fi
+
+          # Remove test files
+          rm -f .env.test trivy-results.txt
+
+          echo "✅ Cleanup completed"
+
+      - name: Development usage instructions
+        if: always()
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🚀 Local Development Usage" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Quick Start" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "# Build and test locally" >> $GITHUB_STEP_SUMMARY
+          echo "./docker.sh build dev" >> $GITHUB_STEP_SUMMARY
+          echo "./docker.sh up" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# Run specific tests" >> $GITHUB_STEP_SUMMARY
+          echo "./docker.sh compose exec nwws2mqtt python -m pytest" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# Check logs" >> $GITHUB_STEP_SUMMARY
+          echo "./docker.sh logs" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# Open shell for debugging" >> $GITHUB_STEP_SUMMARY
+          echo "./docker.sh shell" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Available Scripts" >> $GITHUB_STEP_SUMMARY
+          echo "- **./docker.sh build [tag]**: Build Docker image" >> $GITHUB_STEP_SUMMARY
+          echo "- **./docker.sh up [profile]**: Start development environment" >> $GITHUB_STEP_SUMMARY
+          echo "- **./docker.sh test**: Run test suite" >> $GITHUB_STEP_SUMMARY
+          echo "- **./docker.sh clean**: Clean up all resources" >> $GITHUB_STEP_SUMMARY

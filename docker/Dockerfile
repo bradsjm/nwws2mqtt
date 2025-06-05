@@ -44,6 +44,7 @@ RUN uv sync --frozen --no-install-project --no-dev
 # Copy source code
 COPY src/ ./src/
 COPY README.md LICENSE ./
+COPY docker/healthcheck.py ./healthcheck.py
 
 # Install the project
 RUN uv sync --frozen --no-dev
@@ -89,16 +90,13 @@ WORKDIR /app
 # Copy virtual environment and application from builder
 COPY --from=builder --chown=appuser:appgroup /app/.venv /app/.venv
 COPY --from=builder --chown=appuser:appgroup /app/src /app/src
+COPY --from=builder --chown=appuser:appgroup /app/healthcheck.py /app/healthcheck.py
 
 # Switch to non-root user
 USER appuser
 
 # Expose ports
 EXPOSE 8080
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/v1/health')" || exit 1
 
 # Default command
 CMD ["python", "-m", "nwws"]
