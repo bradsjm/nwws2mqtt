@@ -1,8 +1,14 @@
 // Weather Office Map Component for NWWS2MQTT Dashboard
 // Interactive Leaflet map showing US Weather Forecast Offices with activity levels
+//
+// Recent Activity Highlighting:
+// - Office borders are highlighted with bright colors when they have recent activity
+// - "Recent" is defined as activity within the last polling interval (+ 50% buffer)
+// - Border colors complement existing activity level fill colors
+// - Highlighted borders are thicker (minimum 3px) for better visibility
 
 class WeatherOfficeMap {
-    constructor(containerId) {
+    constructor(containerId, options = {}) {
         this.containerId = containerId;
         this.map = null;
         this.officeLayers = null;
@@ -19,6 +25,7 @@ class WeatherOfficeMap {
                 [16, -170.0], // Southwest bound
                 [80.0, -47.0], // Northeast bound
             ],
+            ...options,
         };
 
         // RainViewer integration
@@ -28,6 +35,7 @@ class WeatherOfficeMap {
             opacity: 0.6,
             latestFrameTime: null,
             updateTimer: null,
+            minUpdateDelay: options.rainViewerMinDelay || 30000, // 30 seconds default
         };
 
         // Activity level styling
@@ -85,6 +93,21 @@ class WeatherOfficeMap {
             dashArray: "",
             fillOpacity: 0.8,
         };
+
+        // Recent activity border styles - bright colors for highlighting active offices
+        this.recentActivityBorderStyles = {
+            low: "#ea580c", // bright orange
+            medium: "#ff8c00", // bright orange
+            high: "#dc2626", // bright red
+            error: "#991b1b", // darker red
+        };
+
+        // Polling interval for recent activity detection (matches dashboard config)
+        // Used to determine what constitutes "recent" activity
+        this.pollingInterval = options.pollingInterval || 5000; // 5 seconds default
+
+        // Debug flag for enhanced recent activity logging
+        this.debugRecentActivity = options.debugRecentActivity || false;
     }
 
     async initialize() {
@@ -399,32 +422,26 @@ class WeatherOfficeMap {
     _createOfficePopup(properties, officeId) {
         const activity = this._getActivityData(officeId);
         const activityLevel = this._getActivityLevel(activity);
-
-        // Extract metrics with fallback field names
         const messages =
-            activity.messages_processed_total ??
-            activity.total_messages ??
-            activity.messages ??
-            activity.message_count ??
-            0;
-
+            activity.messages_processed_total ?? activity.messages_total ?? 0;
         const latency =
             activity.avg_processing_latency_ms ??
             activity.average_latency_ms ??
-            activity.latency_ms ??
-            activity.avg_latency ??
             0;
+        const errors = activity.errors_total ?? activity.error_count ?? 0;
 
-        const errors =
-            activity.errors_total ??
-            activity.total_errors ??
-            activity.errors ??
-            activity.error_count ??
-            0;
+        // Check for recent activity and format last activity time
+        const hasRecentActivity = this._hasRecentActivity(activity);
+        const lastActivityText = activity.last_activity
+            ? new Date(activity.last_activity * 1000).toLocaleTimeString()
+            : "Never";
+        const recentActivityIndicator = hasRecentActivity
+            ? '<span style="color: #22c55e; font-weight: bold;">● ACTIVE</span>'
+            : "";
 
         return `
             <div class="office-popup">
-                <h3>${properties.name || officeId}</h3>
+                <h3>${properties.name || officeId} ${recentActivityIndicator}</h3>
                 <div class="popup-content">
                     <div class="popup-row">
                         <span class="popup-label">Office ID:</span>
@@ -437,6 +454,10 @@ class WeatherOfficeMap {
                     <div class="popup-row">
                         <span class="popup-label">Activity Level:</span>
                         <span class="popup-value activity-${activityLevel}">${activityLevel.toUpperCase()}</span>
+                    </div>
+                    <div class="popup-row">
+                        <span class="popup-label">Last Activity:</span>
+                        <span class="popup-value">${lastActivityText}</span>
                     </div>
                     <div class="popup-row">
                         <span class="popup-label">Messages:</span>
@@ -477,8 +498,20 @@ class WeatherOfficeMap {
             const officeId = layer.officeId;
             const activity = this._getActivityData(officeId);
             const activityLevel = this._getActivityLevel(activity);
-            const style =
+            const baseStyle =
                 this.activityStyles[activityLevel] || this.defaultStyle;
+
+            // Check if office has recent activity and apply border highlighting
+            const hasRecentActivity = this._hasRecentActivity(activity);
+            const style = { ...baseStyle };
+
+            if (hasRecentActivity) {
+                style.color =
+                    this.recentActivityBorderStyles[activityLevel] ||
+                    this.recentActivityBorderStyles.idle;
+                style.weight = Math.max(baseStyle.weight, 5);
+                style.opacity = 1;
+            }
 
             layer.setStyle(style);
         }
@@ -503,42 +536,123 @@ class WeatherOfficeMap {
         const officeId = layer.officeId;
         const activity = this._getActivityData(officeId);
         const activityLevel = this._getActivityLevel(activity);
-        const style = this.activityStyles[activityLevel] || this.defaultStyle;
+        const baseStyle =
+            this.activityStyles[activityLevel] || this.defaultStyle;
+
+        // Check if office has recent activity and apply border highlighting
+        const hasRecentActivity = this._hasRecentActivity(activity);
+        const style = { ...baseStyle };
+
+        if (hasRecentActivity) {
+            style.color =
+                this.recentActivityBorderStyles[activityLevel] ||
+                this.recentActivityBorderStyles.idle;
+            style.weight = Math.max(baseStyle.weight, 3);
+            style.opacity = 1;
+        }
 
         layer.setStyle(style);
     }
 
     updateActivityLevels(activityData) {
-        this.activityData = activityData || {};
+        try {
+            this.activityData = activityData || {};
 
-        if (!this.officeLayers) {
-            return;
-        }
-
-        // Update each office layer with new activity data
-        this.officeLayers.eachLayer((layer) => {
-            const officeId = layer.officeId;
-            const activity = this._getActivityData(officeId);
-            const activityLevel = this._getActivityLevel(activity);
-
-            // Update style based on activity level
-            const style =
-                this.activityStyles[activityLevel] || this.defaultStyle;
-
-            layer.setStyle(style);
-
-            // Update popup layr content
-            const newContent = this._createOfficePopup(
-                layer.feature.properties,
-                officeId,
+            // Validate activity data structure
+            const validationIssues = this.validateActivityData(
+                this.activityData,
             );
-            layer.setPopupContent(newContent);
-
-            // Force redraw to ensure colors are applied
-            if (layer.redraw) {
-                layer.redraw();
+            if (validationIssues.length > 0) {
+                console.warn(
+                    "Activity data validation failed, but continuing with update",
+                );
             }
-        });
+
+            if (!this.officeLayers) {
+                console.warn("No office layers available for activity update");
+                return;
+            }
+
+            // Track existing office IDs to detect new ones
+            const existingOffices = new Set();
+            let hasNewOffices = false;
+            let updatedCount = 0;
+
+            // Update each existing office layer with new activity data
+            this.officeLayers.eachLayer((layer) => {
+                try {
+                    const officeId = layer.officeId;
+                    if (!officeId) {
+                        console.warn("Layer missing officeId, skipping");
+                        return;
+                    }
+
+                    existingOffices.add(officeId);
+
+                    const activity = this._getActivityData(officeId);
+                    const activityLevel = this._getActivityLevel(activity);
+
+                    // Get base style based on activity level
+                    const baseStyle =
+                        this.activityStyles[activityLevel] || this.defaultStyle;
+
+                    // Check if office has recent activity and apply border highlighting
+                    const hasRecentActivity = this._hasRecentActivity(activity);
+                    const style = { ...baseStyle };
+
+                    if (hasRecentActivity) {
+                        style.color =
+                            this.recentActivityBorderStyles[activityLevel] ||
+                            this.recentActivityBorderStyles.idle;
+                        style.weight = Math.max(baseStyle.weight, 3); // Ensure minimum thickness for visibility
+                        style.opacity = 1; // Ensure full opacity for recent activity borders
+                    }
+
+                    layer.setStyle(style);
+
+                    // Update popup layer content
+                    const newContent = this._createOfficePopup(
+                        layer.feature.properties,
+                        officeId,
+                    );
+                    layer.setPopupContent(newContent);
+
+                    // Force redraw to ensure colors are applied
+                    if (layer.redraw) {
+                        layer.redraw();
+                    }
+
+                    updatedCount++;
+                } catch (layerError) {
+                    console.error(
+                        `Error updating layer for office ${layer.officeId}:`,
+                        layerError,
+                    );
+                }
+            });
+
+            console.log(`Updated ${updatedCount} office layers`);
+
+            // Check for new offices in activity data that aren't on the map yet
+            for (const officeId in this.activityData) {
+                if (!existingOffices.has(officeId)) {
+                    console.log(
+                        `New office detected with activity: ${officeId}`,
+                    );
+                    hasNewOffices = true;
+                }
+            }
+
+            // If new offices are detected, trigger a reload event
+            // This allows the parent component to reload office boundaries
+            if (hasNewOffices) {
+                console.log("Triggering new offices detected event");
+                this._dispatchNewOfficesDetected();
+            }
+        } catch (error) {
+            console.error("Error in updateActivityLevels:", error);
+            // Continue execution to prevent breaking the map
+        }
     }
 
     _getActivityData(officeId) {
@@ -551,6 +665,122 @@ class WeatherOfficeMap {
         return {};
     }
 
+    /**
+     * Debug method to log activity data for troubleshooting
+     */
+    debugActivityData() {
+        console.group("Weather Office Map - Activity Data Debug");
+        console.log(
+            "Total offices with activity data:",
+            Object.keys(this.activityData).length,
+        );
+        console.log("Polling interval:", this.pollingInterval);
+        console.log("Current time (unix):", Math.floor(Date.now() / 1000));
+        console.log("Debug recent activity enabled:", this.debugRecentActivity);
+
+        const recentOffices = [];
+        const activeOffices = [];
+
+        for (const [officeId, activity] of Object.entries(this.activityData)) {
+            console.group(`Office: ${officeId}`);
+            console.log("Activity level:", activity.activity_level);
+            console.log("Last activity (unix):", activity.last_activity);
+            console.log(
+                "Last activity (readable):",
+                activity.last_activity
+                    ? new Date(activity.last_activity * 1000).toISOString()
+                    : "Never",
+            );
+            console.log(
+                "Messages total:",
+                activity.messages_processed_total ??
+                    activity.messages_total ??
+                    0,
+            );
+
+            const hasRecentActivity = this._hasRecentActivity(activity);
+            console.log("Has recent activity:", hasRecentActivity);
+
+            if (hasRecentActivity) {
+                recentOffices.push(officeId);
+            }
+
+            if (activity.activity_level && activity.activity_level !== "idle") {
+                activeOffices.push(officeId);
+            }
+
+            console.groupEnd();
+        }
+
+        console.log("Offices with recent activity:", recentOffices);
+        console.log("Offices with non-idle activity level:", activeOffices);
+        console.groupEnd();
+    }
+
+    /**
+     * Validate activity data structure and log any inconsistencies
+     */
+    validateActivityData(activityData) {
+        const issues = [];
+
+        if (!activityData || typeof activityData !== "object") {
+            issues.push("Activity data is not a valid object");
+            return issues;
+        }
+
+        for (const [officeId, activity] of Object.entries(activityData)) {
+            if (!activity || typeof activity !== "object") {
+                issues.push(
+                    `Office ${officeId}: activity data is not an object`,
+                );
+                continue;
+            }
+
+            // Check for expected fields
+            if (
+                activity.last_activity !== undefined &&
+                typeof activity.last_activity !== "number"
+            ) {
+                issues.push(
+                    `Office ${officeId}: last_activity should be a number (unix timestamp)`,
+                );
+            }
+
+            if (
+                activity.activity_level !== undefined &&
+                typeof activity.activity_level !== "string"
+            ) {
+                issues.push(
+                    `Office ${officeId}: activity_level should be a string`,
+                );
+            }
+
+            // Check for suspicious timestamps (future dates or very old dates)
+            if (activity.last_activity) {
+                const now = Date.now() / 1000;
+                const dayInSeconds = 24 * 60 * 60;
+
+                if (activity.last_activity > now + 60) {
+                    issues.push(
+                        `Office ${officeId}: last_activity is in the future`,
+                    );
+                }
+
+                if (activity.last_activity < now - 30 * dayInSeconds) {
+                    issues.push(
+                        `Office ${officeId}: last_activity is more than 30 days old`,
+                    );
+                }
+            }
+        }
+
+        if (issues.length > 0) {
+            console.warn("Activity data validation issues:", issues);
+        }
+
+        return issues;
+    }
+
     _getActivityLevel(activity) {
         // Use API-provided activity level if available
         if (activity.activity_level) {
@@ -558,6 +788,57 @@ class WeatherOfficeMap {
         }
 
         return "idle";
+    }
+
+    _hasRecentActivity(activity) {
+        // Check if office has had activity within the polling interval
+        // This is used to highlight borders of actively sending offices
+        if (!activity || !activity.last_activity) {
+            return false;
+        }
+
+        try {
+            const now = Date.now() / 1000; // Convert to seconds
+            const lastActivity = Number(activity.last_activity);
+
+            // Validate timestamp is reasonable
+            if (Number.isNaN(lastActivity) || lastActivity <= 0) {
+                console.warn(
+                    "Invalid last_activity timestamp:",
+                    activity.last_activity,
+                );
+                return false;
+            }
+
+            const timeSinceLastActivity = now - lastActivity;
+
+            // Consider activity "recent" if it's within the polling interval
+            // Add a small buffer (1.5x) to account for timing variations and network delays
+            const recentActivityThreshold = (this.pollingInterval / 1000) * 1.5;
+
+            const isRecent = timeSinceLastActivity <= recentActivityThreshold;
+
+            // Only log for debugging when activity is recent or when debugging is explicitly enabled
+            if (isRecent || this.debugRecentActivity) {
+                console.log("Recent activity check:", {
+                    last_activity: lastActivity,
+                    last_activity_date: new Date(
+                        lastActivity * 1000,
+                    ).toISOString(),
+                    now: now,
+                    now_date: new Date(now * 1000).toISOString(),
+                    timeSinceLastActivity: timeSinceLastActivity,
+                    recentActivityThreshold: recentActivityThreshold,
+                    pollingInterval: this.pollingInterval,
+                    isRecent: isRecent,
+                });
+            }
+
+            return isRecent;
+        } catch (error) {
+            console.error("Error checking recent activity:", error);
+            return false;
+        }
     }
 
     focusOnOffice(officeId) {
@@ -590,10 +871,20 @@ class WeatherOfficeMap {
     }
 
     _dispatchOfficeSelected(officeId) {
-        // Dispatch custom event for office selection
         const event = new CustomEvent("officeSelected", {
             detail: { officeId },
         });
+        document.dispatchEvent(event);
+    }
+
+    _dispatchNewOfficesDetected() {
+        const event = new CustomEvent("newOfficesDetected", {
+            detail: {
+                activityData: this.activityData,
+                timestamp: Date.now(),
+            },
+        });
+        console.log("Dispatching newOfficesDetected event");
         document.dispatchEvent(event);
     }
 
@@ -636,6 +927,7 @@ class WeatherOfficeMap {
             opacity: 0.6,
             latestFrameTime: null,
             updateTimer: null,
+            minUpdateDelay: 30000, // Reset to default
         };
 
         if (this.map) {
@@ -781,14 +1073,12 @@ class WeatherOfficeMap {
         const now = new Date();
         const timeUntilUpdate = nextUpdateTime.getTime() - now.getTime();
 
-        if (timeUntilUpdate > 0) {
-            this.rainViewer.updateTimer = setTimeout(async () => {
-                await this._updateRainViewerFrame();
-            }, timeUntilUpdate);
-        } else {
-            // If we're already past the update time, check immediately
-            this._updateRainViewerFrame();
-        }
+        // Ensure minimum delay to prevent infinite loops
+        const delay = Math.max(timeUntilUpdate, this.rainViewer.minUpdateDelay);
+
+        this.rainViewer.updateTimer = setTimeout(async () => {
+            await this._updateRainViewerFrame();
+        }, delay);
     }
 
     async _updateRainViewerFrame() {
@@ -856,6 +1146,141 @@ class WeatherOfficeMap {
             console.warn("Failed to refresh RainViewer:", error);
             return false;
         }
+    }
+
+    /**
+     * Utility methods for debugging and manual control
+     */
+
+    // Toggle debug mode for recent activity logging
+    setDebugMode(enabled = true) {
+        this.debugRecentActivity = enabled;
+        console.log(
+            `Debug mode for recent activity: ${enabled ? "enabled" : "disabled"}`,
+        );
+    }
+
+    // Get summary of current map state
+    getMapSummary() {
+        const summary = {
+            totalOffices: this.officeLayers
+                ? Object.keys(this.activityData).length
+                : 0,
+            officesOnMap: 0,
+            officesWithRecentActivity: 0,
+            officesByActivityLevel: {
+                idle: 0,
+                low: 0,
+                medium: 0,
+                high: 0,
+                error: 0,
+            },
+            selectedOffice: this.selectedOffice?.officeId || null,
+            rainViewerEnabled: this.rainViewer.enabled,
+            pollingInterval: this.pollingInterval,
+        };
+
+        if (this.officeLayers) {
+            this.officeLayers.eachLayer((layer) => {
+                summary.officesOnMap++;
+                const activity = this._getActivityData(layer.officeId);
+                const level = this._getActivityLevel(activity);
+                summary.officesByActivityLevel[level]++;
+
+                if (this._hasRecentActivity(activity)) {
+                    summary.officesWithRecentActivity++;
+                }
+            });
+        }
+
+        return summary;
+    }
+
+    // Force update of a specific office
+    forceUpdateOffice(officeId) {
+        if (!this.officeLayers) {
+            console.warn("No office layers available");
+            return false;
+        }
+
+        let found = false;
+        this.officeLayers.eachLayer((layer) => {
+            if (layer.officeId === officeId) {
+                found = true;
+                const activity = this._getActivityData(officeId);
+                const activityLevel = this._getActivityLevel(activity);
+                const baseStyle =
+                    this.activityStyles[activityLevel] || this.defaultStyle;
+                const hasRecentActivity = this._hasRecentActivity(activity);
+                const style = { ...baseStyle };
+
+                if (hasRecentActivity) {
+                    style.color =
+                        this.recentActivityBorderStyles[activityLevel] ||
+                        this.recentActivityBorderStyles.idle;
+                    style.weight = Math.max(baseStyle.weight, 3);
+                    style.opacity = 1;
+                }
+
+                layer.setStyle(style);
+                layer.setPopupContent(
+                    this._createOfficePopup(layer.feature.properties, officeId),
+                );
+
+                console.log(`Forced update for office: ${officeId}`);
+            }
+        });
+
+        if (!found) {
+            console.warn(`Office ${officeId} not found on map`);
+        }
+
+        return found;
+    }
+
+    // Get detailed info about a specific office
+    getOfficeInfo(officeId) {
+        const activity = this._getActivityData(officeId);
+        const layer = this.getOfficeLayer(officeId);
+
+        return {
+            officeId: officeId,
+            onMap: !!layer,
+            activity: activity,
+            activityLevel: this._getActivityLevel(activity),
+            hasRecentActivity: this._hasRecentActivity(activity),
+            isSelected: this.selectedOffice?.officeId === officeId,
+            properties: layer?.feature?.properties || null,
+        };
+    }
+
+    // Manual trigger for new offices detection
+    checkForNewOffices() {
+        if (!this.officeLayers) {
+            console.warn("No office layers available");
+            return [];
+        }
+
+        const existingOffices = new Set();
+        this.officeLayers.eachLayer((layer) => {
+            existingOffices.add(layer.officeId);
+        });
+
+        const newOffices = [];
+        for (const officeId in this.activityData) {
+            if (!existingOffices.has(officeId)) {
+                newOffices.push(officeId);
+            }
+        }
+
+        if (newOffices.length > 0) {
+            console.log("New offices detected:", newOffices);
+            this._dispatchNewOfficesDetected();
+        } else {
+            console.log("No new offices detected");
+        }
+
+        return newOffices;
     }
 }
 

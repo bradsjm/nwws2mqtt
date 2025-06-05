@@ -34,7 +34,6 @@ class WeatherDashboard {
 
             // Initialize components
             await this._initializeMap();
-            await this._initializeCharts();
             await this._loadInitialData();
 
             // Setup RainViewer controls
@@ -53,7 +52,9 @@ class WeatherDashboard {
     async _initializeMap() {
         try {
             // Initialize Leaflet map
-            this.weatherMap = new WeatherOfficeMap("weather-map");
+            this.weatherMap = new WeatherOfficeMap("weather-map", {
+                pollingInterval: this.config.updateInterval,
+            });
             await this.weatherMap.initialize();
 
             // Load office boundaries
@@ -119,21 +120,6 @@ class WeatherDashboard {
         } catch (error) {
             console.error("Sparklines initialization failed:", error);
             this.hasSparklines = false;
-        }
-    }
-
-    async _initializeCharts() {
-        try {
-            // Initialize Chart.js charts
-            this.charts.throughput =
-                MetricsChartFactory.createThroughputTimeline(
-                    "throughput-chart",
-                );
-            this.charts.latency =
-                MetricsChartFactory.createLatencyHistogram("latency-chart");
-        } catch (error) {
-            console.error("Charts initialization failed:", error);
-            throw error;
         }
     }
 
