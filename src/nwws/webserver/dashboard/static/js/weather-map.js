@@ -26,6 +26,8 @@ class WeatherOfficeMap {
             layer: null,
             enabled: false,
             opacity: 0.6,
+            latestFrameTime: null,
+            updateTimer: null,
         };
 
         // Activity level styling
@@ -623,10 +625,17 @@ class WeatherOfficeMap {
             this.map.removeLayer(this.rainViewer.layer);
         }
 
+        // Clear the update timer
+        if (this.rainViewer.updateTimer) {
+            clearTimeout(this.rainViewer.updateTimer);
+        }
+
         this.rainViewer = {
             layer: null,
             enabled: false,
             opacity: 0.6,
+            latestFrameTime: null,
+            updateTimer: null,
         };
 
         if (this.map) {
@@ -707,7 +716,9 @@ class WeatherOfficeMap {
             if (data?.radar?.past && data.radar.past.length > 0) {
                 // Get the most recent radar frame
                 const latestFrame = data.radar.past[data.radar.past.length - 1];
+                this.rainViewer.latestFrameTime = latestFrame.time;
                 this._createRainViewerLayer(latestFrame.time);
+                this._scheduleRainViewerUpdate();
             }
         } catch (error) {
             console.warn("Failed to initialize RainViewer:", error);
@@ -748,6 +759,103 @@ class WeatherOfficeMap {
         }
 
         return this.rainViewer.enabled;
+    }
+
+    _scheduleRainViewerUpdate() {
+        // Clear any existing timer
+        if (this.rainViewer.updateTimer) {
+            clearTimeout(this.rainViewer.updateTimer);
+        }
+
+        if (!this.rainViewer.latestFrameTime) {
+            return;
+        }
+
+        // Calculate time until 10 minutes after the latest frame
+        const latestFrameDate = new Date(
+            this.rainViewer.latestFrameTime * 1000,
+        );
+        const nextUpdateTime = new Date(
+            latestFrameDate.getTime() + 10 * 60 * 1000,
+        );
+        const now = new Date();
+        const timeUntilUpdate = nextUpdateTime.getTime() - now.getTime();
+
+        if (timeUntilUpdate > 0) {
+            this.rainViewer.updateTimer = setTimeout(async () => {
+                await this._updateRainViewerFrame();
+            }, timeUntilUpdate);
+        } else {
+            // If we're already past the update time, check immediately
+            this._updateRainViewerFrame();
+        }
+    }
+
+    async _updateRainViewerFrame() {
+        try {
+            const response = await fetch(
+                "https://api.rainviewer.com/public/weather-maps.json",
+            );
+            const data = await response.json();
+
+            if (data?.radar?.past && data.radar.past.length > 0) {
+                const latestFrame = data.radar.past[data.radar.past.length - 1];
+
+                // Only update if we have a newer frame
+                if (latestFrame.time > this.rainViewer.latestFrameTime) {
+                    this.rainViewer.latestFrameTime = latestFrame.time;
+                    this._createRainViewerLayer(latestFrame.time);
+                    console.log(
+                        "RainViewer frame updated:",
+                        new Date(latestFrame.time * 1000),
+                    );
+                }
+
+                // Schedule the next update
+                this._scheduleRainViewerUpdate();
+            }
+        } catch (error) {
+            console.warn("Failed to update RainViewer frame:", error);
+            // Retry in 5 minutes on error
+            if (this.rainViewer.updateTimer) {
+                clearTimeout(this.rainViewer.updateTimer);
+            }
+            this.rainViewer.updateTimer = setTimeout(
+                async () => {
+                    await this._updateRainViewerFrame();
+                },
+                5 * 60 * 1000,
+            );
+        }
+    }
+
+    async refreshRainViewer() {
+        // Manual refresh method for rain viewer data
+        try {
+            const response = await fetch(
+                "https://api.rainviewer.com/public/weather-maps.json",
+            );
+            const data = await response.json();
+
+            if (data?.radar?.past && data.radar.past.length > 0) {
+                const latestFrame = data.radar.past[data.radar.past.length - 1];
+
+                // Always update regardless of timestamp for manual refresh
+                this.rainViewer.latestFrameTime = latestFrame.time;
+                this._createRainViewerLayer(latestFrame.time);
+                this._scheduleRainViewerUpdate();
+
+                console.log(
+                    "RainViewer manually refreshed:",
+                    new Date(latestFrame.time * 1000),
+                );
+
+                return true;
+            }
+        } catch (error) {
+            console.warn("Failed to refresh RainViewer:", error);
+            return false;
+        }
     }
 }
 
