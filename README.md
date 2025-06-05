@@ -1,16 +1,108 @@
 # NWWS2MQTT
 
-A gateway service that connects to the NWWS-OI (National Weather Service Weather Wire Service - Open Interface) XMPP feed and publishes weather product data to various output destinations including MQTT.
+A comprehensive, production-ready gateway service that connects to the NWWS-OI (National Weather Service Weather Wire Service - Open Interface) XMPP feed and processes weather product data through a flexible pipeline architecture. The system transforms, enriches, and publishes weather data to multiple output destinations including MQTT brokers, databases, and custom endpoints.
 
 ## Features
 
-- **Pluggable Output System**: Support for multiple output destinations
-- **MQTT Support**: Publish weather data to MQTT brokers
-- **Console Output**: Default fallback to console output
-- **Robust Connection Management**: Automatic reconnection with exponential backoff
-- **Comprehensive Statistics**: Real-time monitoring of connection, message processing, and output handler performance
-- **Comprehensive Logging**: Structured logging with configurable levels
-- **Graceful Shutdown**: Clean disconnection and resource cleanup
+### Core Architecture
+- **Pipeline Framework**: Flexible, configurable processing pipeline with filters, transformers, and outputs
+- **Event-Driven Processing**: Immutable event processing with comprehensive metadata tracking
+- **Component Registry**: Pluggable components with automatic discovery and registration
+- **Configuration Management**: YAML/JSON configuration with environment variable overrides
+
+### Data Processing
+- **Weather Data Parsing**: Advanced NOAA text product parsing with pyiem integration
+- **Geographic Enrichment**: Automatic geocoding, county/zone lookup, and coordinate extraction
+- **XML Processing**: Schema-aware XML parsing for CAP alerts and structured data
+- **Data Validation**: Comprehensive input validation and error handling
+- **Format Conversion**: Convert between different weather data formats and schemas
+
+### Output System
+- **Multiple Output Handlers**: MQTT, database, console, webhook, and custom outputs
+- **Batch Processing**: Efficient batch operations for high-throughput scenarios
+- **Connection Management**: Automatic reconnection with exponential backoff for all outputs
+- **Error Recovery**: Sophisticated error handling with retry logic and dead letter queues
+
+### Monitoring & Observability
+- **Real-time Dashboard**: Web-based monitoring interface with live statistics
+- **Prometheus Metrics**: Complete metrics collection for monitoring systems
+- **Statistics Collection**: Detailed performance and processing statistics
+- **Health Checks**: Comprehensive health monitoring for all components
+- **Structured Logging**: JSON-structured logging with contextual information
+
+### Advanced Features
+- **Duplicate Detection**: Time-window based duplicate filtering
+- **Message Filtering**: Configurable message filtering (test messages, content-based)
+- **Geographic Indexing**: Geohash-based geographic topic generation
+- **Performance Optimization**: Caching, connection pooling, and async processing
+- **Web API**: RESTful API for system control and monitoring
+- **WebSocket Streaming**: Real-time data streaming for dashboards
+
+## Package Architecture
+
+The NWWS2MQTT system is organized into focused packages, each handling specific aspects of weather data processing:
+
+### 📦 [**Filters**](src/nwws/filters/README.md)
+Pipeline event filtering for early rejection of unwanted data:
+- **DuplicateFilter**: Time-window based duplicate detection and removal
+- **TestMessageFilter**: Filtering of test messages (AWIPSID='TSTMSG')
+- **Custom Filter Framework**: Easy development of domain-specific filters
+
+### 📦 [**Transformers**](src/nwws/transformers/README.md)
+Data transformation and enrichment components:
+- **NoaaPortTransformer**: NOAA text product parsing with geographic enrichment
+- **XmlTransformer**: Schema-aware XML processing for CAP alerts and structured data
+- **Geographic Processing**: Coordinate extraction, geocoding, and UGC resolution
+- **Metadata Extraction**: Automated metadata extraction and normalization
+
+### 📦 [**Outputs**](src/nwws/outputs/README.md)
+Pluggable output handlers for publishing processed data:
+- **MQTTOutput**: Production-ready MQTT publishing with SSL/TLS support
+- **DatabaseOutput**: Persistent storage with batch operations and connection pooling
+- **ConsoleOutput**: Development and debugging output with JSON formatting
+- **Custom Output Framework**: Easy integration with external services and APIs
+
+### 📦 [**Pipeline**](src/nwws/pipeline/README.md)
+Core processing framework with event-driven architecture:
+- **Event Processing**: Immutable event handling with comprehensive metadata
+- **Component Management**: Automatic registration and lifecycle management
+- **Error Handling**: Sophisticated error recovery and retry strategies
+- **Statistics Collection**: Real-time performance monitoring and reporting
+
+### 📦 [**Receiver**](src/nwws/receiver/README.md)
+XMPP client for NWWS-OI connectivity:
+- **WeatherWire**: Robust XMPP client with automatic reconnection
+- **Message Processing**: Real-time weather message ingestion and parsing
+- **Connection Management**: Health monitoring and connection statistics
+- **Performance Optimization**: Message queuing and batch processing
+
+### 📦 [**Metrics**](src/nwws/metrics/README.md)
+Comprehensive metrics collection and export:
+- **Prometheus Integration**: Full Prometheus metrics export support
+- **Custom Metrics**: Counters, gauges, and histograms for application monitoring
+- **Performance Tracking**: Detailed timing and throughput measurements
+- **Health Monitoring**: Component health and system resource tracking
+
+### 📦 [**Models**](src/nwws/models/README.md)
+Data structures and configuration management:
+- **Configuration Models**: Validated settings with environment variable support
+- **Weather Data Models**: Structured representations of weather products
+- **Event Models**: Pipeline event definitions with type safety
+- **Validation Framework**: Comprehensive input/output validation
+
+### 📦 [**Utils**](src/nwws/utils/README.md)
+Shared utilities and helper functions:
+- **Geographic Services**: Geocoding, county/zone lookup, and coordinate processing
+- **Data Converters**: Format conversion and data normalization utilities
+- **Geohash Generation**: Geographic indexing and topic generation
+- **Logging Configuration**: Centralized logging setup and structured output
+
+### 📦 [**Webserver**](src/nwws/webserver/README.md)
+Web interface and API services:
+- **Real-time Dashboard**: Live monitoring with interactive charts and maps
+- **REST API**: Complete system control and monitoring API
+- **WebSocket Services**: Real-time data streaming for dashboards
+- **Metrics Endpoint**: Prometheus-compatible metrics exposure
 
 ## Installation
 
@@ -34,25 +126,31 @@ See the [Docker documentation](docker/README.md) for detailed Docker usage.
 
 ### Option 2: Local Development
 
-**Note**: Local development requires installing complex scientific computing dependencies (GDAL, HDF5, NetCDF, GEOS, PROJ, ECCODES) on your system. On macOS, use `brew install gdal hdf5 netcdf geos proj eccodes`. On Ubuntu/Debian, use `apt-get install libgdal-dev libhdf5-dev libnetcdf-dev libgeos-dev libproj-dev libeccodes-dev`. Windows users should consider using WSL2 or Docker.
+**Note**: Local development requires installing complex scientific computing dependencies. The system requires Python 3.12+ and several system libraries.
 
+**macOS:**
+```bash
+brew install gdal hdf5 netcdf geos proj eccodes
+```
+
+**Ubuntu/Debian:**
+```bash
+apt-get install libgdal-dev libhdf5-dev libnetcdf-dev libgeos-dev libproj-dev libeccodes-dev
+```
+
+**Installation Steps:**
 1. Clone the repository:
 ```bash
 git clone <repository-url>
 cd nwws2mqtt
 ```
 
-2. Install system dependencies (example for macOS):
-```bash
-brew install gdal hdf5 netcdf geos proj eccodes
-```
-
-3. Install Python dependencies:
+2. Install Python dependencies:
 ```bash
 uv sync
 ```
 
-4. Copy the example environment file and configure:
+3. Copy the example environment file and configure:
 ```bash
 cp .env.example .env
 # Edit .env with your configuration
@@ -60,7 +158,14 @@ cp .env.example .env
 
 ## Configuration
 
-### Environment Variables
+The system supports multiple configuration methods with a clear precedence hierarchy:
+
+1. **Pipeline Configuration Files** (YAML/JSON) - Recommended for complex setups
+2. **Environment Variables** - Great for containerized deployments
+3. **Command Line Arguments** - Useful for development and testing
+4. **Default Values** - Sensible defaults for quick setup
+
+### Core Environment Variables
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
@@ -69,204 +174,464 @@ cp .env.example .env
 | `NWWS_SERVER` | NWWS-OI server | nwws-oi.weather.gov | No |
 | `NWWS_PORT` | NWWS-OI port | 5222 | No |
 | `LOG_LEVEL` | Logging level | INFO | No |
-| `LOG_FILE` | Log file path | - | No |
+| `LOG_FORMAT` | Log format (json/text) | json | No |
 | `OUTPUT_HANDLERS` | Comma-separated list of output handlers | console | No |
-| `STATS_INTERVAL` | Statistics logging interval in seconds | 60 | No |
-| `METRICS_ENABLED` | Enable Prometheus metrics endpoint | true | No |
-| `METRICS_PORT` | Port for Prometheus metrics endpoint | 8080 | No |
-| `METRICS_UPDATE_INTERVAL` | Metrics update interval in seconds | 30 | No |
-| `DASHBOARD_ENABLED` | Enable web dashboard | false | No |
-| `DASHBOARD_PORT` | Port for web dashboard | 8081 | No |
 
-### Output Handlers
+### Pipeline Configuration
+
+Create a `pipeline.yaml` file for complex configurations:
+
+```yaml
+pipeline:
+  pipeline_id: "weather-processing"
+  
+  filters:
+    - type: "DuplicateFilter"
+      config:
+        window_seconds: 300.0
+    - type: "TestMessageFilter"
+      config: {}
+  
+  transformers:
+    - type: "NoaaPortTransformer"
+      config:
+        enable_geocoding: true
+        include_counties: true
+        include_zones: true
+    - type: "XmlTransformer"
+      config:
+        validate_xml: true
+  
+  outputs:
+    - type: "MQTTOutput"
+      config:
+        broker: "mqtt.example.com"
+        port: 1883
+        topic_prefix: "nwws"
+        qos: 1
+    - type: "DatabaseOutput"
+      config:
+        connection_string: "postgresql://user:pass@localhost/weather"
+        batch_size: 100
+
+receiver:
+  username: "${NWWS_USERNAME}"
+  password: "${NWWS_PASSWORD}"
+  server: "nwws-oi.weather.gov"
+  auto_reconnect: true
+
+webserver:
+  enable_dashboard: true
+  enable_metrics: true
+  port: 8081
+
+metrics:
+  enabled: true
+  port: 8080
+  update_interval: 30
+```
+
+### Output Handler Configuration
 
 #### Console Output
-The default output handler that prints JSON data to stdout.
-
-Configuration:
 ```bash
+# Simple console output
 OUTPUT_HANDLERS=console
+
+# Console with pretty printing
+CONSOLE_PRETTY_PRINT=true
+CONSOLE_COLOR_OUTPUT=true
 ```
 
 #### MQTT Output
-Publishes weather data to an MQTT broker.
-
-Configuration:
 ```bash
+# Basic MQTT configuration
 OUTPUT_HANDLERS=mqtt
-# or combine with console
-OUTPUT_HANDLERS=console,mqtt
-
-# MQTT Settings
 MQTT_BROKER=your.mqtt.broker.com
 MQTT_PORT=1883
 MQTT_USERNAME=mqtt_user
 MQTT_PASSWORD=mqtt_password
 MQTT_TOPIC_PREFIX=nwws
+
+# Advanced MQTT settings
 MQTT_QOS=1
 MQTT_RETAIN=false
-MQTT_CLIENT_ID=nwws-oi-client
+MQTT_SSL_ENABLED=true
+MQTT_CLIENT_ID=nwws2mqtt-instance-1
 ```
 
-MQTT topics are structured as: `{MQTT_TOPIC_PREFIX}/{product_id}`
+**MQTT Topic Structure:**
+```
+{topic_prefix}/{product_type}/{source}/{awipsid}
+# Examples:
+nwws/forecast/KBOU/FXUS61
+nwws/warning/KDEN/WWUS81
+nwws/geo/9xj648/warning  # Geographic topics
+```
 
-For example: `nwws/FXUS61KBOU`
-
-## Statistics
-
-The application includes comprehensive statistics collection and logging that provides insights into:
-
-### Connection Statistics
-- Application uptime and connection status
-- Total connections and disconnections
-- Reconnection attempts and authentication failures
-- Ping/pong latency monitoring
-
-### Message Processing Statistics
-- Total messages received, processed, and failed
-- Processing success and error rates
-- Product type distribution (e.g., FXUS61, WWUS81)
-- Source distribution (e.g., KBOU, KDEN)
-- AFOS code distribution
-- Processing error categorization
-
-### Output Handler Statistics
-- Per-handler publishing success rates
-- Connection status and error counts
-- Publishing performance metrics
-
-### Statistics Configuration
-
-Statistics are logged at regular intervals (default: 60 seconds) and can be configured with:
-
+#### Database Output
 ```bash
-STATS_INTERVAL=60  # Log statistics every 60 seconds
+OUTPUT_HANDLERS=database
+DATABASE_URL=postgresql://user:pass@localhost:5432/weather
+DATABASE_BATCH_SIZE=100
+DATABASE_CREATE_TABLES=true
 ```
 
-### Sample Statistics Output
+## Data Processing Pipeline
+
+The system processes weather data through a sophisticated pipeline architecture:
+
+### 1. Message Reception (Receiver Package)
+- **XMPP Connection**: Robust connection to NWWS-OI with automatic reconnection
+- **Message Parsing**: Real-time parsing of incoming weather messages
+- **Health Monitoring**: Connection status and performance tracking
+
+### 2. Event Filtering (Filters Package)
+- **Duplicate Detection**: Time-window based duplicate message filtering
+- **Test Message Filtering**: Automatic removal of test messages
+- **Custom Filters**: Configurable filtering based on content, source, or metadata
+
+### 3. Data Transformation (Transformers Package)
+- **NOAA Text Parsing**: Advanced parsing of weather text products
+- **Geographic Enrichment**: Automatic geocoding and geographic data enhancement
+- **XML Processing**: Structured processing of CAP alerts and XML data
+- **Metadata Extraction**: Comprehensive metadata extraction and normalization
+
+### 4. Output Publishing (Outputs Package)
+- **MQTT Publishing**: Real-time publishing to MQTT brokers with topic structure
+- **Database Storage**: Persistent storage with batch operations
+- **Multiple Destinations**: Simultaneous publishing to multiple output handlers
+
+### Example Data Flow
 
 ```
-2025-05-26 10:30:00 | INFO | === NWWS2MQTT Statistics === app_uptime=2.5h connection_status=CONNECTED connection_uptime=2.5h total_connections=1 reconnect_attempts=0 outstanding_pings=0
+Raw NWWS Message → Parse & Validate → Filter (Duplicates/Tests) → 
+Transform (Parse/Enrich) → Publish (MQTT/DB/Console)
+```
 
-2025-05-26 10:30:00 | INFO | Message Processing Stats total_received=1250 total_processed=1247 total_failed=3 success_rate=99.8% error_rate=0.2% messages_per_minute=8.3 processing_per_minute=8.3
+**Input:**
+```
+FXUS61 KBOU 151200
+ZFPBOU
+Zone Forecast Product for Colorado
+National Weather Service Boulder CO
+1200 PM MST Fri Dec 15 2023
+...
+```
 
-2025-05-26 10:30:00 | INFO | Output Handler: mqtt type=mqtt status=CONNECTED published=1247 failed=0 success_rate=100.0% connection_errors=0
+**Output:**
+```json
+{
+  "id": "FXUS61KBOU20231215120000",
+  "awipsid": "FXUS61",
+  "source": "KBOU",
+  "product_type": "forecast",
+  "timestamp": "2023-12-15T12:00:00Z",
+  "geographic_data": {
+    "coordinates": [[40.0150, -105.2705]],
+    "counties": ["CO-013", "CO-059"],
+    "zones": ["COZ040", "COZ039"],
+    "geohash": ["9xj648", "9xj61b"]
+  },
+  "metadata": {
+    "urgency": "routine",
+    "certainty": "likely",
+    "scope": "public"
+  },
+  "text_content": "Zone Forecast Product..."
+}
+```
 
-2025-05-26 10:30:00 | INFO | Top Product Types products={'FXUS61': 45, 'WWUS81': 32, 'FXUS62': 28}
+## Monitoring & Statistics
 
-2025-05-26 10:30:00 | INFO | Top Sources sources={'KBOU': 23, 'KDEN': 18, 'KGJT': 15}
+### Real-time Dashboard
+Access the web dashboard at `http://localhost:8081` (when enabled) for:
+- **Live Statistics**: Real-time processing metrics and performance charts
+- **Connection Status**: XMPP connection health and uptime monitoring  
+- **Geographic Visualization**: Map-based visualization of weather data sources
+- **Error Tracking**: Live error logs and failure analysis
+- **System Health**: Resource usage and component status
+
+### Statistics Collection
+
+The system provides comprehensive statistics across all components:
+
+**Connection Statistics:**
+- Application uptime and connection status
+- Reconnection attempts and authentication metrics
+- Network latency and ping/pong monitoring
+
+**Processing Statistics:**
+- Message throughput and processing rates
+- Success/error rates and failure categorization
+- Product type and source distribution
+- Geographic data processing metrics
+
+**Performance Statistics:**
+- CPU and memory usage tracking
+- Processing latency and queue depths
+- Cache hit rates and optimization metrics
+
+**Configuration:**
+```bash
+STATS_INTERVAL=60           # Statistics logging interval
+DASHBOARD_ENABLED=true      # Enable web dashboard
+DASHBOARD_PORT=8081        # Dashboard port
 ```
 
 ## Usage
 
-1. Configure your environment variables in `.env`
-2. Run the application:
+### Quick Start
+
+1. **Configure Environment:**
 ```bash
-python app.py
+cp .env.example .env
+# Edit .env with your NWWS-OI credentials
 ```
 
-The application will:
-1. Connect to the NWWS-OI XMPP server
-2. Join the weather data conference room
-3. Process incoming weather products
-4. Publish structured data to configured output handlers
+2. **Run with Docker (Recommended):**
+```bash
+./docker.sh init
+./docker.sh up
+```
 
-## Data Format
+3. **Or run locally:**
+```bash
+uv run python -m nwws
+```
 
-Weather products are published as JSON-serialized data containing:
-- Product metadata (ID, timestamp, etc.)
-- Parsed weather data
-- Geographic information
-- Text content
+### Advanced Usage
+
+**With Pipeline Configuration:**
+```bash
+# Create pipeline.yaml configuration file
+uv run python -m nwws --config pipeline.yaml
+```
+
+**With Specific Components:**
+```bash
+# Enable dashboard and metrics
+DASHBOARD_ENABLED=true METRICS_ENABLED=true uv run python -m nwws
+
+# Custom output handlers
+OUTPUT_HANDLERS=mqtt,database,console uv run python -m nwws
+```
+
+**Development Mode:**
+```bash
+# Run with debug logging and auto-reload
+LOG_LEVEL=DEBUG uv run python -m nwws --reload
+```
+
+### System Operation
+
+The application performs the following workflow:
+
+1. **Initialize Components**: Load configuration and initialize all pipeline components
+2. **Connect to NWWS-OI**: Establish XMPP connection to weather data feed
+3. **Start Processing Pipeline**: Begin processing incoming weather messages
+4. **Real-time Processing**: 
+   - Filter duplicate and test messages
+   - Parse and enrich weather data
+   - Publish to configured output destinations
+5. **Monitoring**: Collect statistics and provide web dashboard access
+6. **Graceful Shutdown**: Clean disconnection and resource cleanup on termination
+
+### Accessing Services
+
+- **Dashboard**: http://localhost:8081 (if enabled)
+- **Metrics**: http://localhost:8080/metrics (Prometheus format)
+- **API**: http://localhost:8081/api/v1/ (REST API)
+- **Health Check**: http://localhost:8081/health
+
+## Data Processing Examples
+
+### Input: Raw NWWS-OI Message
+```xml
+<message from='nwws@conference.nwws-oi.weather.gov/KBOU' 
+         to='username@nwws-oi.weather.gov' 
+         type='groupchat'>
+  <body>
+FXUS61 KBOU 151200
+ZFPBOU
+Zone Forecast Product for Colorado
+National Weather Service Boulder CO
+1200 PM MST Fri Dec 15 2023
+
+COZ040-160600-
+Boulder and Jefferson Counties Below 6000 Feet-
+1200 PM MST Fri Dec 15 2023
+
+.TODAY...Partly cloudy. High around 45.
+.TONIGHT...Mostly clear. Low around 25.
+  </body>
+  <x xmlns='nwws:msg'>
+    <timestamp>2023-12-15T19:00:00Z</timestamp>
+    <awipsID>FXUS61</awipsID>
+    <source>KBOU</source>
+  </x>
+</message>
+```
+
+### Output: Processed Weather Data
+```json
+{
+  "id": "FXUS61KBOU20231215120000",
+  "awipsid": "FXUS61",
+  "source": "KBOU",
+  "wmo_id": "FXUS61KBOU",
+  "timestamp": "2023-12-15T19:00:00Z",
+  "product_type": "forecast",
+  "text_content": "Zone Forecast Product for Colorado...",
+  
+  "parsed_data": {
+    "product_name": "Zone Forecast Product for Colorado",
+    "issuing_office": "National Weather Service Boulder CO",
+    "issuance_time": "2023-12-15T19:00:00Z",
+    "urgency": "routine",
+    "certainty": "likely",
+    "scope": "public"
+  },
+  
+  "geographic_data": {
+    "ugc_codes": ["COZ040"],
+    "counties": [
+      {
+        "code": "CO-013",
+        "name": "Boulder County",
+        "state": "Colorado"
+      },
+      {
+        "code": "CO-059", 
+        "name": "Jefferson County",
+        "state": "Colorado"
+      }
+    ],
+    "zones": [
+      {
+        "code": "COZ040",
+        "name": "Boulder and Jefferson Counties Below 6000 Feet",
+        "type": "forecast"
+      }
+    ],
+    "coordinates": [
+      {"lat": 40.0150, "lon": -105.2705},
+      {"lat": 39.7392, "lon": -104.9903}
+    ],
+    "geohash": ["9xj648", "9xj61b"],
+    "bounding_box": {
+      "north": 40.0150,
+      "south": 39.7392,
+      "east": -104.9903,
+      "west": -105.2705
+    }
+  },
+  
+  "processing_metadata": {
+    "received_timestamp": "2023-12-15T19:00:01.234Z",
+    "processed_timestamp": "2023-12-15T19:00:01.456Z",
+    "processing_duration_ms": 222,
+    "pipeline_id": "main-pipeline",
+    "transformer_versions": {
+      "noaa_parser": "1.23.0",
+      "geo_enricher": "2.1.0"
+    }
+  }
+}
+```
+
+### MQTT Topic Examples
+```
+# Primary product topic
+nwws/forecast/KBOU/FXUS61
+
+# Geographic topics (multiple precision levels)
+nwws/geo/9xj6/forecast      # Lower precision (larger area)
+nwws/geo/9xj648/forecast    # Higher precision (smaller area)
+
+# County-based topics
+nwws/county/CO-013/forecast
+nwws/county/CO-059/forecast
+
+# Zone-based topics  
+nwws/zone/COZ040/forecast
+```
+
+## Monitoring & Observability
 
 ### Prometheus Metrics
 
-The application exposes metrics in Prometheus format via a standard `/metrics` endpoint. This enables integration with monitoring systems like Prometheus, Grafana, and other observability tools.
-
-#### Available Metrics
-
-| Metric Name | Type | Description | Labels |
-|-------------|------|-------------|---------|
-| `nwws2mqtt_application_info` | Info | Application version and start time | - |
-| `nwws2mqtt_application_uptime_seconds` | Gauge | Application uptime in seconds | - |
-| `nwws2mqtt_connection_status` | Gauge | XMPP connection status (1=connected, 0=disconnected) | - |
-| `nwws2mqtt_connection_uptime_seconds` | Gauge | Current connection uptime in seconds | - |
-| `nwws2mqtt_connection_total_connections` | Counter | Total number of connections made | - |
-| `nwws2mqtt_connection_reconnect_attempts_total` | Counter | Total number of reconnection attempts | - |
-| `nwws2mqtt_messages_received_total` | Counter | Total number of messages received | - |
-| `nwws2mqtt_messages_processed_total` | Counter | Total number of messages successfully processed | - |
-| `nwws2mqtt_messages_failed_total` | Counter | Total number of messages that failed processing | `error_type` |
-| `nwws2mqtt_messages_published_total` | Counter | Total number of messages published to output handlers | - |
-| `nwws2mqtt_message_processing_success_rate` | Gauge | Message processing success rate as percentage | - |
-| `nwws2mqtt_wmo_codes_total` | Counter | Total count by product type | `wmo_code` |
-| `nwws2mqtt_sources_total` | Counter | Total count by source | `source` |
-| `nwws2mqtt_afos_codes_total` | Counter | Total count by AFOS code | `afos_code` |
-| `nwws2mqtt_output_handler_status` | Gauge | Output handler connection status | `handler_name`, `handler_type` |
-| `nwws2mqtt_output_handler_published_total` | Counter | Total messages published by output handler | `handler_name`, `handler_type` |
-| `nwws2mqtt_output_handler_success_rate` | Gauge | Output handler success rate as percentage | `handler_name`, `handler_type` |
-
-## 🔧 Configuration
-
-### Statistics Configuration
+The application exposes comprehensive metrics in Prometheus format at `/metrics`:
 
 ```bash
-STATS_INTERVAL=60  # Log statistics every 60 seconds (default)
+# Enable metrics (default: true)
+METRICS_ENABLED=true
+METRICS_PORT=8080
+METRICS_UPDATE_INTERVAL=30
 ```
 
-### Prometheus Metrics Configuration
+**Key Metrics Categories:**
+- **Application Metrics**: Uptime, version, and health status
+- **Connection Metrics**: XMPP connection status and performance
+- **Processing Metrics**: Message throughput, success rates, and error counts  
+- **Output Metrics**: Publishing success rates per output handler
+- **Performance Metrics**: Processing latency, queue depths, and resource usage
+- **Geographic Metrics**: Distribution by weather office and geographic region
 
-```bash
-METRICS_ENABLED=true          # Enable Prometheus metrics endpoint (default: true)
-METRICS_PORT=8080            # Port for metrics endpoint (default: 8080)
-METRICS_UPDATE_INTERVAL=30   # How often to update metrics in seconds (default: 30)
-```
+**Example Metrics:**
+```prometheus
+# Message processing
+nwws2mqtt_messages_processed_total{source="KBOU"} 1250
+nwws2mqtt_processing_duration_seconds_bucket{le="0.1"} 1200
 
-### Accessing Metrics
+# Connection health
+nwws2mqtt_connection_status 1
+nwws2mqtt_connection_uptime_seconds 3600
 
-Once the application is running, metrics are available at:
-```
-http://localhost:8080/metrics
-```
-
-You can test the endpoint with curl:
-```bash
-curl http://localhost:8080/metrics
+# Output handler performance
+nwws2mqtt_output_published_total{handler="mqtt",type="MQTTOutput"} 1247
+nwws2mqtt_output_success_rate{handler="mqtt",type="MQTTOutput"} 0.998
 ```
 
 ### Web Dashboard
 
-The application includes an optional real-time web dashboard for monitoring application health and statistics.
-
-#### Configuration
+Access the real-time monitoring dashboard:
 
 ```bash
-DASHBOARD_ENABLED=true       # Enable web dashboard (default: false)
-DASHBOARD_PORT=8081         # Port for web dashboard (default: 8081)
+# Enable dashboard
+DASHBOARD_ENABLED=true
+DASHBOARD_PORT=8081
+DASHBOARD_THEME=dark
+
+# Access at http://localhost:8081
 ```
 
-#### Accessing the Dashboard
+**Dashboard Features:**
+- **Live Statistics**: Real-time charts and metrics updates
+- **Geographic Visualization**: Interactive maps showing weather data distribution
+- **Connection Monitoring**: XMPP health and reconnection tracking
+- **Performance Analytics**: Throughput, latency, and error analysis
+- **Configuration View**: Current system configuration display
+- **Log Streaming**: Live log viewing with filtering capabilities
 
-Once enabled, the dashboard is available at:
+### Health Checks
+
+Comprehensive health monitoring endpoints:
+
+```bash
+# Basic health check
+curl http://localhost:8081/health
+
+# Detailed component health
+curl http://localhost:8081/health/detailed
+
+# API status
+curl http://localhost:8081/api/v1/status
 ```
-http://localhost:8081
-```
-
-The dashboard provides:
-- **Real-time Statistics**: Live connection status, message processing metrics, and error rates
-- **Connection Monitoring**: XMPP connection health, uptime, and reconnection statistics  
-- **Message Processing**: Processing throughput, success/error rates, and recent message activity
-- **Output Handler Status**: Status and performance of all configured output handlers
-- **Product Distribution**: Top product types, sources, and AFOS codes
-- **Error Tracking**: Recent processing errors and failure analysis
-
-The dashboard automatically refreshes every 5 seconds to provide up-to-date information.
 
 ### Integration with Monitoring Systems
 
-#### Prometheus Configuration
-
-Add this job to your `prometheus.yml`:
-
+**Prometheus Configuration:**
 ```yaml
 scrape_configs:
   - job_name: 'nwws2mqtt'
@@ -276,16 +641,105 @@ scrape_configs:
     metrics_path: /metrics
 ```
 
-#### Grafana Dashboard
+**Grafana Queries:**
+```promql
+# Processing rate
+rate(nwws2mqtt_messages_processed_total[5m])
 
-The metrics can be visualized in Grafana. Key queries for monitoring:
+# Error rate  
+rate(nwws2mqtt_messages_failed_total[5m]) / rate(nwws2mqtt_messages_received_total[5m])
 
-- **Connection Status**: `nwws2mqtt_connection_status`
-- **Message Processing Rate**: `rate(nwws2mqtt_messages_processed_total[5m])`
-- **Error Rate**: `rate(nwws2mqtt_messages_failed_total[5m])`
-- **Success Rate**: `nwws2mqtt_message_processing_success_rate`
-- **Top Product Types**: `topk(10, nwws2mqtt_wmo_total)`
+# 99th percentile latency
+histogram_quantile(0.99, rate(nwws2mqtt_processing_duration_seconds_bucket[5m]))
+```
 
+**Alerting Rules:**
+```yaml
+groups:
+  - name: nwws2mqtt
+    rules:
+      - alert: HighErrorRate
+        expr: rate(nwws2mqtt_messages_failed_total[5m]) / rate(nwws2mqtt_messages_received_total[5m]) > 0.05
+        for: 2m
+      
+      - alert: ConnectionDown  
+        expr: nwws2mqtt_connection_status == 0
+        for: 1m
+```
+
+
+## Development
+
+### Package Development
+
+Each package includes comprehensive documentation and development guidelines:
+
+- **[Filters Development](src/nwws/filters/README.md)**: Creating custom message filters
+- **[Transformers Development](src/nwws/transformers/README.md)**: Building data transformation components  
+- **[Outputs Development](src/nwws/outputs/README.md)**: Implementing custom output handlers
+- **[Pipeline Development](src/nwws/pipeline/README.md)**: Pipeline framework and event processing
+- **[Utils Development](src/nwws/utils/README.md)**: Shared utilities and helper functions
+
+### Testing
+
+```bash
+# Run all tests
+uv run pytest
+
+# Run specific test categories
+uv run pytest -m unit        # Unit tests only
+uv run pytest -m integration # Integration tests only
+uv run pytest -m slow        # Performance tests
+
+# Run with coverage
+uv run pytest --cov=src/nwws --cov-report=html
+```
+
+### Code Quality
+
+```bash
+# Format code
+uv run ruff format
+
+# Lint code  
+uv run ruff check --fix
+
+# Type checking
+uv run basedpyright
+```
+
+### Contributing
+
+1. **Fork the repository** and create a feature branch
+2. **Follow the coding standards** defined in `.github/copilot-instructions.md`
+3. **Add comprehensive tests** for new functionality
+4. **Update documentation** including package README files
+5. **Ensure all checks pass** (tests, linting, type checking)
+6. **Submit a pull request** with detailed description
+
+## Architecture Overview
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   NWWS-OI       │    │   Receiver       │    │   Pipeline      │
+│   XMPP Feed     │───▶│   Package        │───▶│   Framework     │
+│                 │    │   (WeatherWire)  │    │                 │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+                                                        │
+                                                        ▼
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Monitoring    │    │   Webserver      │    │   Processing    │
+│   & Metrics     │◀───│   Package        │    │   Stages        │
+│                 │    │   (Dashboard)    │    │                 │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+                                                        │
+                                                        ▼
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   MQTT Broker   │    │   Output         │    │   Filters       │
+│   Database      │◀───│   Handlers       │◀───│   Transformers  │
+│   Custom APIs   │    │   Package        │    │   Components    │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+```
 
 ## License
 
