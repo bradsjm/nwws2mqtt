@@ -43,18 +43,6 @@ def create_metrics_endpoints(router: APIRouter, registry: MetricRegistry) -> Non
             logger.error("Failed to get dashboard metrics", error=str(e))
             raise HTTPException(status_code=500, detail="Failed to retrieve metrics") from e
 
-    @router.post("/api/metrics/populate-test-data")
-    async def populate_test_metrics() -> JSONResponse:  # type: ignore[no-untyped-def]
-        """Populate registry with test metrics for development purposes."""
-        try:
-            from nwws.webserver.dashboard.utils.test_data import populate_test_metrics
-
-            populate_test_metrics(registry)
-            return JSONResponse(content={"status": "success", "message": "Test metrics created"})
-        except Exception as e:
-            logger.error("Failed to create test metrics", error=str(e))
-            raise HTTPException(status_code=500, detail="Failed to create test metrics") from e
-
 
 def _transform_metrics_for_dashboard(metrics: list[Any]) -> dict[str, Any]:
     """Transform raw metrics into dashboard-friendly format.

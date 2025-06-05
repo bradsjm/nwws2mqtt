@@ -1,5 +1,4 @@
 // NWWS2MQTT Dashboard JavaScript
-// Main dashboard controller with real-time WebSocket updates
 
 class WeatherDashboard {
     constructor(initialData = {}) {
@@ -341,24 +340,24 @@ class WeatherDashboard {
         officeListElement.innerHTML = offices
             .map(
                 (office) => `
-            <div class="office-item" data-office-id="${office.id}">
-                <div>
-                    <div class="office-name">${office.name}</div>
-                    <div class="office-details">${office.region} • ${office.id}</div>
+                <div class="office-item" data-office-id="${office.id}">
+                    <div>
+                        <div class="office-name">${office.name}</div>
+                        <div class="office-details">${office.region} • ${office.id}</div>
+                    </div>
+                    <div class="office-status" id="status-${office.id}"></div>
                 </div>
-                <div class="office-status" id="status-${office.id}"></div>
-            </div>
-        `,
+            `,
             )
             .join("");
 
         // Add click handlers
-        officeListElement.querySelectorAll(".office-item").forEach((item) => {
+        for (const item of officeListElement.querySelectorAll(".office-item")) {
             item.addEventListener("click", (e) => {
                 const officeId = e.currentTarget.dataset.officeId;
                 this._focusOnOffice(officeId);
             });
-        });
+        }
     }
 
     _updateConnectionStatus(status) {
@@ -472,11 +471,11 @@ class WeatherDashboard {
 
         if (Math.abs(percentChange) < 1) {
             return "stable";
-        } else if (percentChange > 0) {
-            return `+${Math.abs(percentChange).toFixed(1)}%`;
-        } else {
-            return `-${Math.abs(percentChange).toFixed(1)}%`;
         }
+        if (percentChange > 0) {
+            return `+${Math.abs(percentChange).toFixed(1)}%`;
+        }
+        return `-${Math.abs(percentChange).toFixed(1)}%`;
     }
 
     _updateLastUpdateTime() {
@@ -498,9 +497,9 @@ class WeatherDashboard {
 
     _highlightOffice(officeId) {
         // Remove previous highlights
-        document.querySelectorAll(".office-item").forEach((item) => {
+        for (const item of document.querySelectorAll(".office-item")) {
             item.classList.remove("highlighted");
-        });
+        }
 
         // Highlight selected office
         const officeElement = document.querySelector(
@@ -539,17 +538,17 @@ class WeatherDashboard {
     }
 
     _formatNumber(value, decimals = 0) {
-        if (typeof value !== "number" || isNaN(value)) {
+        if (typeof value !== "number" || Number.isNaN(value)) {
             return "--";
         }
 
         if (value >= 1000000) {
-            return (value / 1000000).toFixed(1) + "M";
-        } else if (value >= 1000) {
-            return (value / 1000).toFixed(1) + "K";
-        } else {
-            return value.toFixed(decimals);
+            return `${(value / 1000000).toFixed(1)}M`;
         }
+        if (value >= 1000) {
+            return `${(value / 1000).toFixed(1)}K`;
+        }
+        return value.toFixed(decimals);
     }
 
     _getTrendClass(trendValue) {
@@ -565,7 +564,7 @@ class WeatherDashboard {
         const errorTemplate = document.getElementById("error-template");
         if (errorTemplate) {
             const errorElement = errorTemplate.cloneNode(true);
-            errorElement.id = "error-" + Date.now();
+            errorElement.id = `error-${Date.now()}`;
             errorElement.style.display = "block";
 
             const errorText = errorElement.querySelector("#error-text");
@@ -635,9 +634,9 @@ function calculateTimeDifference(timestamp) {
 
     if (diff < 60) {
         return `${Math.floor(diff)}s ago`;
-    } else if (diff < 3600) {
-        return `${Math.floor(diff / 60)}m ago`;
-    } else {
-        return `${Math.floor(diff / 3600)}h ago`;
     }
+    if (diff < 3600) {
+        return `${Math.floor(diff / 60)}m ago`;
+    }
+    return `${Math.floor(diff / 3600)}h ago`;
 }
