@@ -49,11 +49,12 @@
             .dashboard-container {
                 display: grid;
                 grid-template-areas:
-                    "header header header"
-                    "sidebar main main"
-                    "sidebar footer footer";
-                grid-template-rows: 80px 1fr 60px;
-                grid-template-columns: 300px 1fr 1fr;
+                    "header header header header"
+                    "sidebar metrics metrics metrics"
+                    "sidebar weather-map weather-map weather-map"
+                    "footer footer footer footer";
+                grid-template-rows: 80px auto 1fr 60px;
+                grid-template-columns: 200px 1fr 1fr 1fr;
                 min-height: 100vh;
                 gap: 1rem;
                 padding: 1rem;
@@ -72,7 +73,7 @@
             }
 
             .header h1 {
-                font-size: 1.5rem;
+                font-size: 1.3rem;
                 font-weight: 600;
             }
 
@@ -110,25 +111,27 @@
                 grid-area: sidebar;
                 background: white;
                 border-radius: 8px;
-                padding: 1.5rem;
+                padding: 1rem;
                 box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
                 overflow-y: auto;
+                max-width: 200px;
+            }
+
+            .sidebar h3 {
+                color: #1f2937;
+                font-size: 1rem;
+                font-weight: 600;
+                margin-bottom: 1rem;
             }
 
             .main-content {
-                grid-area: main;
-                display: grid;
-                grid-template-areas:
-                    "metrics-overview metrics-overview"
-                    "weather-map charts-panel";
-                grid-template-rows: auto 1fr;
-                gap: 1rem;
+                display: contents;
             }
 
             .metrics-overview {
-                grid-area: metrics-overview;
+                grid-area: metrics;
                 display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                grid-template-columns: repeat(4, 1fr);
                 gap: 1rem;
             }
 
@@ -213,6 +216,34 @@
                 background: white;
                 border-radius: 8px;
                 box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                position: relative;
+                padding: 1rem;
+            }
+
+            .rain-toggle {
+                position: absolute;
+                top: 100px;
+                left: 27px;
+                z-index: 1000;
+                background: rgba(255, 255, 255, 0.9);
+                border: 1px solid #d1d5db;
+                border-radius: 6px;
+                padding: 0.5rem;
+                cursor: pointer;
+                font-size: 1.2rem;
+                transition: all 0.2s ease;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            }
+
+            .rain-toggle:hover {
+                background: rgba(255, 255, 255, 1);
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+                transform: translateY(-1px);
+            }
+
+            .rain-toggle:active {
+                transform: translateY(0);
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
             }
 
             .charts-panel {
@@ -238,13 +269,14 @@
 
             #weather-map {
                 width: 100%;
-                height: 500px;
+                height: 450px;
                 border-radius: 8px;
             }
 
             .office-list {
-                max-height: 400px;
+                max-height: 550px;
                 overflow-y: auto;
+                overflow-x: hidden;
             }
 
             .office-item {
@@ -253,17 +285,55 @@
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
+                min-width: 0;
+            }
+
+            .office-item > div:first-child {
+                flex: 1;
+                min-width: 0;
+                margin-right: 0.5rem;
             }
 
             .office-name {
                 font-weight: 500;
+                margin-left: 5px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            .office-details {
+                margin-left: 5px;
+                font-size: 0.75rem;
+                color: #6b7280;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                margin-top: 0.25rem;
             }
 
             .office-status {
+                margin-right: 5px;
                 width: 8px;
                 height: 8px;
                 border-radius: 50%;
                 background-color: #10b981;
+            }
+
+            .office-status.activity-high {
+                background-color: #ef4444;
+            }
+
+            .office-status.activity-medium {
+                background-color: #f59e0b;
+            }
+
+            .office-status.activity-low {
+                background-color: #10b981;
+            }
+
+            .office-status.activity-idle {
+                background-color: #9ca3af;
             }
 
             .connection-status {
@@ -295,7 +365,7 @@
                 padding: 1rem 2rem;
                 box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
                 display: flex;
-                justify-content: between;
+                justify-content: space-between;
                 align-items: center;
                 font-size: 0.9rem;
                 color: #6b7280;
@@ -340,30 +410,41 @@
             @media (max-width: 1200px) {
                 .dashboard-container {
                     grid-template-areas:
-                        "header"
-                        "main"
-                        "sidebar"
-                        "footer";
-                    grid-template-columns: 1fr;
-                    grid-template-rows: auto 1fr auto auto;
+                        "header header"
+                        "sidebar metrics"
+                        "sidebar weather-map"
+                        "footer footer";
+                    grid-template-columns: 180px 1fr;
+                    grid-template-rows: 80px auto 1fr 60px;
                 }
 
-                .main-content {
-                    grid-template-areas:
-                        "metrics-overview"
-                        "weather-map"
-                        "charts-panel";
-                    grid-template-columns: 1fr;
+                .metrics-overview {
+                    grid-template-columns: repeat(2, 1fr);
+                }
+
+                .sidebar {
+                    max-width: 180px;
                 }
             }
 
             @media (max-width: 768px) {
-                .metrics-overview {
-                    grid-template-columns: 1fr 1fr;
+                .dashboard-container {
+                    grid-template-areas:
+                        "header"
+                        "metrics"
+                        "sidebar"
+                        "weather-map"
+                        "footer";
+                    grid-template-columns: 1fr;
+                    grid-template-rows: 80px auto auto 1fr 60px;
                 }
 
-                .charts-panel {
-                    grid-template-rows: auto auto;
+                .metrics-overview {
+                    grid-template-columns: repeat(2, 1fr);
+                }
+
+                .sidebar {
+                    max-width: none;
                 }
 
                 #weather-map {
@@ -371,11 +452,42 @@
                 }
 
                 .metric-value {
-                    font-size: 1.75rem;
+                    font-size: 1.5rem;
                 }
 
                 .metric-sparkline {
                     height: 30px;
+                }
+            }
+
+            @media (max-width: 480px) {
+                .metrics-overview {
+                    grid-template-columns: 1fr;
+                }
+
+                .metric-card {
+                    padding: 1rem;
+                }
+
+                .metric-value {
+                    font-size: 1.25rem;
+                }
+
+                .dashboard-container {
+                    padding: 0.5rem;
+                    gap: 0.5rem;
+                }
+
+                .header {
+                    padding: 1rem;
+                }
+
+                .sidebar {
+                    padding: 0.75rem;
+                }
+
+                #weather-map {
+                    height: 250px;
                 }
             }
         </style>
@@ -399,17 +511,12 @@
 
             <!-- Sidebar -->
             <aside class="sidebar">
-                <h3>Weather Forecast Offices</h3>
+                <h3>Weather Offices</h3>
                 <div class="office-list" id="office-list">
                     <div class="loading">
                         <div class="spinner"></div>
                         Loading offices...
                     </div>
-                </div>
-
-                <div class="connection-status">
-                    <div class="connection-indicator" id="ws-indicator"></div>
-                    <span id="ws-status">Starting...</span>
                 </div>
             </aside>
 

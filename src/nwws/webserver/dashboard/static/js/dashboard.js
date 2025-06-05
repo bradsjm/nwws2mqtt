@@ -252,6 +252,9 @@ class WeatherDashboard {
         // Update map activity
         this._updateMapActivity(data);
 
+        // Update office status indicators
+        this._updateOfficeStatusIndicators(data);
+
         // Update footer timestamp
         this._updateLastUpdateTime();
     }
@@ -445,6 +448,71 @@ class WeatherDashboard {
         }
     }
 
+    _updateOfficeStatusIndicators(data) {
+        if (!data.by_wmo) return;
+
+        // Helper function to determine activity level (matches weather map logic)
+        const getActivityLevel = (activity) => {
+            // Use API-provided activity level if available
+            if (activity?.activity_level) {
+                return activity.activity_level;
+            }
+            return "idle";
+        };
+
+        // Get all office elements in the sidebar
+        const allOfficeElements = document.querySelectorAll(
+            '.office-status[id^="status-"]',
+        );
+        let updatedCount = 0;
+
+        // Update offices with activity data
+        for (const officeId of Object.keys(data.by_wmo)) {
+            const statusElement = document.getElementById(`status-${officeId}`);
+            if (statusElement) {
+                const activity = data.by_wmo[officeId];
+                const activityLevel = getActivityLevel(activity);
+
+                // Remove existing activity classes
+                const oldClasses = statusElement.className;
+                statusElement.className = statusElement.className.replace(
+                    /\bactivity-\w+\b/g,
+                    "",
+                );
+
+                // Add new activity class
+                statusElement.classList.add(`activity-${activityLevel}`);
+
+                updatedCount++;
+
+                // Debug logging for the first few updates
+                if (updatedCount <= 3) {
+                    console.log(
+                        `Updated office ${officeId}: ${oldClasses} -> ${statusElement.className}, activity level: ${activityLevel}`,
+                    );
+                }
+            }
+        }
+
+        // Set any offices without activity data to idle
+        for (const element of allOfficeElements) {
+            const officeId = element.id.replace("status-", "");
+            if (!data.by_wmo[officeId]) {
+                // Remove existing activity classes
+                element.className = element.className.replace(
+                    /\bactivity-\w+\b/g,
+                    "",
+                );
+                // Set to idle
+                element.classList.add("activity-idle");
+            }
+        }
+
+        if (updatedCount > 0) {
+            console.log(`Updated ${updatedCount} office status indicators`);
+        }
+    }
+
     _updateOfficeList() {
         const officeListElement = document.getElementById("office-list");
         if (!officeListElement || !this.officeData) return;
@@ -461,7 +529,7 @@ class WeatherDashboard {
                         <div class="office-name">${office.name}</div>
                         <div class="office-details">${office.region} • ${office.id}</div>
                     </div>
-                    <div class="office-status" id="status-${office.id}"></div>
+                    <div class="office-status activity-idle" id="status-${office.id}"></div>
                 </div>
             `,
             )

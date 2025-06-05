@@ -17,13 +17,13 @@ class WeatherOfficeMap {
 
         // Map configuration
         this.config = {
-            center: [37.7749, -95.7129], // Centered on the continental US
+            //center: [35, -130], // Centered on the continental US
             zoom: 4,
             minZoom: 4,
             maxZoom: 10,
             maxBounds: [
-                [16, -170.0], // Southwest bound
-                [80.0, -47.0], // Northeast bound
+                [12, -180.0], // Southwest bound
+                [70.0, -50.0], // Northeast bound
             ],
             ...options,
         };
@@ -206,7 +206,7 @@ class WeatherOfficeMap {
         legend.onAdd = () => {
             const div = L.DomUtil.create("div", "activity-legend");
             div.innerHTML = `
-                <div class="legend-title">Office Activity</div>
+                <div class="legend-title">WMO Activity</div>
                 <div class="legend-item">
                     <div class="legend-color legend-color-high"></div>
                     <span>High (100+ msgs)</span>
@@ -424,10 +424,6 @@ class WeatherOfficeMap {
         const activityLevel = this._getActivityLevel(activity);
         const messages =
             activity.messages_processed_total ?? activity.messages_total ?? 0;
-        const latency =
-            activity.avg_processing_latency_ms ??
-            activity.average_latency_ms ??
-            0;
         const errors = activity.errors_total ?? activity.error_count ?? 0;
 
         // Check for recent activity and format last activity time
@@ -462,10 +458,6 @@ class WeatherOfficeMap {
                     <div class="popup-row">
                         <span class="popup-label">Messages:</span>
                         <span class="popup-value">${messages}</span>
-                    </div>
-                    <div class="popup-row">
-                        <span class="popup-label">Avg Latency:</span>
-                        <span class="popup-value">${latency.toFixed(1)}ms</span>
                     </div>
                     <div class="popup-row">
                         <span class="popup-label">Errors:</span>
