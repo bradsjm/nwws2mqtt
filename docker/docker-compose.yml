@@ -46,8 +46,6 @@ services:
             timeout: 10s
             retries: 3
             start_period: 40s
-        depends_on:
-            - mosquitto
         profiles:
             - default
 
@@ -66,8 +64,8 @@ services:
         networks:
             - nwws-network
         profiles:
-            - default
             - mqtt
+            - full
 
     # Optional PostgreSQL database for metrics/data storage
     postgres:
@@ -86,21 +84,6 @@ services:
             - nwws-network
         profiles:
             - database
-            - full
-
-    # Optional Redis for caching/session storage
-    redis:
-        image: redis:7-alpine
-        container_name: redis
-        restart: unless-stopped
-        ports:
-            - "6379:6379"
-        volumes:
-            - redis-data:/data
-        networks:
-            - nwws-network
-        profiles:
-            - cache
             - full
 
     # Optional Prometheus for metrics collection
@@ -156,6 +139,5 @@ volumes:
     mosquitto-data:
     mosquitto-logs:
     postgres-data:
-    redis-data:
     prometheus-data:
     grafana-data:

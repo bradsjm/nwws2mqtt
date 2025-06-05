@@ -33,76 +33,22 @@ A comprehensive, production-ready gateway service that connects to the NWWS-OI (
 ### Advanced Features
 - **Duplicate Detection**: Time-window based duplicate filtering
 - **Message Filtering**: Configurable message filtering (test messages, content-based)
-- **Geographic Indexing**: Geohash-based geographic topic generation
 - **Performance Optimization**: Caching, connection pooling, and async processing
 - **Web API**: RESTful API for system control and monitoring
-- **WebSocket Streaming**: Real-time data streaming for dashboards
 
 ## Package Architecture
 
 The NWWS2MQTT system is organized into focused packages, each handling specific aspects of weather data processing:
 
-### 📦 [**Filters**](src/nwws/filters/README.md)
-Pipeline event filtering for early rejection of unwanted data:
-- **DuplicateFilter**: Time-window based duplicate detection and removal
-- **TestMessageFilter**: Filtering of test messages (AWIPSID='TSTMSG')
-- **Custom Filter Framework**: Easy development of domain-specific filters
-
-### 📦 [**Transformers**](src/nwws/transformers/README.md)
-Data transformation and enrichment components:
-- **NoaaPortTransformer**: NOAA text product parsing with geographic enrichment
-- **XmlTransformer**: Schema-aware XML processing for CAP alerts and structured data
-- **Geographic Processing**: Coordinate extraction, geocoding, and UGC resolution
-- **Metadata Extraction**: Automated metadata extraction and normalization
-
-### 📦 [**Outputs**](src/nwws/outputs/README.md)
-Pluggable output handlers for publishing processed data:
-- **MQTTOutput**: Production-ready MQTT publishing with SSL/TLS support
-- **DatabaseOutput**: Persistent storage with batch operations and connection pooling
-- **ConsoleOutput**: Development and debugging output with JSON formatting
-- **Custom Output Framework**: Easy integration with external services and APIs
-
-### 📦 [**Pipeline**](src/nwws/pipeline/README.md)
-Core processing framework with event-driven architecture:
-- **Event Processing**: Immutable event handling with comprehensive metadata
-- **Component Management**: Automatic registration and lifecycle management
-- **Error Handling**: Sophisticated error recovery and retry strategies
-- **Statistics Collection**: Real-time performance monitoring and reporting
-
-### 📦 [**Receiver**](src/nwws/receiver/README.md)
-XMPP client for NWWS-OI connectivity:
-- **WeatherWire**: Robust XMPP client with automatic reconnection
-- **Message Processing**: Real-time weather message ingestion and parsing
-- **Connection Management**: Health monitoring and connection statistics
-- **Performance Optimization**: Message queuing and batch processing
-
-### 📦 [**Metrics**](src/nwws/metrics/README.md)
-Comprehensive metrics collection and export:
-- **Prometheus Integration**: Full Prometheus metrics export support
-- **Custom Metrics**: Counters, gauges, and histograms for application monitoring
-- **Performance Tracking**: Detailed timing and throughput measurements
-- **Health Monitoring**: Component health and system resource tracking
-
-### 📦 [**Models**](src/nwws/models/README.md)
-Data structures and configuration management:
-- **Configuration Models**: Validated settings with environment variable support
-- **Weather Data Models**: Structured representations of weather products
-- **Event Models**: Pipeline event definitions with type safety
-- **Validation Framework**: Comprehensive input/output validation
-
-### 📦 [**Utils**](src/nwws/utils/README.md)
-Shared utilities and helper functions:
-- **Geographic Services**: Geocoding, county/zone lookup, and coordinate processing
-- **Data Converters**: Format conversion and data normalization utilities
-- **Geohash Generation**: Geographic indexing and topic generation
-- **Logging Configuration**: Centralized logging setup and structured output
-
-### 📦 [**Webserver**](src/nwws/webserver/README.md)
-Web interface and API services:
-- **Real-time Dashboard**: Live monitoring with interactive charts and maps
-- **REST API**: Complete system control and monitoring API
-- **WebSocket Services**: Real-time data streaming for dashboards
-- **Metrics Endpoint**: Prometheus-compatible metrics exposure
+- 📦 [**Filters**](src/nwws/filters/README.md): Pipeline event filtering for early rejection of unwanted data:
+- 📦 [**Transformers**](src/nwws/transformers/README.md): Data transformation and enrichment components:
+- 📦 [**Outputs**](src/nwws/outputs/README.md):Pluggable output handlers for publishing processed data:
+- 📦 [**Pipeline**](src/nwws/pipeline/README.md): Core processing framework with event-driven architecture:
+- 📦 [**Receiver**](src/nwws/receiver/README.md):XMPP client for NWWS-OI connectivity
+- 📦 [**Metrics**](src/nwws/metrics/README.md): omprehensive metrics collection and export
+- 📦 [**Models**](src/nwws/models/README.md): Data structures and configuration management
+- 📦 [**Utils**](src/nwws/utils/README.md): Shared utilities and helper functions
+- 📦 [**Webserver**](src/nwws/webserver/README.md): Web interface and API services
 
 ## Installation
 
@@ -184,14 +130,14 @@ Create a `pipeline.yaml` file for complex configurations:
 ```yaml
 pipeline:
   pipeline_id: "weather-processing"
-  
+
   filters:
     - type: "DuplicateFilter"
       config:
         window_seconds: 300.0
     - type: "TestMessageFilter"
       config: {}
-  
+
   transformers:
     - type: "NoaaPortTransformer"
       config:
@@ -201,7 +147,7 @@ pipeline:
     - type: "XmlTransformer"
       config:
         validate_xml: true
-  
+
   outputs:
     - type: "MQTTOutput"
       config:
@@ -279,7 +225,7 @@ DATABASE_CREATE_TABLES=true
 
 ## Data Processing Pipeline
 
-The system processes weather data through a sophisticated pipeline architecture:
+The system processes weather data through a pipeline architecture:
 
 ### 1. Message Reception (Receiver Package)
 - **XMPP Connection**: Robust connection to NWWS-OI with automatic reconnection
@@ -305,7 +251,7 @@ The system processes weather data through a sophisticated pipeline architecture:
 ### Example Data Flow
 
 ```
-Raw NWWS Message → Parse & Validate → Filter (Duplicates/Tests) → 
+Raw NWWS Message → Parse & Validate → Filter (Duplicates/Tests) →
 Transform (Parse/Enrich) → Publish (MQTT/DB/Console)
 ```
 
@@ -347,7 +293,7 @@ National Weather Service Boulder CO
 ### Real-time Dashboard
 Access the web dashboard at `http://localhost:8081` (when enabled) for:
 - **Live Statistics**: Real-time processing metrics and performance charts
-- **Connection Status**: XMPP connection health and uptime monitoring  
+- **Connection Status**: XMPP connection health and uptime monitoring
 - **Geographic Visualization**: Map-based visualization of weather data sources
 - **Error Tracking**: Live error logs and failure analysis
 - **System Health**: Resource usage and component status
@@ -430,7 +376,7 @@ The application performs the following workflow:
 1. **Initialize Components**: Load configuration and initialize all pipeline components
 2. **Connect to NWWS-OI**: Establish XMPP connection to weather data feed
 3. **Start Processing Pipeline**: Begin processing incoming weather messages
-4. **Real-time Processing**: 
+4. **Real-time Processing**:
    - Filter duplicate and test messages
    - Parse and enrich weather data
    - Publish to configured output destinations
@@ -448,8 +394,8 @@ The application performs the following workflow:
 
 ### Input: Raw NWWS-OI Message
 ```xml
-<message from='nwws@conference.nwws-oi.weather.gov/KBOU' 
-         to='username@nwws-oi.weather.gov' 
+<message from='nwws@conference.nwws-oi.weather.gov/KBOU'
+         to='username@nwws-oi.weather.gov'
          type='groupchat'>
   <body>
 FXUS61 KBOU 151200
@@ -483,7 +429,7 @@ Boulder and Jefferson Counties Below 6000 Feet-
   "timestamp": "2023-12-15T19:00:00Z",
   "product_type": "forecast",
   "text_content": "Zone Forecast Product for Colorado...",
-  
+
   "parsed_data": {
     "product_name": "Zone Forecast Product for Colorado",
     "issuing_office": "National Weather Service Boulder CO",
@@ -492,7 +438,7 @@ Boulder and Jefferson Counties Below 6000 Feet-
     "certainty": "likely",
     "scope": "public"
   },
-  
+
   "geographic_data": {
     "ugc_codes": ["COZ040"],
     "counties": [
@@ -502,7 +448,7 @@ Boulder and Jefferson Counties Below 6000 Feet-
         "state": "Colorado"
       },
       {
-        "code": "CO-059", 
+        "code": "CO-059",
         "name": "Jefferson County",
         "state": "Colorado"
       }
@@ -526,7 +472,7 @@ Boulder and Jefferson Counties Below 6000 Feet-
       "west": -105.2705
     }
   },
-  
+
   "processing_metadata": {
     "received_timestamp": "2023-12-15T19:00:01.234Z",
     "processed_timestamp": "2023-12-15T19:00:01.456Z",
@@ -553,7 +499,7 @@ nwws/geo/9xj648/forecast    # Higher precision (smaller area)
 nwws/county/CO-013/forecast
 nwws/county/CO-059/forecast
 
-# Zone-based topics  
+# Zone-based topics
 nwws/zone/COZ040/forecast
 ```
 
@@ -573,7 +519,7 @@ METRICS_UPDATE_INTERVAL=30
 **Key Metrics Categories:**
 - **Application Metrics**: Uptime, version, and health status
 - **Connection Metrics**: XMPP connection status and performance
-- **Processing Metrics**: Message throughput, success rates, and error counts  
+- **Processing Metrics**: Message throughput, success rates, and error counts
 - **Output Metrics**: Publishing success rates per output handler
 - **Performance Metrics**: Processing latency, queue depths, and resource usage
 - **Geographic Metrics**: Distribution by weather office and geographic region
@@ -646,7 +592,7 @@ scrape_configs:
 # Processing rate
 rate(nwws2mqtt_messages_processed_total[5m])
 
-# Error rate  
+# Error rate
 rate(nwws2mqtt_messages_failed_total[5m]) / rate(nwws2mqtt_messages_received_total[5m])
 
 # 99th percentile latency
@@ -661,8 +607,8 @@ groups:
       - alert: HighErrorRate
         expr: rate(nwws2mqtt_messages_failed_total[5m]) / rate(nwws2mqtt_messages_received_total[5m]) > 0.05
         for: 2m
-      
-      - alert: ConnectionDown  
+
+      - alert: ConnectionDown
         expr: nwws2mqtt_connection_status == 0
         for: 1m
 ```
@@ -675,7 +621,7 @@ groups:
 Each package includes comprehensive documentation and development guidelines:
 
 - **[Filters Development](src/nwws/filters/README.md)**: Creating custom message filters
-- **[Transformers Development](src/nwws/transformers/README.md)**: Building data transformation components  
+- **[Transformers Development](src/nwws/transformers/README.md)**: Building data transformation components
 - **[Outputs Development](src/nwws/outputs/README.md)**: Implementing custom output handlers
 - **[Pipeline Development](src/nwws/pipeline/README.md)**: Pipeline framework and event processing
 - **[Utils Development](src/nwws/utils/README.md)**: Shared utilities and helper functions
@@ -701,7 +647,7 @@ uv run pytest --cov=src/nwws --cov-report=html
 # Format code
 uv run ruff format
 
-# Lint code  
+# Lint code
 uv run ruff check --fix
 
 # Type checking

@@ -58,7 +58,8 @@ Commands:
   help                  Show this help message
 
 Profiles for 'up' command:
-  default               App + MQTT broker (default)
+  default               App (default)
+  mqtt                  App + MQTT broker
   database              Add PostgreSQL database
   monitoring            Add Prometheus + Grafana
   full                  All services
