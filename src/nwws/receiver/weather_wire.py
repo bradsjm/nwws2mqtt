@@ -5,6 +5,7 @@ import asyncio
 import time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from xml.etree import ElementTree as ET
 
 import slixmpp
 from loguru import logger
@@ -347,18 +348,10 @@ class WeatherWire(slixmpp.ClientXMPP):
                 weather_message, msg, message_start_time
             )
 
-        except ValueError as e:
-            logger.error("Message parsing error", error=str(e))
-
-            if self.stats_collector:
-                self.stats_collector.record_message_processing_error(
-                    error_type="ValueError",
-                    wmo_id=self._extract_wmo_id_if_possible(msg),
-                )
-
+        except (ET.ParseError, UnicodeDecodeError) as e:
+            logger.warning("Message parsing failed", error=str(e))
         except Exception as e:  # noqa: BLE001
             logger.error("Unexpected message processing error", error=str(e))
-
             if self.stats_collector:
                 self.stats_collector.record_message_processing_error(
                     error_type=type(e).__name__,

@@ -4,7 +4,6 @@ import asyncio
 import signal
 import sys
 import time
-import traceback
 from collections.abc import Callable
 from pathlib import Path
 from types import FrameType, TracebackType
@@ -29,6 +28,7 @@ from nwws.pipeline import (
     PipelineStatsCollector,
     TransformerConfig,
 )
+from nwws.pipeline.errors import PipelineError, PipelineErrorHandler
 from nwws.receiver import (
     WeatherWire,
     WeatherWireConfig,
@@ -59,6 +59,11 @@ class WeatherWireApp:
         self.is_shutting_down = False
         self._shutdown_event = asyncio.Event()
         self._start_time = time.time()
+
+        self.message_error_handler = PipelineErrorHandler(
+            strategy=ErrorHandlingStrategy.CIRCUIT_BREAKER,
+            circuit_breaker_threshold=10,  # Open after 10 consecutive failures
+        )
 
         # Setup enhanced logging
         LoggingConfig.configure(config.log_level, config.log_file)
@@ -253,7 +258,13 @@ class WeatherWireApp:
                 ),
             )
 
-            await self.pipeline.process(pipeline_event)
+            # Process the event through the pipeline with circuit breaker error handling
+            await self.message_error_handler.execute_with_retry(
+                stage=PipelineStage.INGEST,
+                stage_id="runtime",
+                event=pipeline_event,
+                operation=self.pipeline.process,
+            )
 
             # Enhanced logging with metadata context
             logger.info(
@@ -269,14 +280,18 @@ class WeatherWireApp:
                 content_type=pipeline_event.content_type,
             )
 
+        except PipelineError as e:
+            # Log pipeline-specific errors but don't crash
+            self._log_processing_error(e, event, "Pipeline processing failed")
         except (ValueError, TypeError, AttributeError) as e:
-            self._log_processing_error(e, event, "Failed to process weather wire event")
-        except Exception as e:  # noqa: BLE001 - Catch-all for unexpected errors
-            self._log_processing_error(
-                e,
-                event,
-                "Unexpected error processing weather wire event",
-            )
+            # Data validation errors - log and continue
+            self._log_processing_error(e, event, "Message validation failed")
+        except (ConnectionError, OSError) as e:
+            # Infrastructure errors
+            self._log_processing_error(e, event, "Infrastructure error processing message")
+        except Exception as e:  # noqa: BLE001
+            # Log unexpected errors
+            self._log_processing_error(e, event, "Unexpected error processing message")
 
     def _log_processing_error(
         self,
@@ -435,10 +450,10 @@ async def main() -> None:
             error_type=type(e).__name__,
             stage="runtime",
         )
-        traceback.print_exc(limit=0)
         sys.exit(1)
     finally:
         logger.info("NWWS-OI application shutdown completed")
+        sys.exit(0)
 
 
 if __name__ == "__main__":
