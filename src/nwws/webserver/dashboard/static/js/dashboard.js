@@ -17,6 +17,9 @@ class WeatherDashboard {
         this.charts = {};
         this.currentMetrics = {};
         this.officeData = {};
+        this.sparklineManager = null;
+        this.previousMetrics = {};
+        this.hasSparklines = false;
 
         // Bind methods to preserve context
         this.pollMetrics = this.pollMetrics.bind(this);
@@ -25,6 +28,9 @@ class WeatherDashboard {
     async initialize() {
         try {
             console.log("Initializing NWWS2MQTT Dashboard...");
+
+            // Initialize sparklines first
+            await this._initializeSparklines();
 
             // Initialize components
             await this._initializeMap();
@@ -81,6 +87,38 @@ class WeatherDashboard {
         } catch (error) {
             console.error("Map initialization failed:", error);
             throw error;
+        }
+    }
+
+    async _initializeSparklines() {
+        try {
+            console.log("Initializing sparklines...");
+
+            // Check if SparklineManager is available
+            if (typeof SparklineManager !== "undefined") {
+                this.sparklineManager = new SparklineManager({
+                    maxDataPoints: 30,
+                });
+
+                this.hasSparklines =
+                    await this.sparklineManager.initializeSparklines();
+
+                if (this.hasSparklines) {
+                    console.log("Sparklines initialized successfully");
+                } else {
+                    console.warn(
+                        "Sparklines failed to initialize, using fallback mode",
+                    );
+                }
+            } else {
+                console.warn(
+                    "SparklineManager not available, skipping sparkline initialization",
+                );
+                this.hasSparklines = false;
+            }
+        } catch (error) {
+            console.error("Sparklines initialization failed:", error);
+            this.hasSparklines = false;
         }
     }
 
@@ -238,17 +276,22 @@ class WeatherDashboard {
         const errors = data.errors || {};
         const geographic = data.by_wmo || {};
         const system = data.system || {};
+        const timestamp = (data.timestamp || Date.now() / 1000) * 1000;
 
         // Messages per minute with trend
         const messagesPerMin = throughput.messages_per_minute || 0;
-        const messagesTrend = this._calculateTrend(
+        const messagesTrend = this._calculateTrendData(
             "messages_per_minute",
             messagesPerMin,
         );
-        this._updateMetricCard(
+        this._updateMetricCardWithSparkline(
             "messages-per-minute",
+            "messages-trend-indicator",
+            "messages",
             this._formatNumber(messagesPerMin),
+            messagesPerMin,
             messagesTrend,
+            timestamp,
         );
 
         // Active offices with trend
@@ -257,32 +300,119 @@ class WeatherDashboard {
             Object.keys(geographic).filter(
                 (office) => geographic[office].messages_processed_total > 0,
             ).length;
-        const officesTrend = this._calculateTrend(
+        const officesTrend = this._calculateTrendData(
             "active_offices",
             activeOffices,
         );
-        this._updateMetricCard("active-offices", activeOffices, officesTrend);
+        this._updateMetricCardWithSparkline(
+            "active-offices",
+            "offices-trend-indicator",
+            "offices",
+            activeOffices,
+            activeOffices,
+            officesTrend,
+            timestamp,
+        );
 
         // Average latency with trend
         const avgLatency = latency.avg_ms || 0;
-        const latencyTrend = this._calculateTrend("avg_latency", avgLatency);
-        this._updateMetricCard(
+        const latencyTrend = this._calculateTrendData(
+            "avg_latency",
+            avgLatency,
+        );
+        this._updateMetricCardWithSparkline(
             "avg-latency",
+            "latency-trend-indicator",
+            "latency",
             this._formatNumber(avgLatency, 1),
+            avgLatency,
             latencyTrend,
+            timestamp,
         );
 
         // Error rate with trend
         const errorRate = errors.rate_percent || 0;
-        const errorTrend = this._calculateTrend("error_rate", errorRate);
-        this._updateMetricCard(
+        const errorTrend = this._calculateTrendData("error_rate", errorRate);
+        this._updateMetricCardWithSparkline(
             "error-rate",
+            "error-trend-indicator",
+            "errors",
             this._formatNumber(errorRate, 2),
+            errorRate,
             errorTrend,
+            timestamp,
         );
 
         // Update system health and connection status
         this._updateSystemHealth(data);
+    }
+
+    _updateMetricCardWithSparkline(
+        valueElementId,
+        trendElementId,
+        sparklineType,
+        displayValue,
+        rawValue,
+        trendData,
+        timestamp,
+    ) {
+        // Update value
+        const valueElement = document.getElementById(valueElementId);
+        if (valueElement) {
+            valueElement.textContent = displayValue;
+        }
+
+        // Update trend indicator
+        const trendElement = document.getElementById(trendElementId);
+        if (trendElement && trendData) {
+            const arrow = trendElement.querySelector(".trend-arrow");
+            const percentage = trendElement.querySelector(".trend-percentage");
+
+            if (arrow && percentage) {
+                arrow.textContent =
+                    trendData.direction === "up"
+                        ? "↗"
+                        : trendData.direction === "down"
+                          ? "↘"
+                          : "→";
+                percentage.textContent = trendData.percentage;
+
+                trendElement.className = `metric-trend-indicator trend-${trendData.direction}`;
+            }
+        }
+
+        // Update sparkline
+        if (this.hasSparklines && this.sparklineManager) {
+            this.sparklineManager.updateSparkline(
+                sparklineType,
+                rawValue,
+                timestamp,
+            );
+        }
+
+        // Fallback: Update legacy trend indicator if sparklines are not available
+        if (!this.hasSparklines) {
+            this._updateLegacyTrendIndicator(valueElementId, trendData);
+        }
+    }
+
+    _updateLegacyTrendIndicator(elementId, trendData) {
+        // Map element IDs to their corresponding legacy trend element IDs
+        const trendElementMap = {
+            "messages-per-minute": "messages-trend",
+            "active-offices": "offices-trend",
+            "avg-latency": "latency-trend",
+            "error-rate": "error-trend",
+        };
+
+        const trendElementId = trendElementMap[elementId];
+        if (trendElementId && trendData) {
+            const trendElement = document.getElementById(trendElementId);
+            if (trendElement) {
+                trendElement.textContent = trendData.percentage;
+                trendElement.className = `metric-trend ${this._getTrendClass(trendData.direction)}`;
+            }
+        }
     }
 
     _updateMetricCard(elementId, value, trend = null) {
@@ -478,6 +608,34 @@ class WeatherDashboard {
         return `-${Math.abs(percentChange).toFixed(1)}%`;
     }
 
+    _calculateTrendData(metricName, currentValue) {
+        const previousValue = this.previousMetrics[metricName];
+        this.previousMetrics[metricName] = currentValue;
+
+        if (previousValue === undefined) {
+            return { direction: "stable", percentage: "--" };
+        }
+
+        const difference = currentValue - previousValue;
+        const percentChange =
+            previousValue !== 0 ? (difference / previousValue) * 100 : 0;
+
+        let direction = "stable";
+        if (Math.abs(percentChange) >= 1) {
+            direction = percentChange > 0 ? "up" : "down";
+        }
+
+        const formattedPercentage =
+            Math.abs(percentChange) >= 1
+                ? `${Math.abs(percentChange).toFixed(1)}%`
+                : "--";
+
+        return {
+            direction,
+            percentage: formattedPercentage,
+        };
+    }
+
     _updateLastUpdateTime() {
         const lastUpdateElement = document.getElementById("last-update");
         if (lastUpdateElement) {
@@ -552,8 +710,30 @@ class WeatherDashboard {
     }
 
     _getTrendClass(trendValue) {
-        if (trendValue > 0) return "trend-up";
-        if (trendValue < 0) return "trend-down";
+        // Handle new trend format (direction string)
+        if (typeof trendValue === "string") {
+            if (trendValue === "up") return "trend-up";
+            if (trendValue === "down") return "trend-down";
+            return "trend-stable";
+        }
+
+        // Handle legacy trend format (numeric or string with + prefix)
+        if (typeof trendValue === "number") {
+            if (trendValue > 0) return "trend-up";
+            if (trendValue < 0) return "trend-down";
+            return "trend-stable";
+        }
+
+        // Handle string trends like "+5.2%" or "-3.1%"
+        if (
+            typeof trendValue === "string" &&
+            trendValue !== "stable" &&
+            trendValue !== "--"
+        ) {
+            if (trendValue.startsWith("+")) return "trend-up";
+            if (trendValue.startsWith("-")) return "trend-down";
+        }
+
         return "trend-stable";
     }
 
@@ -610,6 +790,10 @@ class WeatherDashboard {
 
     destroy() {
         this._stopPolling();
+
+        if (this.sparklineManager) {
+            this.sparklineManager.destroy();
+        }
 
         if (this.weatherMap) {
             this.weatherMap.destroy();

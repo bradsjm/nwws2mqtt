@@ -13,14 +13,24 @@
             crossorigin=""
         />
 
-        <!-- Chart.js -->
-        <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+        <!-- ApexCharts -->
+        <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
 
         <!-- Custom CSS -->
         <link rel="stylesheet" href="/static/css/dashboard.css" />
 
         <style>
+            :root {
+                --white: #ffffff;
+                --gray-200: #e5e7eb;
+                --gray-500: #6b7280;
+                --gray-600: #4b5563;
+                --gray-900: #111827;
+                --shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                --success-color: #10b981;
+                --error-color: #ef4444;
+            }
+
             * {
                 margin: 0;
                 padding: 0;
@@ -123,40 +133,79 @@
             }
 
             .metric-card {
-                background: white;
-                border-radius: 8px;
+                background: var(--white);
+                border-radius: 12px;
                 padding: 1.5rem;
-                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-                text-align: center;
+                box-shadow: var(--shadow);
+                border: 1px solid var(--gray-200);
+                transition: all 0.3s ease;
+                position: relative;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+                gap: 0.5rem;
             }
 
-            .metric-value {
-                font-size: 2rem;
-                font-weight: bold;
-                color: #1f2937;
+            .metric-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
                 margin-bottom: 0.5rem;
             }
 
             .metric-label {
-                color: #6b7280;
-                font-size: 0.9rem;
+                color: var(--gray-600);
+                font-size: 0.75rem;
                 text-transform: uppercase;
                 letter-spacing: 0.5px;
+                font-weight: 600;
             }
 
+            .metric-trend-indicator {
+                display: flex;
+                align-items: center;
+                gap: 0.25rem;
+                font-size: 0.75rem;
+                font-weight: 500;
+            }
+
+            .trend-arrow {
+                font-size: 0.875rem;
+                line-height: 1;
+            }
+
+            .metric-value {
+                font-size: 2rem;
+                font-weight: 800;
+                color: var(--gray-900);
+                line-height: 1;
+                font-variant-numeric: tabular-nums;
+                margin-bottom: 0.5rem;
+            }
+
+            .metric-sparkline {
+                height: 40px;
+                margin: 0 -0.5rem -0.5rem -0.5rem;
+                position: relative;
+            }
+
+            /* Trend indicator colors */
+            .trend-up {
+                color: var(--success-color);
+            }
+
+            .trend-down {
+                color: var(--error-color);
+            }
+
+            .trend-stable {
+                color: var(--gray-500);
+            }
+
+            /* Legacy trend styles for fallback */
             .metric-trend {
                 margin-top: 0.5rem;
                 font-size: 0.8rem;
-            }
-
-            .trend-up {
-                color: #10b981;
-            }
-            .trend-down {
-                color: #ef4444;
-            }
-            .trend-stable {
-                color: #6b7280;
             }
 
             .weather-map {
@@ -320,6 +369,14 @@
                 #weather-map {
                     height: 300px;
                 }
+
+                .metric-value {
+                    font-size: 1.75rem;
+                }
+
+                .metric-sparkline {
+                    height: 30px;
+                }
             }
         </style>
     </head>
@@ -360,45 +417,108 @@
             <main class="main-content">
                 <!-- Metrics Overview -->
                 <section class="metrics-overview">
-                    <div class="metric-card">
+                    <div class="metric-card" data-metric="messages-per-minute">
+                        <div class="metric-header">
+                            <div class="metric-label">Messages/Minute</div>
+                            <div
+                                class="metric-trend-indicator"
+                                id="messages-trend-indicator"
+                            >
+                                <span class="trend-arrow">→</span>
+                                <span class="trend-percentage">--</span>
+                            </div>
+                        </div>
                         <div class="metric-value" id="messages-per-minute">
                             --
                         </div>
-                        <div class="metric-label">Messages/Minute</div>
+                        <div
+                            class="metric-sparkline"
+                            id="messages-sparkline"
+                        ></div>
+                        <!-- Fallback trend indicator for legacy support -->
                         <div
                             class="metric-trend trend-stable"
                             id="messages-trend"
+                            style="display: none"
                         >
                             --
                         </div>
                     </div>
 
-                    <div class="metric-card">
+                    <div class="metric-card" data-metric="active-offices">
+                        <div class="metric-header">
+                            <div class="metric-label">Active Offices</div>
+                            <div
+                                class="metric-trend-indicator"
+                                id="offices-trend-indicator"
+                            >
+                                <span class="trend-arrow">→</span>
+                                <span class="trend-percentage">--</span>
+                            </div>
+                        </div>
                         <div class="metric-value" id="active-offices">--</div>
-                        <div class="metric-label">Active Offices</div>
+                        <div
+                            class="metric-sparkline"
+                            id="offices-sparkline"
+                        ></div>
+                        <!-- Fallback trend indicator for legacy support -->
                         <div
                             class="metric-trend trend-stable"
                             id="offices-trend"
+                            style="display: none"
                         >
                             --
                         </div>
                     </div>
 
-                    <div class="metric-card">
+                    <div class="metric-card" data-metric="avg-latency">
+                        <div class="metric-header">
+                            <div class="metric-label">Avg Latency (ms)</div>
+                            <div
+                                class="metric-trend-indicator"
+                                id="latency-trend-indicator"
+                            >
+                                <span class="trend-arrow">→</span>
+                                <span class="trend-percentage">--</span>
+                            </div>
+                        </div>
                         <div class="metric-value" id="avg-latency">--</div>
-                        <div class="metric-label">Avg Latency (ms)</div>
+                        <div
+                            class="metric-sparkline"
+                            id="latency-sparkline"
+                        ></div>
+                        <!-- Fallback trend indicator for legacy support -->
                         <div
                             class="metric-trend trend-stable"
                             id="latency-trend"
+                            style="display: none"
                         >
                             --
                         </div>
                     </div>
 
-                    <div class="metric-card">
+                    <div class="metric-card" data-metric="error-rate">
+                        <div class="metric-header">
+                            <div class="metric-label">Error Rate (%)</div>
+                            <div
+                                class="metric-trend-indicator"
+                                id="error-trend-indicator"
+                            >
+                                <span class="trend-arrow">→</span>
+                                <span class="trend-percentage">--</span>
+                            </div>
+                        </div>
                         <div class="metric-value" id="error-rate">--</div>
-                        <div class="metric-label">Error Rate (%)</div>
-                        <div class="metric-trend trend-stable" id="error-trend">
+                        <div
+                            class="metric-sparkline"
+                            id="error-sparkline"
+                        ></div>
+                        <!-- Fallback trend indicator for legacy support -->
+                        <div
+                            class="metric-trend trend-stable"
+                            id="error-trend"
+                            style="display: none"
+                        >
                             --
                         </div>
                     </div>
@@ -471,6 +591,7 @@
             });
         </script>
 
+        <script src="/static/js/sparklines.js"></script>
         <script src="/static/js/dashboard.js"></script>
         <script src="/static/js/weather-map.js"></script>
         <script src="/static/js/charts.js"></script>
