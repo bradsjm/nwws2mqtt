@@ -107,7 +107,6 @@ class WeatherWireApp:
 
         self.receiver = WeatherWire(
             config=xmpp_config,
-            callback=self._handle_weather_wire_message,
             stats_collector=self.receiver_stats_collector,
         )
 
@@ -209,51 +208,76 @@ class WeatherWireApp:
         await self.receiver.start()
 
         # Start web server if enabled
-        await (
-            self.web_server.start(
+        if self.config.metric_server:
+            await self.web_server.start(
                 host=self.config.metric_host,
                 port=self.config.metric_port,
                 log_level=self.config.log_level,
             )
-            if self.config.metric_server
-            else asyncio.sleep(0)
-        )
 
     async def _cleanup_services(self) -> None:
-        """Stop all application services."""
-        await asyncio.gather(
-            self.receiver.stop(),
-            self.pipeline.stop(),
-            (self.web_server.stop() if self.config.metric_server else asyncio.sleep(0)),
-        )
+        """Stop all application services individually to handle errors gracefully."""
+        # Stop receiver first
+        try:
+            await self.receiver.stop()
+            logger.debug("Weather wire receiver stopped successfully")
+        except Exception as e:  # noqa: BLE001
+            logger.error(
+                "Error stopping weather wire receiver",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
-    async def _handle_weather_wire_message(self, event: WeatherWireMessage) -> None:
+        # Stop pipeline
+        try:
+            await self.pipeline.stop()
+            logger.debug("Pipeline stopped successfully")
+        except Exception as e:  # noqa: BLE001
+            logger.error(
+                "Error stopping pipeline",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+
+        # Stop web server if enabled
+        if self.config.metric_server:
+            try:
+                await self.web_server.stop()
+                logger.debug("Web server stopped successfully")
+            except Exception as e:  # noqa: BLE001
+                logger.error(
+                    "Error stopping web server",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+
+    async def _handle_weather_wire_message(self, weather_message: WeatherWireMessage) -> None:
         """Handle Weather Wire content by feeding to the pipeline."""
         try:
             # Create enhanced initial metadata with rich context
             pipeline_event = NoaaPortEventData(
-                awipsid=event.awipsid,
-                cccc=event.cccc,
-                id=event.id,
-                issue=event.issue,
-                noaaport=event.noaaport,
-                subject=event.subject,
-                ttaaii=event.ttaaii,
-                delay_stamp=event.delay_stamp,
+                awipsid=weather_message.awipsid,
+                cccc=weather_message.cccc,
+                id=weather_message.id,
+                issue=weather_message.issue,
+                noaaport=weather_message.noaaport,
+                subject=weather_message.subject,
+                ttaaii=weather_message.ttaaii,
+                delay_stamp=weather_message.delay_stamp,
                 content_type="application/octet-stream",
                 metadata=PipelineEventMetadata(
                     source="weather-wire-receiver",
                     stage=PipelineStage.INGEST,
-                    trace_id=f"wr-{event.id}-{int(time.time())}",
+                    trace_id=f"wr-{weather_message.id}-{int(time.time())}",
                     custom={
                         "original_source": "weather_wire",
-                        "message_size_bytes": len(event.noaaport),
-                        "has_delay_stamp": event.delay_stamp is not None,
+                        "message_size_bytes": len(weather_message.noaaport),
+                        "has_delay_stamp": weather_message.delay_stamp is not None,
                         "ingest_timestamp": time.time(),
-                        "awipsid": event.awipsid,
-                        "cccc": event.cccc,
-                        "ttaaii": event.ttaaii,
-                        "subject": event.subject,
+                        "awipsid": weather_message.awipsid,
+                        "cccc": weather_message.cccc,
+                        "ttaaii": weather_message.ttaaii,
+                        "subject": weather_message.subject,
                     },
                 ),
             )
@@ -275,23 +299,25 @@ class WeatherWireApp:
                 subject=pipeline_event.subject,
                 awipsid=pipeline_event.awipsid,
                 cccc=pipeline_event.cccc,
-                message_size_bytes=len(event.noaaport),
-                has_delay_stamp=event.delay_stamp is not None,
+                message_size_bytes=len(weather_message.noaaport),
+                has_delay_stamp=weather_message.delay_stamp is not None,
                 content_type=pipeline_event.content_type,
             )
 
         except PipelineError as e:
             # Log pipeline-specific errors but don't crash
-            self._log_processing_error(e, event, "Pipeline processing failed")
+            self._log_processing_error(e, weather_message, "Pipeline processing failed")
         except (ValueError, TypeError, AttributeError) as e:
             # Data validation errors - log and continue
-            self._log_processing_error(e, event, "Message validation failed")
+            self._log_processing_error(e, weather_message, "Message validation failed")
         except (ConnectionError, OSError) as e:
             # Infrastructure errors
-            self._log_processing_error(e, event, "Infrastructure error processing message")
+            self._log_processing_error(
+                e, weather_message, "Infrastructure error processing message"
+            )
         except Exception as e:  # noqa: BLE001
             # Log unexpected errors
-            self._log_processing_error(e, event, "Unexpected error processing message")
+            self._log_processing_error(e, weather_message, "Unexpected error processing message")
 
     def _log_processing_error(
         self,
@@ -346,8 +372,16 @@ class WeatherWireApp:
 
         """
         logger.info("Application shutdown initiated, cleaning up services")
-        await self._cleanup_services()
-        logger.info("Cleaned up application services")
+        try:
+            await self._cleanup_services()
+            logger.info("Cleaned up application services")
+        except Exception as cleanup_error:  # noqa: BLE001
+            logger.error(
+                "Error during service cleanup",
+                error=str(cleanup_error),
+                error_type=type(cleanup_error).__name__,
+            )
+            # Don't re-raise cleanup errors to avoid masking original exception
 
     def _signal_handler(self, signum: int, _frame: FrameType | None) -> None:
         """Handle shutdown signals gracefully.
@@ -395,7 +429,41 @@ class WeatherWireApp:
             has_transformer=self.pipeline.transformer is not None,
             outputs_count=len(self.pipeline.outputs),
         )
-        await self._shutdown_event.wait()
+
+        try:
+            # Use async iterator to process messages
+            async for weather_message in self.receiver:
+                try:
+                    await self._handle_weather_wire_message(weather_message)
+
+                    # Log queue size for monitoring
+                    queue_size = self.receiver.queue_size
+                    if queue_size > 10:  # Log when queue starts building up
+                        logger.warning(f"Message queue building up: {queue_size} messages pending")
+                    elif queue_size > 0:
+                        logger.debug(f"Queue size: {queue_size} messages")
+
+                except (
+                    PipelineError,
+                    ValueError,
+                    TypeError,
+                    AttributeError,
+                    ConnectionError,
+                    OSError,
+                ) as e:
+                    self._log_processing_error(
+                        e, weather_message, "Error processing weather message"
+                    )
+                except Exception as e:  # noqa: BLE001
+                    self._log_processing_error(
+                        e, weather_message, "Unexpected error processing weather message"
+                    )
+        except asyncio.CancelledError:
+            logger.info("Application cancelled")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error in main loop: {e}")
+            raise
 
         logger.info(
             "NWWS-OI application event loop stopped",
@@ -421,6 +489,8 @@ async def main() -> None:
     Loads configuration from environment and starts the WeatherWire application.
     Handles configuration errors and unexpected runtime errors gracefully.
     """
+    exit_code = 0
+
     try:
         config = Config.from_env()
         logger.info(
@@ -442,7 +512,9 @@ async def main() -> None:
             error_type=type(e).__name__,
             stage="startup",
         )
-        sys.exit(1)
+        exit_code = 1
+    except KeyboardInterrupt:
+        logger.info("Application interrupted by user")
     except Exception as e:  # noqa: BLE001
         logger.error(
             "Runtime error - application failed",
@@ -450,11 +522,23 @@ async def main() -> None:
             error_type=type(e).__name__,
             stage="runtime",
         )
-        sys.exit(1)
+        exit_code = 1
     finally:
         logger.info("NWWS-OI application shutdown completed")
-        sys.exit(0)
+        if exit_code != 0:
+            sys.exit(exit_code)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Application terminated by user")
+        sys.exit(0)
+    except Exception as e:  # noqa: BLE001
+        logger.error(
+            "Fatal error running application",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        sys.exit(1)

@@ -114,7 +114,7 @@ class WebServer:
     async def start(
         self,
         host: str = "127.0.0.1",
-        port: int = 8000,
+        port: int = 8080,
         log_level: str = "info",
         *,
         access_log: bool = False,
@@ -145,9 +145,8 @@ class WebServer:
 
             logger.info("Web server started", host=host, port=port)
 
-        except Exception:
-            logger.exception("Failed to start web server")
-            raise
+        except (OSError, RuntimeError, ValueError) as e:
+            logger.error("Failed to start web server", error=str(e), error_type=type(e).__name__)
 
     async def stop(self, *, shutdown_timeout: float = 5.0) -> None:
         """Stop the web server gracefully.
@@ -175,9 +174,8 @@ class WebServer:
 
                 logger.info("Web server stopped")
 
-            except Exception:
+            except Exception:  # noqa: BLE001
                 logger.exception("Error stopping web server")
-                raise
 
     @property
     def is_running(self) -> bool:

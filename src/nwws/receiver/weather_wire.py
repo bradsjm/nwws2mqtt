@@ -3,7 +3,7 @@
 
 import asyncio
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from xml.etree import ElementTree as ET
 
@@ -49,15 +49,13 @@ class WeatherWire(slixmpp.ClientXMPP):
     def __init__(
         self,
         config: WeatherWireConfig,
-        callback: Callable[[WeatherWireMessage], Awaitable[None]],
         *,
         stats_collector: WeatherWireStatsCollector | None = None,
     ) -> None:
-        """Initialize the XMPP client with configuration and callback.
+        """Initialize the XMPP client with configuration.
 
         Args:
             config: XMPP configuration containing username, password, server details
-            callback: Async function to call when a WeatherWireEvent is received
             stats_collector: Optional stats collector for monitoring receiver metrics
 
         The client is configured with:
@@ -66,6 +64,7 @@ class WeatherWire(slixmpp.ClientXMPP):
         - XMPP Ping (XEP-0199) for connection keep-alive
         - Delayed Delivery (XEP-0203) for handling delayed messages
         - Idle timeout monitoring to detect connection issues
+        - AsyncIterator pattern with message queue for processing
 
         """
         super().__init__(  # type: ignore  # noqa: PGH003
@@ -79,9 +78,12 @@ class WeatherWire(slixmpp.ClientXMPP):
         )
 
         self.config = config
-        self.callback = callback
         self.nickname = f"{datetime.now(UTC):%Y%m%d%H%M}"
         self.stats_collector = stats_collector
+
+        # Message queue for async iterator pattern
+        self._message_queue: asyncio.Queue[WeatherWireMessage] = asyncio.Queue(maxsize=50)
+        self._stop_iteration = False
 
         # Register plugins
         self.register_plugin("xep_0030")  # Service Discovery  # type: ignore[misc]
@@ -103,7 +105,33 @@ class WeatherWire(slixmpp.ClientXMPP):
             "Initialized NWWS-OI XMPP client",
             username=config.username,
             server=config.server,
+            queue_maxsize=self._message_queue.maxsize,
         )
+
+    def __aiter__(self) -> AsyncIterator[WeatherWireMessage]:
+        """Make WeatherWire an async iterator."""
+        return self
+
+    async def __anext__(self) -> WeatherWireMessage:
+        """Get next message from the queue."""
+        while True:
+            if self._stop_iteration and self._message_queue.empty():
+                raise StopAsyncIteration
+
+            try:
+                # Short timeout to periodically check stop condition
+                message = await asyncio.wait_for(self._message_queue.get(), timeout=0.5)
+            except TimeoutError:
+                # Continue loop to check stop condition
+                continue
+            else:
+                self._message_queue.task_done()
+                return message
+
+    @property
+    def queue_size(self) -> int:
+        """Get current queue size for monitoring."""
+        return self._message_queue.qsize()
 
     def _add_event_handlers(self) -> None:
         """Add all necessary event handlers for the XMPP client."""
@@ -344,9 +372,17 @@ class WeatherWire(slixmpp.ClientXMPP):
                 # Message was skipped (logged in _on_nwws_message)
                 return
 
-            await self._record_successful_message_processing(
-                weather_message, msg, message_start_time
-            )
+            # Put message in queue instead of calling callback
+            try:
+                self._message_queue.put_nowait(weather_message)
+                await self._record_successful_message_processing(
+                    weather_message, msg, message_start_time
+                )
+            except asyncio.QueueFull:
+                logger.warning(
+                    f"Message queue full (size: {self._message_queue.maxsize}), "
+                    f"dropping message: {weather_message.awipsid}"
+                )
 
         except (ET.ParseError, UnicodeDecodeError) as e:
             logger.warning("Message parsing failed", error=str(e))
@@ -390,8 +426,7 @@ class WeatherWire(slixmpp.ClientXMPP):
                 wmo_id=wmo_id,
             )
 
-        # Send to callback/pipeline
-        await self.callback(weather_message)
+        # Message will be retrieved via async iterator - no callback needed
 
     def _extract_wmo_id_if_possible(self, msg: Message) -> str | None:
         """Try to extract office ID from message even if parsing failed."""
@@ -517,6 +552,9 @@ class WeatherWire(slixmpp.ClientXMPP):
         logger.info("Shutting down NWWS-OI client")
         self.is_shutting_down = True
 
+        # Signal iterator to stop
+        self._stop_iteration = True
+
         # Cancel all monitoring tasks
         self._stop_background_services()
 
@@ -553,8 +591,14 @@ class WeatherWire(slixmpp.ClientXMPP):
             muc_room_jid = JID(MUC_ROOM)
             self.plugin["xep_0045"].leave_muc(muc_room_jid, self.nickname)
             logger.info("Unsubscribing from MUC room", room=MUC_ROOM)
+        except KeyError as err:
+            logger.debug("MUC room not in currently joined rooms", room=MUC_ROOM, error=str(err))
         except XMPPError as err:
             logger.warning("Failed to leave MUC room gracefully", error=str(err))
+        except Exception as err:  # noqa: BLE001
+            logger.warning(
+                "Unexpected error leaving MUC room", error=str(err), error_type=type(err).__name__
+            )
 
     def _parse_issue_timestamp(self, issue_str: str) -> datetime:
         """Parse issue time from string to datetime."""
