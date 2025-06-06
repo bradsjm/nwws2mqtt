@@ -1,13 +1,11 @@
 """Tests for logging configuration module."""
 
 import io
-import sys
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import redirect_stdout
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from unittest.mock import patch
 
-import pytest
 from loguru import logger
 
 from nwws.utils.logging_config import LoggingConfig
@@ -90,36 +88,36 @@ class TestLoggingConfig:
     def test_escape_loguru_braces(self) -> None:
         """Test that curly braces are properly escaped."""
         # Test string with braces
-        result = LoggingConfig._escape_loguru_braces("Message with {braces}")
+        result = LoggingConfig._escape_loguru_braces("Message with {braces}") # type: ignore
         assert result == "Message with {{braces}}"
 
         # Test string with multiple braces
-        result = LoggingConfig._escape_loguru_braces("{start} middle {end}")
+        result = LoggingConfig._escape_loguru_braces("{start} middle {end}") # type: ignore
         assert result == "{{start}} middle {{end}}"
 
         # Test non-string values
-        result = LoggingConfig._escape_loguru_braces(123)
+        result = LoggingConfig._escape_loguru_braces(123) # type: ignore
         assert result == "123"
 
         # Test None value
-        result = LoggingConfig._escape_loguru_braces(None)
+        result = LoggingConfig._escape_loguru_braces(None) # type: ignore
         assert result == "None"
 
     def test_format_extra_data_safety(self) -> None:
         """Test that extra data formatting handles edge cases safely."""
         # Normal case
         extra = {"key1": "value1", "key2": "value2"}
-        result = LoggingConfig._format_extra_data(extra)
+        result = LoggingConfig._format_extra_data(extra) # type: ignore
         assert "key1=value1" in result
         assert "key2=value2" in result
 
         # Empty extra data
-        result = LoggingConfig._format_extra_data({})
+        result = LoggingConfig._format_extra_data({}) # type: ignore
         assert result == ""
 
         # Extra data with braces
         extra = {"key": "value{with}braces"}
-        result = LoggingConfig._format_extra_data(extra)
+        result = LoggingConfig._format_extra_data(extra) # type: ignore
         assert "key=value{{with}}braces" in result
 
     def test_console_formatter_with_extra_data(self) -> None:
@@ -137,7 +135,7 @@ class TestLoggingConfig:
             "extra": {"user_id": "12345", "action": "login{test}"}
         }
 
-        result = LoggingConfig._console_formatter(mock_record)
+        result = LoggingConfig._console_formatter(mock_record) # type: ignore
 
         # Should contain escaped braces and color formatting
         assert "user_id" in result
@@ -161,7 +159,7 @@ class TestLoggingConfig:
             "extra": {"key": "value"}
         }
 
-        result = LoggingConfig._file_formatter(mock_record)
+        result = LoggingConfig._file_formatter(mock_record) # type: ignore
 
         # Should not contain color codes
         assert "<cyan>" not in result
@@ -175,11 +173,11 @@ class TestLoggingConfig:
         problematic_record = {}  # Missing required fields
 
         # Console formatter should not raise exception
-        result = LoggingConfig._console_formatter(problematic_record)
+        result = LoggingConfig._console_formatter(problematic_record) # type: ignore
         assert "<critical_formatting_error>" in result or "<formatting_error>" in result
 
         # File formatter should not raise exception
-        result = LoggingConfig._file_formatter(problematic_record)
+        result = LoggingConfig._file_formatter(problematic_record) # type: ignore
         assert "<critical_formatting_error>" in result or "<formatting_error>" in result
 
     def test_logging_with_dangerous_braces(self) -> None:
@@ -222,8 +220,8 @@ class TestLoggingConfig:
 
         LoggingConfig.reset()
         assert not LoggingConfig.is_configured()
-        assert LoggingConfig._log_level == "INFO"  # Default value
-        assert LoggingConfig._log_file is None
+        assert LoggingConfig._log_level == "INFO"  # Default value # type: ignore
+        assert LoggingConfig._log_file is None # type: ignore
 
     def test_edge_case_values_in_extra_data(self) -> None:
         """Test handling of edge case values in extra logging data."""
@@ -239,7 +237,7 @@ class TestLoggingConfig:
 
         for extra_data in test_cases:
             # Should not raise exceptions
-            result = LoggingConfig._format_extra_data(extra_data)
+            result = LoggingConfig._format_extra_data(extra_data) # type: ignore
             assert isinstance(result, str)
             # Basic validation that some content is present
             if extra_data:
