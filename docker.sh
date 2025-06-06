@@ -136,7 +136,6 @@ build_image() {
     docker build \
         -f "$DOCKER_DIR/Dockerfile" \
         --build-arg PYTHON_VERSION="$PYTHON_VERSION" \
-        --output type=docker \
         -t "$full_tag" \
         "$PROJECT_ROOT"
 
@@ -161,8 +160,8 @@ run_container() {
         "$IMAGE_NAME:latest"
 
     log_success "Container started successfully"
-    log_info "Access metrics at: http://localhost:8080/metrics"
-    log_info "Check health at: http://localhost:8080/health"
+    log_info "Access metrics at: http://localhost:8080/api/v1/metrics"
+    log_info "Check health at: http://localhost:8080/api/v1/health"
 }
 
 compose_up() {
@@ -293,9 +292,6 @@ show_service_urls() {
         echo "  📊 Grafana:           http://localhost:3000 (admin/admin)"
     fi
 
-    if [[ "$profile" == *"cache"* ]] || [[ "$profile" == "full" ]]; then
-        echo "  🔄 Redis:             redis://localhost:6379"
-    fi
     echo
 }
 
