@@ -233,69 +233,72 @@ class WeatherWireApp:
         ]
 
     async def _start_services(self) -> None:
-        # Start pipeline first
-        """Start all application services in the correct order.
+        """Start all application services concurrently using TaskGroup.
 
         This function initializes and starts the pipeline, weather wire receiver,
-        and optionally the web server based on the provided configuration. The
-        services are started in a specific sequence to ensure proper initialization
-        and functionality. If the metric server is enabled, the web server is
-        started with the specified host, port, and logging level.
+        and optionally the web server based on the provided configuration. Services
+        are started concurrently using asyncio.TaskGroup for better performance and
+        structured concurrency. If any service fails to start, all services are
+        automatically cancelled.
         """
-        await self.pipeline.start()
+        async with asyncio.TaskGroup() as tg:
+            # Start pipeline first - pipeline.start() is async
+            tg.create_task(self.pipeline.start())
 
-        # Start weather wire receiver
-        await self.receiver.start()
+            # Start weather wire receiver - receiver.start() is now async
+            tg.create_task(self.receiver.start())
 
-        # Start web server if enabled
-        if self.config.metric_server:
-            await self.web_server.start(
-                host=self.config.metric_host,
-                port=self.config.metric_port,
-                log_level=self.config.log_level,
-            )
+            # Start web server if enabled - web_server.start() is async
+            if self.config.metric_server:
+                tg.create_task(
+                    self.web_server.start(
+                        host=self.config.metric_host,
+                        port=self.config.metric_port,
+                        log_level=self.config.log_level,
+                    )
+                )
 
     async def _cleanup_services(self) -> None:
-        # Stop receiver first
-        """Stop all application services in the correct order.
+        """Stop all application services concurrently using TaskGroup.
 
         This function stops the weather wire receiver, pipeline, and optionally the web
-        server in the correct sequence to ensure proper cleanup. It logs any errors
-        encountered during the shutdown process to the console.
-
+        server concurrently using asyncio.TaskGroup for faster shutdown. Individual
+        service errors are logged but don't prevent other services from stopping.
         """
-        try:
-            await self.receiver.stop()
-            logger.debug("Weather wire receiver stopped successfully")
-        except Exception as e:  # noqa: BLE001
-            logger.error(
-                "Error stopping weather wire receiver",
-                error=str(e),
-                error_type=type(e).__name__,
-            )
+        from collections.abc import Awaitable
 
-        # Stop pipeline
-        try:
-            await self.pipeline.stop()
-            logger.debug("Pipeline stopped successfully")
-        except Exception as e:  # noqa: BLE001
-            logger.error(
-                "Error stopping pipeline",
-                error=str(e),
-                error_type=type(e).__name__,
-            )
+        shutdown_tasks: list[tuple[str, Awaitable[None]]] = []
 
-        # Stop web server if enabled
+        # Create shutdown tasks for active services
+        shutdown_tasks.append(("receiver", self.receiver.stop()))
+        shutdown_tasks.append(("pipeline", self.pipeline.stop()))
+
         if self.config.metric_server:
+            shutdown_tasks.append(("web_server", self.web_server.stop()))
+
+        # Execute all shutdown tasks concurrently with individual error handling
+        async def _shutdown_service(service_name: str, shutdown_coro: Awaitable[None]) -> None:
             try:
-                await self.web_server.stop()
-                logger.debug("Web server stopped successfully")
+                await shutdown_coro
+                logger.debug("%s stopped successfully", service_name.replace("_", " ").title())
             except Exception as e:  # noqa: BLE001
                 logger.error(
-                    "Error stopping web server",
+                    "Error stopping %s",
+                    service_name.replace("_", " "),
                     error=str(e),
                     error_type=type(e).__name__,
                 )
+
+        # Use TaskGroup for structured concurrency with individual error handling
+        try:
+            async with asyncio.TaskGroup() as tg:
+                for service_name, shutdown_coro in shutdown_tasks:
+                    tg.create_task(_shutdown_service(service_name, shutdown_coro))
+        except* Exception as eg:  # noqa: BLE001
+            # Log exception group but don't re-raise to prevent masking shutdown issues
+            logger.warning(
+                "Some services encountered errors during shutdown: %d errors", len(eg.exceptions)
+            )
 
     async def _handle_weather_wire_message(self, weather_message: WeatherWireMessage) -> None:
         """Handle a single WeatherWireMessage.
@@ -547,15 +550,18 @@ class WeatherWireApp:
         try:
             # Use async iterator to process messages
             async for weather_message in self.receiver:
+                if self._shutdown_event.is_set():
+                    logger.info("Shutdown event detected, exiting main loop")
+                    break
                 try:
                     await self._handle_weather_wire_message(weather_message)
 
                     # Log queue size for monitoring
                     queue_size = self.receiver.queue_size
                     if queue_size > 10:  # Log when queue starts building up
-                        logger.warning(f"Message queue building up: {queue_size} messages pending")
+                        logger.warning("Message queue building up: %d messages pending", queue_size)
                     elif queue_size > 0:
-                        logger.debug(f"Queue size: {queue_size} messages")
+                        logger.debug("Queue size: %d messages", queue_size)
 
                 except (
                     PipelineError,
@@ -576,7 +582,7 @@ class WeatherWireApp:
             logger.info("Application cancelled")
             raise
         except Exception as e:
-            logger.error(f"Unexpected error in main loop: {e}")
+            logger.error("Unexpected error in main loop: %s", str(e))
             raise
 
         logger.info(

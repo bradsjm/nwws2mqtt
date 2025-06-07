@@ -14,7 +14,7 @@ from slixmpp import JID
 from slixmpp.exceptions import XMPPError
 from slixmpp.stanza import Message
 
-from nwws.receiver.stats import WeatherWireStatsCollector
+from nwws.receiver.stats import WeatherWireStatsCollector as ReceiverStatsCollector
 
 from .config import WeatherWireConfig
 
@@ -88,7 +88,7 @@ class WeatherWire(slixmpp.ClientXMPP):
         self,
         config: WeatherWireConfig,
         *,
-        stats_collector: WeatherWireStatsCollector | None = None,
+        stats_collector: ReceiverStatsCollector | None = None,
     ) -> None:
         """Initialize the NWWS-OI XMPP client with comprehensive configuration and monitoring.
 
@@ -158,6 +158,7 @@ class WeatherWire(slixmpp.ClientXMPP):
         self.is_shutting_down: bool = False
         self._idle_monitor_task: asyncio.Task[None] | None = None
         self._stats_update_task: asyncio.Task[None] | None = None
+        self._background_tasks: list[asyncio.Task[None]] = []
         self._connection_start_time: float | None = None
 
         logger.info(
@@ -256,7 +257,7 @@ class WeatherWire(slixmpp.ClientXMPP):
         # Reconnection events
         self.add_event_handler("reconnect_delay", self._on_reconnect_delay)
 
-    def start(self) -> asyncio.Future[bool]:
+    async def start(self) -> bool:
         """Initiate connection to the NWWS-OI XMPP server.
 
         Begins the asynchronous connection process to the configured NWWS-OI server
@@ -266,9 +267,7 @@ class WeatherWire(slixmpp.ClientXMPP):
         for further processing.
 
         Returns:
-            An asyncio.Future that resolves to True if the initial connection succeeds,
-            or False if the connection attempt fails. The Future allows callers to
-            await the connection result or handle it asynchronously.
+            True if the initial connection succeeds, False if the connection attempt fails.
 
         """
         logger.info(
@@ -277,7 +276,9 @@ class WeatherWire(slixmpp.ClientXMPP):
             port=self.config.port,
         )
 
-        return super().connect(host=self.config.server, port=self.config.port)  # type: ignore  # noqa: PGH003
+        # slixmpp's connect() returns Future[bool] but type checker can't infer parent class type
+        connection_future = super().connect(host=self.config.server, port=self.config.port)  # type: ignore[misc]
+        return await connection_future  # type: ignore[misc]
 
     def is_client_connected(self) -> bool:
         """Determine if the client is currently connected and operational.
@@ -389,22 +390,25 @@ class WeatherWire(slixmpp.ClientXMPP):
                 )
 
     async def _start_background_services(self) -> None:
-        """Start necessary services after session start."""
-        if self._idle_monitor_task is None or self._idle_monitor_task.done():
-            self._idle_monitor_task = asyncio.create_task(
-                self._monitor_idle_timeout(),
-                name="idle_timeout_monitor",
-            )
-            logger.info("Idle timeout monitoring enabled", timeout=IDLE_TIMEOUT)
+        """Start necessary services after session start with proper task management."""
+        # Stop any existing background services first
+        self._stop_background_services()
+
+        # Start idle timeout monitoring
+        self._idle_monitor_task = asyncio.create_task(
+            self._monitor_idle_timeout(),
+            name="idle_timeout_monitor",
+        )
+        self._background_tasks.append(self._idle_monitor_task)
+        logger.info("Idle timeout monitoring enabled", timeout=IDLE_TIMEOUT)
 
         # Start periodic stats updates if stats collector is available
-        if self.stats_collector and (
-            self._stats_update_task is None or self._stats_update_task.done()
-        ):
+        if self.stats_collector:
             self._stats_update_task = asyncio.create_task(
                 self._update_stats_periodically(),
                 name="periodic_stats_update",
             )
+            self._background_tasks.append(self._stats_update_task)
             logger.info("Periodic stat updates enabled")
 
     async def _join_nwws_room(self, max_history: int = MAX_HISTORY) -> None:
@@ -716,19 +720,15 @@ class WeatherWire(slixmpp.ClientXMPP):
 
     def _stop_background_services(self) -> None:
         """Cancel all monitoring and timeout tasks."""
-        tasks_to_cancel = [
-            self._idle_monitor_task,
-            self._stats_update_task,
-        ]
-
-        for task in tasks_to_cancel:
-            if task is not None and not task.done():
+        for task in self._background_tasks:
+            if not task.done():
                 logger.info("Stopping background task", task_name=task.get_name())
                 task.cancel()
 
         # Reset task references
         self._idle_monitor_task = None
         self._stats_update_task = None
+        self._background_tasks.clear()
 
     def _leave_muc_room(self) -> None:
         """Leave the MUC room gracefully."""

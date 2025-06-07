@@ -8,6 +8,7 @@ from nwws.models.weather import TextProductModel, TextProductSegmentModel, VTECM
 from nwws.outputs.mqtt import MQTTOutput, MQTTConfig
 from nwws.pipeline import PipelineEventMetadata
 from nwws.utils import build_topic
+from nwws.utils.topic_builder import get_product_type_indicator
 
 
 from typing import List, Optional, Dict, TypedDict
@@ -95,46 +96,46 @@ class TestMQTTTopicStructure:
 
         # Test single VTEC
         event = self.create_mock_event(vtec_records=[tornado_warning])
-        result = self.mqtt_output._get_product_type_indicator(event)  # type: ignore[protected-access]
+        result = get_product_type_indicator(event)
         assert result == "TO.W"
 
         # Test multiple VTEC - should use first one
         event = self.create_mock_event(vtec_records=[tornado_warning, severe_watch])
-        result = self.mqtt_output._get_product_type_indicator(event)  # type: ignore[protected-access]
+        result = get_product_type_indicator(event)
         assert result == "TO.W"
 
     def test_get_product_type_indicator_without_vtec(self) -> None:
         """Test product type indicator extraction without VTEC codes."""
         # Test with standard AWIPS ID
         event = self.create_mock_event(awipsid="AFDDMX")
-        result = self.mqtt_output._get_product_type_indicator(event)  # type: ignore[protected-access]
+        result = get_product_type_indicator(event)
         assert result == "AFD"
 
         # Test with different AWIPS ID
         event = self.create_mock_event(awipsid="ZFPBOX")
-        result = self.mqtt_output._get_product_type_indicator(event)  # type: ignore[protected-access]
+        result = get_product_type_indicator(event)
         assert result == "ZFP"
 
         # Test with lowercase AWIPS ID (should be uppercase)
         event = self.create_mock_event(awipsid="nowphi")
-        result = self.mqtt_output._get_product_type_indicator(event)  # type: ignore[protected-access]
+        result = get_product_type_indicator(event)
         assert result == "NOW"
 
     def test_get_product_type_indicator_edge_cases(self) -> None:
         """Test product type indicator with edge cases."""
         # Test with short AWIPS ID
         event = self.create_mock_event(awipsid="AB")
-        result = self.mqtt_output._get_product_type_indicator(event)  # type: ignore[protected-access]
+        result = get_product_type_indicator(event)
         assert result == "GENERAL"
 
         # Test with None AWIPS ID
         event = self.create_mock_event(awipsid=None)
-        result = self.mqtt_output._get_product_type_indicator(event)  # type: ignore[protected-access]
+        result = get_product_type_indicator(event)
         assert result == "GENERAL"
 
         # Test with empty AWIPS ID
         event = self.create_mock_event(awipsid="")
-        result = self.mqtt_output._get_product_type_indicator(event)  # type: ignore[protected-access]
+        result = get_product_type_indicator(event)
         assert result == "GENERAL"
 
     def test_build_topic_with_vtec(self) -> None:
@@ -265,5 +266,5 @@ class TestMQTTTopicStructure:
         event.product.segments.append(mock_segment2)
 
         # Should use the first VTEC found (flood advisory)
-        result = self.mqtt_output._get_product_type_indicator(event)  # type: ignore[protected-access]
+        result = get_product_type_indicator(event)
         assert result == "FA.Y"

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import paho.mqtt.client as mqtt
 from loguru import logger
@@ -14,9 +14,6 @@ from nwws.models.events import TextProductEventData
 from nwws.models.events.xml_event_data import XmlEventData
 from nwws.pipeline import Output, PipelineEvent
 from nwws.utils import build_topic
-
-if TYPE_CHECKING:
-    import asyncio
 
 
 @dataclass
@@ -127,7 +124,6 @@ class MQTTOutput(Output):
 
         self._client: mqtt.Client | None = None
         self._connected = False
-        self._connect_future: asyncio.Future[bool] | None = None
 
         logger.info("MQTT Output initialized", output_id=self.output_id)
 
@@ -161,7 +157,6 @@ class MQTTOutput(Output):
 
         self._client = None
         self._connected = False
-        self._connect_future = None
 
         try:
             # Create MQTT client

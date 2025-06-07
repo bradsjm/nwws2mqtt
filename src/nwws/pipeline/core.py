@@ -592,17 +592,12 @@ class Pipeline:
         return transformed_event
 
     async def _send_to_outputs(self, event: PipelineEvent) -> None:
-        """Send the event to all configured outputs concurrently.
+        """Send the event to all configured outputs concurrently using TaskGroup.
 
-        Delivers the event to all configured outputs using concurrent execution
-        to minimize total delivery time. Each output is processed independently
-        with individual error handling to prevent failures in one output from
-        affecting others.
-
-        The method creates an async task for each output and waits for all to
-        complete using asyncio.gather with return_exceptions=True. If any outputs
-        fail, warnings are logged with failure counts, and the first error is
-        re-raised to signal pipeline failure.
+        Delivers the event to all configured outputs using modern asyncio.TaskGroup
+        for structured concurrency. Each output is processed independently with
+        automatic cancellation and cleanup if any output fails. TaskGroup provides
+        better error handling and resource management compared to asyncio.gather.
 
         The event's processing stage is updated to OUTPUT before delivery to
         support proper error handling and tracing throughout the output stage.
@@ -612,36 +607,33 @@ class Pipeline:
                 updated with output stage information.
 
         Raises:
-            Exception: If any output fails during delivery, the first error
-                encountered is re-raised after logging summary information about
-                all failures. This ensures pipeline errors are propagated while
-                providing comprehensive error context.
+            Exception: If any output fails during delivery, TaskGroup will cancel
+                all remaining tasks and raise the first exception encountered.
+                This ensures pipeline errors are propagated with proper cleanup.
 
         """
         output_event = event.with_stage(PipelineStage.OUTPUT, self.pipeline_id)
 
-        # Send to all outputs concurrently
-        tasks: list[asyncio.Task[None]] = []
-        for output in self.outputs:
-            task = asyncio.create_task(self._send_to_single_output(output, output_event))
-            tasks.append(task)
+        if not self.outputs:
+            return
 
-        if tasks:
-            # Wait for all outputs to complete
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-
-            # Check for errors
-            errors = [result for result in results if isinstance(result, Exception)]
-            if errors:
-                logger.warning(
-                    "Some outputs failed",
-                    pipeline_id=self.pipeline_id,
-                    event_id=event.metadata.event_id,
-                    error_count=len(errors),
-                    total_outputs=len(self.outputs),
-                )
-                # Re-raise the first error
-                raise errors[0]
+        # Send to all outputs concurrently using TaskGroup for structured concurrency
+        try:
+            async with asyncio.TaskGroup() as tg:
+                for output in self.outputs:
+                    tg.create_task(self._send_to_single_output(output, output_event))
+        except* Exception as eg:
+            # Log comprehensive error information
+            logger.warning(
+                "Output delivery failed",
+                pipeline_id=self.pipeline_id,
+                event_id=event.metadata.event_id,
+                error_count=len(eg.exceptions),
+                total_outputs=len(self.outputs),
+                error_types=[type(exc).__name__ for exc in eg.exceptions],
+            )
+            # Re-raise the exception group
+            raise
 
     async def _send_to_single_output(self, output: Output, event: PipelineEvent) -> None:
         """Send an event to a single output with comprehensive error handling.
@@ -1159,7 +1151,7 @@ class PipelineManager:
                 timeout=self.config.processing_timeout_seconds,
             )
 
-    async def _process_events(self) -> None:  # noqa: C901
+    async def _process_events(self) -> None:  # noqa: C901, PLR0912
         """Process events from the queue through specified or all pipelines.
 
         Implements the core event processing loop that continuously dequeues events
@@ -1187,26 +1179,26 @@ class PipelineManager:
                 pipeline_id, event = await asyncio.wait_for(self._event_queue.get(), timeout=1.0)
 
                 if pipeline_id is None:
-                    # Process event through all pipelines concurrently
-                    tasks = [
-                        asyncio.create_task(pipeline.process(event))
-                        for pipeline in self._pipelines.values()
-                        if pipeline.is_started
+                    # Process event through all pipelines concurrently using TaskGroup
+                    started_pipelines = [
+                        pipeline for pipeline in self._pipelines.values() if pipeline.is_started
                     ]
 
-                    if tasks:
-                        # Wait for all pipelines to process the event
-                        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-                        # Log any errors
-                        errors = [result for result in results if isinstance(result, Exception)]
-                        if errors:
+                    if started_pipelines:
+                        try:
+                            async with asyncio.TaskGroup() as tg:
+                                for pipeline in started_pipelines:
+                                    tg.create_task(pipeline.process(event))
+                        except* Exception as eg:  # noqa: BLE001
+                            # Log error information from exception group
                             logger.warning(
                                 "Some pipelines failed to process event",
                                 event_id=event.metadata.event_id,
-                                error_count=len(errors),
-                                total_pipelines=len(tasks),
+                                error_count=len(eg.exceptions),
+                                total_pipelines=len(started_pipelines),
+                                error_types=[type(exc).__name__ for exc in eg.exceptions],
                             )
+                            # Continue processing despite errors in broadcast mode
                 else:
                     # Process event through specific pipeline
                     pipeline = self._pipelines.get(pipeline_id)

@@ -20,9 +20,10 @@ Apply proven architectural patterns to ensure the solution is scalable, testable
     -   **Data Modeling**: Use `dataclasses` for simple data structures and Pydantic models for data validation, serialization, and settings.
     -   **Defensive Interfaces**: Validate inputs to public functions/methods. **Never access protected members (e.g., `_variable`) from outside the class or its subclasses.** Design a proper public API instead.
 -   **Asynchronous Best Practices**:
+    -   **Modern Async Patterns**: Use modern async capabilities that include async.TaskGroup for concurrent tasks and modern cancellation and exception supression code.
     -   **Task Management**: When creating a task with `asyncio.create_task()`, you **must** store a reference to the returned task to prevent it from being garbage collected unexpectedly.
     -   **Waiting**: Do not use `asyncio.sleep()` in a loop to wait for a condition. Use more efficient methods like `asyncio.Event`, an async iterator, or a queue.
-    -   **Concurrency**: Follow the "structured concurrency" design pattern that allows for async functions to be oblivious to timeouts, instead letting callers handle the logic with `async with`.
+    -   **Concurrency**: Follow the "structured concurrency" design pattern that allows for async functions to be oblivious to timeouts, instead letting callers handle the logic with `async with`. Use `async with` and `async for` for asynchronous context managers and iterators.
 
 - **Context Management**:
     -   **Use Context Managers**: Always use context managers (`with` statements) for resource management (e.g., file I/O, database connections) to ensure proper cleanup (PEP 343).

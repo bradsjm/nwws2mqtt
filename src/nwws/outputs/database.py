@@ -151,7 +151,9 @@ class WeatherEventContent(Base):
     processed_content: Mapped[str | None] = mapped_column(Text)
 
     # Relationship back to event
-    event: Mapped[WeatherEventModel] = relationship("WeatherEvent", back_populates="raw_content")
+    event: Mapped[WeatherEventModel] = relationship(
+        "WeatherEventModel", back_populates="raw_content"
+    )
 
     def __repr__(self) -> str:
         """Return a string representation of the weather event content.
@@ -202,7 +204,7 @@ class WeatherEventMetadata(Base):
 
     # Relationship back to event
     event: Mapped[WeatherEventModel] = relationship(
-        "WeatherEvent", back_populates="metadata_entries"
+        "WeatherEventModel", back_populates="metadata_entries"
     )
 
     def __repr__(self) -> str:
@@ -615,9 +617,22 @@ class WeatherProductCleanupService:
             asyncio.CancelledError: When the cleanup task is cancelled for shutdown.
 
         """
+        # Use monotonic time for better interval handling
+        import time
+
+        next_cleanup = time.monotonic() + (self.config.cleanup_interval_hours * 3600)
+
         while True:
             try:
-                await asyncio.sleep(self.config.cleanup_interval_hours * 3600)
+                # Calculate sleep time based on monotonic clock
+                current_time = time.monotonic()
+                sleep_time = max(0, next_cleanup - current_time)
+
+                if sleep_time > 0:
+                    await asyncio.sleep(sleep_time)
+
+                # Schedule next cleanup
+                next_cleanup = time.monotonic() + (self.config.cleanup_interval_hours * 3600)
                 results = await self.cleanup_expired_events()
 
                 if results.total_deleted > 0:

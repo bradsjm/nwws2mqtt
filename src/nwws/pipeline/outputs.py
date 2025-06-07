@@ -87,9 +87,7 @@ class Output(ABC):
 
         """
         return {
-            f"{self.output_id}_destination": self.__class__.__name__.lower().replace(
-                "output", ""
-            ),
+            f"{self.output_id}_destination": self.__class__.__name__.lower().replace("output", ""),
             f"{self.output_id}_event_age_seconds": event.metadata.age_seconds,
             f"{self.output_id}_timestamp": time.time(),
         }
@@ -140,9 +138,7 @@ class Output(ABC):
             raise OutputError(msg, self.output_id) from e
 
     @asynccontextmanager
-    async def processing_context(
-        self, event: PipelineEvent
-    ) -> AsyncIterator[dict[str, Any]]:
+    async def processing_context(self, event: PipelineEvent) -> AsyncIterator[dict[str, Any]]:
         """Async context manager for output processing with automatic metadata collection."""
         output_metadata = self.get_output_metadata(event)
         start_time = time.time()
@@ -150,9 +146,7 @@ class Output(ABC):
         try:
             yield output_metadata
         finally:
-            output_metadata[f"{self.output_id}_duration_ms"] = (
-                time.time() - start_time
-            ) * 1000
+            output_metadata[f"{self.output_id}_duration_ms"] = (time.time() - start_time) * 1000
 
 
 class LogOutput(Output):
