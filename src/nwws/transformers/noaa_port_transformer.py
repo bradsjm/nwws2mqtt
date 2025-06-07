@@ -4,6 +4,7 @@
 from typing import Any
 
 from loguru import logger
+from pyiem.exceptions import TextProductException, UGCParseException
 from pyiem.nws.products import parser  # type: ignore[import]
 from pyiem.nws.ugc import UGCProvider
 
@@ -23,24 +24,12 @@ class NoaaPortTransformer(Transformer):
         """Initialize the transformer with UGC provider."""
         super().__init__(transformer_id)
         # Initialize UGC provider once during startup
-        self._ugc_provider: UGCProvider | None = None
-        self._initialize_ugc_provider()
-
-    def _initialize_ugc_provider(self) -> None:
-        """Initialize the UGC provider for name resolution."""
-        try:
-            self._ugc_provider = create_ugc_provider()
-            logger.info("Initialized UGC provider for name resolution")
-        except (OSError, RuntimeError) as e:
-            logger.error("Failed to initialize UGC provider", error=str(e))
-            self._ugc_provider = UGCProvider(legacy_dict={})
+        self._ugc_provider: UGCProvider = create_ugc_provider()
 
     @property
     def ugc_provider(self) -> UGCProvider:
-        """Get the UGC provider, creating it if necessary."""
-        if self._ugc_provider is None:
-            self._initialize_ugc_provider()
-        return self._ugc_provider or UGCProvider(legacy_dict={})
+        """Get the UGC provider."""
+        return self._ugc_provider
 
     def transform(self, event: PipelineEvent) -> PipelineEvent:
         """Handle incoming NOAA Port event and convert to a product."""
@@ -55,7 +44,7 @@ class NoaaPortTransformer(Transformer):
             product = convert_text_product_to_model(
                 parser(text=event.noaaport, ugc_provider=self.ugc_provider),  # type: ignore[arg-type]
             )
-        except Exception as err:  # noqa: BLE001
+        except (TextProductException, UGCParseException) as err:
             logger.error(
                 "Failed to parse NOAA Port message",
                 error=str(err),
@@ -96,15 +85,8 @@ class NoaaPortTransformer(Transformer):
 
         # Add NOAA Port specific transformation metadata
         if isinstance(input_event, NoaaPortEventData):
-            metadata[f"{self.transformer_id}_message_size_bytes"] = len(
-                input_event.noaaport
-            )
-            metadata[f"{self.transformer_id}_has_delay_stamp"] = (
-                input_event.delay_stamp is not None
-            )
-            metadata[f"{self.transformer_id}_ugc_provider_available"] = (
-                self._ugc_provider is not None
-            )
+            metadata[f"{self.transformer_id}_message_size_bytes"] = len(input_event.noaaport)
+            metadata[f"{self.transformer_id}_has_delay_stamp"] = input_event.delay_stamp is not None
 
         if isinstance(output_event, TextProductEventData):
             metadata[f"{self.transformer_id}_parsing_success"] = True

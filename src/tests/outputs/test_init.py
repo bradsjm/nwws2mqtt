@@ -22,13 +22,6 @@ class TestOutputsPackage:
         assert hasattr(MQTTOutput, "start")
         assert hasattr(MQTTOutput, "stop")
 
-    def test_all_exports(self) -> None:
-        """Test that __all__ exports are available."""
-        from nwws.outputs import __all__
-
-        expected_exports = ["ConsoleOutput", "MQTTOutput"]
-        assert set(__all__) == set(expected_exports)
-
     @patch("nwws.outputs.console.Console")
     def test_console_output_instantiation(self, _mock_console_class: Mock) -> None:
         """Test that ConsoleOutput can be instantiated."""

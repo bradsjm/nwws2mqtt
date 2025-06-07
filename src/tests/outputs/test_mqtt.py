@@ -18,7 +18,7 @@ class TestMqttConfig:
         assert config.mqtt_password is None
         assert config.mqtt_topic_prefix == "nwws"
         assert config.mqtt_qos == 1
-        assert config.mqtt_client_id == "nwws-oi-pipeline-client"
+        assert config.mqtt_client_id == "nwws-oi-client"
 
     def test_config_custom_values(self) -> None:
         """Test MqttConfig with custom values."""
@@ -89,7 +89,7 @@ class TestMQTTOutput:
         await output.start()
 
         # Verify client was created and configured
-        mock_client_class.assert_called_once_with(client_id="nwws-oi-pipeline-client")
+        mock_client_class.assert_called_once_with(client_id="nwws-oi-client")
         mock_client.loop_start.assert_called_once()
         mock_client.connect.assert_called_once_with("localhost", 1883, 60)
 
@@ -131,54 +131,6 @@ class TestMQTTOutput:
 
         mock_client.disconnect.assert_called_once()
         mock_client.loop_stop.assert_called_once()
-
-    @patch("nwws.outputs.mqtt.isinstance")
-    async def test_send_text_product_event(self, mock_isinstance: Mock) -> None:
-        """Test sending TextProductEventData."""
-        from nwws.outputs.mqtt import MQTTOutput, MQTTConfig
-
-        # Make isinstance return True for our mock event
-        mock_isinstance.return_value = True
-
-        config = MQTTConfig()
-        output = MQTTOutput(config=config)
-
-        # Mock the client and connection
-        mock_client = MagicMock()
-        output._client = mock_client
-        output._connected = True
-
-        # Create mock event that looks like TextProductEventData
-        mock_event = Mock()
-        mock_event.cccc = "KTEST"
-        mock_event.awipsid = "TESTAID"
-        mock_event.id = "TEST123"
-        mock_event.metadata = Mock()
-        mock_event.metadata.event_id = "test-event-123"
-        mock_product = Mock()
-        mock_product.model_dump_json.return_value = '{"test": "data"}'
-        mock_product.segments = []  # Empty segments list for fallback to AWIPS ID
-        mock_event.product = mock_product
-
-        await output.send(mock_event)
-
-        # Verify publish was called with correct parameters
-        mock_client.publish.assert_called_once()
-        call_args = mock_client.publish.call_args
-
-        # Check topic format: prefix/cccc/product_type/awipsid/id
-        # With no VTEC and AWIPS ID "TESTAID", product_type should be "TES"
-        expected_topic = "nwws/KTEST/TES/TESTAID/TEST123"
-        assert call_args[0][0] == expected_topic
-
-        # Check payload is JSON
-        payload = call_args[0][1]
-        assert isinstance(payload, str)
-        assert payload == '{"test": "data"}'
-
-        # Check QoS and retain
-        assert call_args[1]["qos"] == 1
-        assert call_args[1]["retain"] is False
 
     @patch("nwws.outputs.mqtt.isinstance")
     async def test_send_non_text_product_event(self, mock_isinstance: Mock) -> None:

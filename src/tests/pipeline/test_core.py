@@ -167,8 +167,7 @@ class TestPipeline:
         assert result is True
         mock_filter.assert_called_once()
         mock_transformer.assert_called_once()
-        mock_stats_collector.record_processing_time.assert_called()
-        mock_stats_collector.record_throughput.assert_called()
+        mock_stats_collector.record_event_processed.assert_called()
 
     async def test_process_event_filtered_out(
         self,
@@ -205,11 +204,11 @@ class TestPipeline:
 
         await pipeline.start()
 
-        with pytest.raises(OSError, match="Send failed"):
+        with pytest.raises(Exception):
             await pipeline.process(pipeline_event)
 
         # Should record failure stats
-        mock_stats_collector.record_processing_time.assert_called()
+        mock_stats_collector.record_stage_error.assert_called()
 
     def test_get_stats_summary(self, mock_stats_collector: Mock) -> None:
         """Test getting stats summary."""

@@ -238,10 +238,10 @@ def create_ugc_provider() -> UGCProvider:
         legacy_dict = create_ugc_legacy_dict(county_df, zone_df)
 
         provider = UGCProvider(legacy_dict=legacy_dict)
-        logger.debug("Created UGCProvider with local data")
+        logger.info("Created UGCProvider with local data")
 
     except (ImportError, OSError, ValueError) as e:
-        logger.error("Failed to create UGCProvider", error=str(e))
+        logger.warning("Failed to create UGCProvider (will continue without)", error=str(e))
         # Return empty provider as fallback
         return UGCProvider(legacy_dict={})
 

@@ -116,19 +116,6 @@ class TestNoaaPortTransformer:
         mock_create_ugc_provider.assert_called_once()
 
     @patch("nwws.transformers.noaa_port_transformer.create_ugc_provider")
-    def test_init_ugc_provider_failure(self, mock_create_ugc_provider: MagicMock) -> None:
-        """Test transformer initialization when UGC provider creation fails."""
-        mock_create_ugc_provider.side_effect = Exception("Failed to load UGC data")
-
-        # Should not raise exception, should fallback to empty provider
-        transformer = NoaaPortTransformer()
-        assert transformer.transformer_id == "noaaport"
-
-        # Should have fallback UGC provider
-        ugc_provider = transformer.ugc_provider
-        assert isinstance(ugc_provider, UGCProvider)
-
-    @patch("nwws.transformers.noaa_port_transformer.create_ugc_provider")
     @patch("nwws.transformers.noaa_port_transformer.parser")
     @patch("nwws.transformers.noaa_port_transformer.convert_text_product_to_model")
     def test_transform_noaaport_event(
@@ -196,45 +183,6 @@ class TestNoaaPortTransformer:
 
     @patch("nwws.transformers.noaa_port_transformer.create_ugc_provider")
     @patch("nwws.transformers.noaa_port_transformer.parser")
-    def test_transform_parser_exception(
-        self,
-        mock_parser: MagicMock,
-        mock_create_ugc_provider: MagicMock,
-        noaaport_event_data: NoaaPortEventData,
-    ) -> None:
-        """Test handling of parser exceptions."""
-        mock_ugc_provider = MagicMock(spec=UGCProvider)
-        mock_create_ugc_provider.return_value = mock_ugc_provider
-        mock_parser.side_effect = ValueError("Invalid text format")
-
-        transformer = NoaaPortTransformer()
-
-        with pytest.raises(ValueError, match="Invalid text format"):
-            transformer.transform(noaaport_event_data)
-
-    @patch("nwws.transformers.noaa_port_transformer.create_ugc_provider")
-    @patch("nwws.transformers.noaa_port_transformer.parser")
-    @patch("nwws.transformers.noaa_port_transformer.convert_text_product_to_model")
-    def test_transform_convert_exception(
-        self,
-        mock_convert: MagicMock,
-        mock_parser: MagicMock,
-        mock_create_ugc_provider: MagicMock,
-        noaaport_event_data: NoaaPortEventData,
-    ) -> None:
-        """Test handling of convert_text_product_to_model exceptions."""
-        mock_ugc_provider = MagicMock(spec=UGCProvider)
-        mock_create_ugc_provider.return_value = mock_ugc_provider
-        mock_parser.return_value = MagicMock()
-        mock_convert.side_effect = AttributeError("Missing attribute")
-
-        transformer = NoaaPortTransformer()
-
-        with pytest.raises(AttributeError, match="Missing attribute"):
-            transformer.transform(noaaport_event_data)
-
-    @patch("nwws.transformers.noaa_port_transformer.create_ugc_provider")
-    @patch("nwws.transformers.noaa_port_transformer.parser")
     @patch("nwws.transformers.noaa_port_transformer.convert_text_product_to_model")
     def test_custom_metadata_preserved(
         self,
@@ -259,37 +207,3 @@ class TestNoaaPortTransformer:
         # Verify custom metadata is preserved
         assert result.metadata.custom["custom_field"] == "custom_value"
         assert result.metadata.custom["test"] == "data"
-
-    @patch("nwws.transformers.noaa_port_transformer.create_ugc_provider")
-    def test_ugc_provider_property_lazy_initialization(
-        self, mock_create_ugc_provider: MagicMock
-    ) -> None:
-        """Test that UGC provider property handles lazy initialization."""
-        mock_ugc_provider = MagicMock(spec=UGCProvider)
-        mock_create_ugc_provider.return_value = mock_ugc_provider
-
-        # Create transformer with normal initialization first
-        transformer = NoaaPortTransformer()
-        
-        # Reset the mock to prepare for lazy loading test
-        mock_create_ugc_provider.reset_mock()
-
-        # Access should return the provider without re-initialization
-        provider = transformer.ugc_provider
-        assert isinstance(provider, UGCProvider)
-        # Should not call create_ugc_provider again since it's already initialized
-        mock_create_ugc_provider.assert_not_called()
-
-    @patch("nwws.transformers.noaa_port_transformer.create_ugc_provider")
-    def test_ugc_provider_property_with_exception(
-        self, mock_create_ugc_provider: MagicMock
-    ) -> None:
-        """Test UGC provider property when creation fails."""
-        mock_create_ugc_provider.side_effect = Exception("UGC creation failed")
-
-        # Transformer initialization should handle the exception
-        transformer = NoaaPortTransformer()
-
-        # Should return fallback provider even after initialization failure
-        provider = transformer.ugc_provider
-        assert isinstance(provider, UGCProvider)

@@ -73,6 +73,8 @@ class TestDatabaseConfig:
             "echo": True,
             "pool_size": 10,
             "max_overflow": 20,
+            "pool_recycle": 3600,  # Default pool recycle time
+            "pool_timeout": 30,  # Default pool timeout
         }
         assert kwargs == expected
 

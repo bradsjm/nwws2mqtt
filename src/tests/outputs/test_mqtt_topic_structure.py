@@ -148,7 +148,7 @@ class TestMQTTTopicStructure:
             vtec_records=[tornado_warning]
         )
 
-        result = self.mqtt_output._build_topic(event)  # type: ignore[protected-access]
+        result = build_topic(event)
         expected = "nwws/KTBW/TO.W/TORALY/202307131915-KTBW-WFUS51-TORALY"
         assert result == expected
 
@@ -160,7 +160,7 @@ class TestMQTTTopicStructure:
             product_id="202307131830-KDMX-FXUS63-AFDDMX"
         )
 
-        result = self.mqtt_output._build_topic(event)  # type: ignore[protected-access]
+        result = build_topic(event)
         expected = "nwws/KDMX/AFD/AFDDMX/202307131830-KDMX-FXUS63-AFDDMX"
         assert result == expected
 
@@ -172,8 +172,8 @@ class TestMQTTTopicStructure:
             product_id="202307131700-KPHI-UNKNOWN"
         )
 
-        result = self.mqtt_output._build_topic(event)  # type: ignore[protected-access]
-        expected = "nwws/KPHI/GENERAL/NO_AWIPSID/202307131700-KPHI-UNKNOWN"
+        result = build_topic(event)
+        expected = "nwws/KPHI/GENERAL/GENERAL/202307131700-KPHI-UNKNOWN"
         assert result == expected
 
     def test_filtering_scenarios(self) -> None:
@@ -233,7 +233,7 @@ class TestMQTTTopicStructure:
                 vtec_records=case["vtec"]
             )
 
-            result = build_topic(event)  # type: ignore[protected-access]
+            result = build_topic(event)
             assert result == case["expected_topic"]
 
             # Verify that the topic would match expected filter patterns
