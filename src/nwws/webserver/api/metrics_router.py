@@ -65,7 +65,7 @@ def create_metrics_router(registry: MetricRegistry) -> APIRouter:
             return JSONResponse(content=metrics_data)
 
         except Exception as e:
-            logger.error("Failed to export JSON metrics", exception=e)
+            logger.exception("Failed to export JSON metrics")
             raise HTTPException(status_code=500, detail="Failed to export metrics") from e
 
     return router

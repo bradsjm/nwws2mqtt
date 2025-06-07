@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import jinja2
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -87,16 +88,14 @@ def _create_dashboard_endpoints(
 
             return HTMLResponse(content=content)
 
-        except FileNotFoundError as e:
-            logger.error("Dashboard template not found", error=str(e))
-            return HTMLResponse(
-                content="<h1>Dashboard Error</h1><p>Template not found</p>",
-                status_code=500,
+        except jinja2.TemplateError as e:
+            logger.error(
+                "Dashboard template error",
+                error=str(e),
+                error_type=type(e).__name__,
             )
-        except PermissionError as e:
-            logger.error("Permission denied accessing template", error=str(e))
             return HTMLResponse(
-                content="<h1>Dashboard Error</h1><p>Template access denied</p>",
+                content=f"<h1>Dashboard Error</h1><p>A template error occurred: {e}</p>",
                 status_code=500,
             )
 

@@ -36,7 +36,7 @@ def create_metrics_endpoints(router: APIRouter, registry: MetricRegistry) -> Non
 
             return JSONResponse(content=dashboard_data)
         except Exception as e:
-            logger.error("Failed to get dashboard metrics", error=str(e))
+            logger.exception("Failed to get dashboard metrics")
             raise HTTPException(status_code=500, detail="Failed to retrieve metrics") from e
 
 
