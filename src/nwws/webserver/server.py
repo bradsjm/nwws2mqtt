@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 from asyncio import CancelledError
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -165,12 +165,11 @@ class WebServer:
                 self.server_task.cancel()
 
                 # Wait for the task to complete with timeout
-                try:
-                    await asyncio.wait_for(self.server_task, timeout=shutdown_timeout)
-                except TimeoutError:
-                    logger.warning("Web server shutdown timed out")
-                except CancelledError:
-                    pass  # Expected when cancelling
+                with suppress(CancelledError):
+                    try:
+                        await asyncio.wait_for(self.server_task, timeout=shutdown_timeout)
+                    except asyncio.TimeoutError:
+                        logger.warning("Web server shutdown timed out")
 
                 logger.info("Web server stopped")
 
