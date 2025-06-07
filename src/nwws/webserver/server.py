@@ -31,7 +31,24 @@ if TYPE_CHECKING:
 
 
 class WebServer:
-    """Unified web server managing all HTTP endpoints and WebSocket connections."""
+    """Unified web server for the NWWS2MQTT service providing HTTP endpoints and real-time monitoring.
+
+    This class manages a FastAPI-based web server that serves multiple purposes within the
+    NWWS2MQTT system architecture. It provides a unified interface for health monitoring,
+    metrics collection, and real-time dashboard functionality. The server integrates with
+    the MetricRegistry to expose system performance data and utilizes geographic data
+    providers for weather office boundary visualization.
+
+    The web server handles three primary responsibilities:
+    - Health and metrics API endpoints for system monitoring and observability
+    - Interactive dashboard with real-time WebSocket connections for live data streaming
+    - Static file serving for dashboard assets and resources
+
+    The server is designed for production deployment with proper CORS configuration,
+    graceful shutdown handling, and comprehensive error logging. It supports both
+    development and production environments with configurable static file serving
+    and template directory management.
+    """
 
     def __init__(
         self,
@@ -40,13 +57,28 @@ class WebServer:
         templates_dir: str | None = None,
         static_dir: str | None = None,
     ) -> None:
-        """Initialize web server with dependencies.
+        """Initialize the web server with all required dependencies and configuration.
+
+        This constructor sets up the complete web server infrastructure by creating a
+        FastAPI application instance with properly configured middleware, routers, and
+        static file serving. The initialization process configures CORS middleware for
+        cross-origin requests, mounts static file directories when available, and
+        registers all API and dashboard routes with appropriate prefixes.
+
+        The server tracks its start time for uptime calculations and maintains references
+        to the uvicorn server instance and background tasks for proper lifecycle management.
+        All route handlers are created with dependency injection to ensure testability
+        and loose coupling between components.
 
         Args:
-            registry: MetricRegistry instance for metrics access
-            geo_provider: Geographic data provider for office boundaries
-            templates_dir: Path to templates directory
-            static_dir: Path to static files directory
+            registry: MetricRegistry instance providing access to system metrics and
+                performance data for API endpoints and dashboard displays.
+            geo_provider: Geographic data provider for weather office boundary data.
+                If None, a default WeatherGeoDataProvider instance will be created.
+            templates_dir: File system path to the Jinja2 templates directory for
+                dashboard rendering. If None, default template discovery is used.
+            static_dir: File system path to static assets (CSS, JavaScript, images)
+                for dashboard functionality. Directory must exist to be mounted.
 
         """
         self._start_time = time.time()
@@ -119,13 +151,33 @@ class WebServer:
         *,
         access_log: bool = False,
     ) -> None:
-        """Start the web server.
+        """Start the web server and begin accepting HTTP connections.
+
+        This method initializes and starts the uvicorn ASGI server in a background
+        asyncio task, allowing the web server to run concurrently with other system
+        components. The server is configured with the provided network settings and
+        logging parameters, then launched asynchronously to avoid blocking the main
+        application thread.
+
+        The startup process creates a uvicorn.Config instance with the FastAPI
+        application, network binding configuration, and logging settings. A background
+        task is created to run the server's serve() method, which handles all incoming
+        HTTP requests and WebSocket connections. The method includes comprehensive
+        error handling for common startup failures such as port conflicts and
+        network binding issues.
+
+        All startup errors are logged with detailed context including error type and
+        message to assist with debugging and system monitoring.
 
         Args:
-            host: Host to bind the server to
-            port: Port to bind the server to
-            log_level: Log level for uvicorn
-            access_log: Whether to enable access logs
+            host: Network interface to bind the server to. Use "0.0.0.0" for all
+                interfaces or specific IP addresses for restricted access.
+            port: TCP port number for the server to listen on. Must be available
+                and not conflicting with other services.
+            log_level: Uvicorn logging verbosity level controlling server request
+                and error logging output.
+            access_log: Whether to enable detailed HTTP access logging for each
+                request. Useful for debugging but may impact performance.
 
         """
         try:
@@ -149,10 +201,28 @@ class WebServer:
             logger.error("Failed to start web server", error=str(e), error_type=type(e).__name__)
 
     async def stop(self, *, shutdown_timeout: float = 5.0) -> None:
-        """Stop the web server gracefully.
+        """Stop the web server gracefully with proper cleanup and timeout handling.
+
+        This method implements a graceful shutdown process that ensures all active
+        connections are properly closed and resources are cleaned up before termination.
+        The shutdown process signals the uvicorn server to stop accepting new connections,
+        cancels the background server task, and waits for completion within the specified
+        timeout period.
+
+        The graceful shutdown sequence follows these steps:
+        1. Signal the uvicorn server to begin shutdown by setting should_exit flag
+        2. Cancel the background server task to interrupt the event loop
+        3. Wait for task completion with timeout to prevent indefinite blocking
+        4. Suppress CancelledError exceptions as they are expected during shutdown
+        5. Log timeout warnings if shutdown exceeds the specified time limit
+
+        All shutdown errors are caught and logged to prevent the shutdown process from
+        failing and leaving resources in an inconsistent state. The method ensures
+        the server state is properly cleaned up regardless of any errors encountered.
 
         Args:
-            shutdown_timeout: Maximum time to wait for server shutdown
+            shutdown_timeout: Maximum time in seconds to wait for graceful shutdown
+                completion. If exceeded, the server will be forcefully terminated.
 
         """
         if self.server_task and not self.server_task.done():
@@ -168,7 +238,7 @@ class WebServer:
                 with suppress(CancelledError):
                     try:
                         await asyncio.wait_for(self.server_task, timeout=shutdown_timeout)
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         logger.warning("Web server shutdown timed out")
 
                 logger.info("Web server stopped")
@@ -178,10 +248,21 @@ class WebServer:
 
     @property
     def is_running(self) -> bool:
-        """Check if the server is currently running.
+        """Check if the web server is currently running and accepting connections.
+
+        This property performs a comprehensive status check by verifying that the
+        server task exists, is not completed or cancelled, and the uvicorn server
+        instance is properly initialized. This provides an accurate indication of
+        whether the server is actively processing HTTP requests and WebSocket
+        connections.
+
+        The status check ensures all components required for server operation are
+        present and functional, including the background asyncio task and the
+        uvicorn server instance.
 
         Returns:
-            True if the server is running, False otherwise.
+            True if the server is actively running and accepting connections,
+            False if the server is stopped, failed to start, or is shutting down.
 
         """
         return (
@@ -190,10 +271,22 @@ class WebServer:
 
     @property
     def uptime(self) -> float:
-        """Get server uptime in seconds.
+        """Get the total server uptime since initialization.
+
+        This property calculates the elapsed time since the WebServer instance was
+        created, providing an accurate measure of how long the server has been
+        operational. The uptime is measured from the moment of object instantiation
+        rather than when the server actually starts accepting connections, giving
+        a complete view of the server lifecycle.
+
+        The uptime calculation uses wall-clock time and is suitable for monitoring
+        and dashboard display purposes. For high-precision time measurements or
+        elapsed time calculations that should be immune to system clock changes,
+        consider using time.monotonic() instead.
 
         Returns:
-            Server uptime in seconds
+            Total uptime in seconds as a floating-point number, providing
+            sub-second precision for accurate monitoring and metrics collection.
 
         """
         return time.time() - self._start_time

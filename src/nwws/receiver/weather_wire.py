@@ -25,7 +25,19 @@ MAX_HISTORY = 5  # Maximum history messages to retrieve when joining MUC
 
 
 class WeatherWireMessage(BaseModel):
-    """Represents content of a received weathermessage."""
+    """Represents a structured weather message received from the NWWS-OI system.
+
+    This data model encapsulates all the essential metadata and content of a weather
+    product message received through the NWWS-OI XMPP Multi-User Chat (MUC) room.
+    The message includes standardized weather product identifiers (WMO headers),
+    timing information, issuing office details, and the formatted product content
+    in NOAAPort format for downstream processing.
+
+    The message structure follows the NWWS-OI XML namespace format with additional
+    processing to convert the raw message content into the NOAAPort format expected
+    by weather data consumers. Delay stamps are preserved to track message latency
+    through the distribution system.
+    """
 
     subject: str = Field(description="Subject of the message")
     noaaport: str = Field(description="NOAAPort formatted text of the product message.")
@@ -44,7 +56,33 @@ class WeatherWireMessage(BaseModel):
 
 
 class WeatherWire(slixmpp.ClientXMPP):
-    """NWWS-OI XMPP client using slixmpp."""
+    """Production-grade NWWS-OI XMPP client for receiving real-time weather data.
+
+    This class implements a robust, asynchronous XMPP client that connects to the
+    National Weather Service's NWWS-OI (NOAAPort Weather Wire Service - Open Interface)
+    system to receive real-time weather products, warnings, and forecasts. The client
+    handles the complete lifecycle of XMPP connectivity including authentication,
+    Multi-User Chat (MUC) room management, message processing, and graceful shutdown.
+
+    The implementation provides:
+    - Automatic reconnection with exponential backoff on connection failures
+    - Idle timeout detection and forced reconnection for stuck connections
+    - Comprehensive error handling and recovery mechanisms
+    - Async iterator pattern for processing incoming weather messages
+    - Detailed metrics collection and monitoring capabilities
+    - Circuit breaker patterns for resilient message processing
+    - Structured logging for operational visibility
+
+    The client joins the NWWS MUC room and processes incoming weather messages,
+    converting them from NWWS-OI XML format to structured WeatherWireMessage objects
+    with standardized NOAAPort formatting. Messages are queued internally and made
+    available through the async iterator interface for downstream processing.
+
+    Connection health is continuously monitored through idle timeout detection,
+    periodic stats updates, and comprehensive event handling for all XMPP lifecycle
+    events. The client maintains detailed statistics about message processing rates,
+    connection stability, and error conditions for operational monitoring.
+    """
 
     def __init__(
         self,
@@ -52,19 +90,40 @@ class WeatherWire(slixmpp.ClientXMPP):
         *,
         stats_collector: WeatherWireStatsCollector | None = None,
     ) -> None:
-        """Initialize the XMPP client with configuration.
+        """Initialize the NWWS-OI XMPP client with comprehensive configuration and monitoring.
+
+        Sets up a production-ready XMPP client with all necessary plugins, event handlers,
+        and monitoring capabilities for reliable weather data reception. The initialization
+        process configures the underlying slixmpp client with NWWS-OI specific settings,
+        registers essential XMPP Extension Protocols (XEPs), and establishes the message
+        processing pipeline with async iterator support.
+
+        The client is configured with critical XMPP extensions:
+        - Service Discovery (XEP-0030) for server capability negotiation
+        - Multi-User Chat (XEP-0045) for joining the NWWS broadcast room
+        - XMPP Ping (XEP-0199) for connection keep-alive and health monitoring
+        - Delayed Delivery (XEP-0203) for processing messages with delivery delays
+
+        A bounded message queue (maxsize=50) is established to buffer incoming weather
+        messages and provide backpressure protection against message processing bottlenecks.
+        The async iterator pattern allows downstream consumers to process messages at their
+        own pace while maintaining system stability.
+
+        Comprehensive event handlers are registered for all XMPP lifecycle events including
+        connection management, authentication, session handling, and message processing.
+        State tracking variables are initialized for idle timeout monitoring, graceful
+        shutdown coordination, and background service management.
 
         Args:
-            config: XMPP configuration containing username, password, server details
-            stats_collector: Optional stats collector for monitoring receiver metrics
+            config: XMPP connection configuration containing server details, credentials,
+                   and connection parameters for the NWWS-OI system.
+            stats_collector: Optional metrics collector for recording connection health,
+                           message processing rates, error conditions, and operational
+                           statistics for monitoring and alerting.
 
-        The client is configured with:
-        - Service Discovery (XEP-0030) for capability negotiation
-        - Multi-User Chat (XEP-0045) for joining the NWWS room
-        - XMPP Ping (XEP-0199) for connection keep-alive
-        - Delayed Delivery (XEP-0203) for handling delayed messages
-        - Idle timeout monitoring to detect connection issues
-        - AsyncIterator pattern with message queue for processing
+        Raises:
+            ValueError: If the configuration contains invalid or missing required fields.
+            ConnectionError: If initial client setup fails due to network or configuration issues.
 
         """
         super().__init__(  # type: ignore  # noqa: PGH003
@@ -109,11 +168,37 @@ class WeatherWire(slixmpp.ClientXMPP):
         )
 
     def __aiter__(self) -> AsyncIterator[WeatherWireMessage]:
-        """Make WeatherWire an async iterator."""
+        """Enable async iteration over incoming weather messages.
+
+        Implements the async iterator protocol to allow the WeatherWire client to be
+        used in async for loops and other async iteration contexts. This provides a
+        clean, Pythonic interface for consuming weather messages as they arrive from
+        the NWWS-OI system.
+        """
         return self
 
     async def __anext__(self) -> WeatherWireMessage:
-        """Get next message from the queue."""
+        """Retrieve the next weather message from the internal processing queue.
+
+        Implements the async iterator protocol by fetching messages from the internal
+        asyncio.Queue in a non-blocking manner. The method uses a short timeout to
+        periodically check for shutdown conditions while waiting for new messages,
+        ensuring responsive shutdown behavior even when no messages are being received.
+
+        The method handles the StopAsyncIteration protocol correctly by raising the
+        exception when the client is shutting down and no more messages remain in
+        the queue. This allows proper cleanup of async for loops and other iteration
+        contexts.
+
+        Returns:
+            The next WeatherWireMessage containing structured weather data, metadata,
+            and NOAAPort formatted content ready for downstream processing.
+
+        Raises:
+            StopAsyncIteration: When the client is shutting down and no more messages
+                              are available in the queue, signaling the end of iteration.
+
+        """
         while True:
             if self._stop_iteration and self._message_queue.empty():
                 raise StopAsyncIteration
@@ -130,7 +215,17 @@ class WeatherWire(slixmpp.ClientXMPP):
 
     @property
     def queue_size(self) -> int:
-        """Get current queue size for monitoring."""
+        """Get the current number of messages pending in the processing queue.
+
+        Provides real-time visibility into the message queue depth for monitoring
+        and capacity planning. A consistently high queue size may indicate downstream
+        processing bottlenecks or the need for additional consumer capacity.
+
+        Returns:
+            The current number of WeatherWireMessage objects waiting to be processed
+            in the internal asyncio.Queue.
+
+        """
         return self._message_queue.qsize()
 
     def _add_event_handlers(self) -> None:
@@ -162,7 +257,20 @@ class WeatherWire(slixmpp.ClientXMPP):
         self.add_event_handler("reconnect_delay", self._on_reconnect_delay)
 
     def start(self) -> asyncio.Future[bool]:
-        """Connect to the XMPP server."""
+        """Initiate connection to the NWWS-OI XMPP server.
+
+        Begins the asynchronous connection process to the configured NWWS-OI server
+        using the provided host and port settings. The connection attempt includes
+        automatic DNS resolution, TCP socket establishment, and initial XMPP stream
+        negotiation. Success or failure will trigger the appropriate event handlers
+        for further processing.
+
+        Returns:
+            An asyncio.Future that resolves to True if the initial connection succeeds,
+            or False if the connection attempt fails. The Future allows callers to
+            await the connection result or handle it asynchronously.
+
+        """
         logger.info(
             "Connecting to NWWS-OI server",
             host=self.config.server,
@@ -172,7 +280,19 @@ class WeatherWire(slixmpp.ClientXMPP):
         return super().connect(host=self.config.server, port=self.config.port)  # type: ignore  # noqa: PGH003
 
     def is_client_connected(self) -> bool:
-        """Check if the XMPP client is connected."""
+        """Determine if the client is currently connected and operational.
+
+        Performs a comprehensive check of the client's connection status by verifying
+        both the underlying XMPP connection state and the client's internal shutdown
+        flag. This provides an accurate assessment of whether the client is ready
+        to receive and process weather messages.
+
+        Returns:
+            True if the client is connected to the XMPP server and not in the process
+            of shutting down, False otherwise. A False result indicates the client
+            cannot reliably receive messages and may need reconnection.
+
+        """
         return self.is_connected() and not self.is_shutting_down
 
     # Connection event handlers
@@ -545,7 +665,32 @@ class WeatherWire(slixmpp.ClientXMPP):
                 await asyncio.sleep(30)
 
     async def stop(self, reason: str | None = None) -> None:
-        """Gracefully shutdown the XMPP client."""
+        """Perform graceful shutdown of the NWWS-OI client with proper cleanup.
+
+        Orchestrates a clean shutdown sequence that ensures all resources are properly
+        released and all ongoing operations are terminated safely. The shutdown process
+        includes stopping background monitoring tasks, leaving the MUC room gracefully,
+        disconnecting from the XMPP server, and signaling the async iterator to stop.
+
+        The shutdown sequence follows a specific order to prevent race conditions and
+        ensure data integrity:
+        1. Set shutdown flag to prevent new operations
+        2. Signal async iterator to stop accepting new messages
+        3. Cancel all background monitoring and stats collection tasks
+        4. Leave the NWWS MUC room with proper unsubscribe protocol
+        5. Disconnect from the XMPP server with connection cleanup
+        6. Update final connection status in stats collector
+
+        Args:
+            reason: Optional descriptive reason for the shutdown that will be logged
+                   and included in the disconnect message to the server for debugging
+                   and operational tracking purposes.
+
+        Raises:
+            ConnectionError: If the disconnect process encounters network issues,
+                           though the client will still be marked as shut down.
+
+        """
         if self.is_shutting_down:
             return
 

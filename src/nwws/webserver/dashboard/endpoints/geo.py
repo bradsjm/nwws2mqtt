@@ -25,11 +25,11 @@ def create_geo_endpoints(router: APIRouter, geo_provider: WeatherGeoDataProvider
         try:
             geojson_data = geo_provider.get_cwa_geojson(simplification)
             return JSONResponse(content=geojson_data)
-        except Exception:
+        except Exception as err:
             logger.exception("Failed to get office boundaries")
             raise HTTPException(
                 status_code=500, detail="Failed to retrieve office boundaries"
-            )
+            ) from err
 
     @router.get("/api/geo/metadata")
     async def get_office_metadata() -> JSONResponse:  # type: ignore[no-untyped-def]
@@ -37,9 +37,11 @@ def create_geo_endpoints(router: APIRouter, geo_provider: WeatherGeoDataProvider
         try:
             metadata = geo_provider.get_office_metadata()
             return JSONResponse(content=metadata)
-        except Exception:
+        except Exception as err:
             logger.exception("Failed to get office metadata")
-            raise HTTPException(status_code=500, detail="Failed to retrieve office metadata")
+            raise HTTPException(
+                status_code=500, detail="Failed to retrieve office metadata"
+            ) from err
 
     @router.get("/api/geo/regions")
     async def get_region_summary() -> JSONResponse:  # type: ignore[no-untyped-def]
@@ -47,9 +49,11 @@ def create_geo_endpoints(router: APIRouter, geo_provider: WeatherGeoDataProvider
         try:
             regions = geo_provider.get_region_summary()
             return JSONResponse(content=regions)
-        except Exception:
+        except Exception as err:
             logger.exception("Failed to get region summary")
-            raise HTTPException(status_code=500, detail="Failed to retrieve region summary")
+            raise HTTPException(
+                status_code=500, detail="Failed to retrieve region summary"
+            ) from err
 
     @router.get("/api/geo/activity")
     async def get_geographic_activity() -> JSONResponse:  # type: ignore[no-untyped-def]
@@ -61,8 +65,8 @@ def create_geo_endpoints(router: APIRouter, geo_provider: WeatherGeoDataProvider
                 "timestamp": time.time(),
             }
             return JSONResponse(content=activity_data)
-        except Exception:
+        except Exception as err:
             logger.exception("Failed to get geographic activity")
             raise HTTPException(
                 status_code=500, detail="Failed to retrieve geographic activity"
-            )
+            ) from err

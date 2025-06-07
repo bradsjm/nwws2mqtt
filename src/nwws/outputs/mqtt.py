@@ -21,7 +21,18 @@ if TYPE_CHECKING:
 
 @dataclass
 class MQTTConfig:
-    """Configuration class for output handlers."""
+    """Configuration management for MQTT broker connection and publishing parameters.
+
+    This dataclass encapsulates all MQTT-related configuration settings required
+    for establishing connections to MQTT brokers and publishing pipeline events.
+    It provides type-safe configuration management with sensible defaults and
+    supports initialization from environment variables for containerized deployments.
+
+    The configuration includes broker connection details (host, port, credentials),
+    topic routing settings, Quality of Service levels, and client identification
+    parameters. Default values are optimized for local development while supporting
+    production environments through environment variable overrides.
+    """
 
     # MQTT Configuration
     mqtt_broker: str = "localhost"
@@ -34,7 +45,30 @@ class MQTTConfig:
 
     @classmethod
     def from_env(cls) -> MQTTConfig:
-        """Create output config from environment variables."""
+        """Create MQTT configuration instance from environment variables.
+
+        This factory method constructs a MQTTConfig instance by reading configuration
+        values from environment variables, providing a clean separation between
+        application code and deployment-specific settings. It automatically handles
+        type conversion for numeric values and provides fallback defaults for
+        optional settings.
+
+        Environment variables read:
+        - MQTT_BROKER: Broker hostname or IP address (default: "localhost")
+        - MQTT_PORT: Broker port number (default: 1883)
+        - MQTT_USERNAME: Authentication username (optional)
+        - MQTT_PASSWORD: Authentication password (optional)
+        - MQTT_TOPIC_PREFIX: Base topic prefix for all publications (default: "nwws")
+        - MQTT_QOS: Quality of Service level 0-2 (default: 1)
+        - MQTT_CLIENT_ID: Unique client identifier (default: "nwws-oi-client")
+
+        Returns:
+            MQTTConfig: Fully configured instance with environment-based settings.
+
+        Raises:
+            ValueError: If environment variables contain invalid numeric values.
+
+        """
         return cls(
             mqtt_broker=os.getenv("MQTT_BROKER", "localhost"),
             mqtt_port=int(os.getenv("MQTT_PORT", "1883")),
@@ -47,14 +81,45 @@ class MQTTConfig:
 
 
 class MQTTOutput(Output):
-    """Output that publishes pipeline events to MQTT broker."""
+    """Production-grade MQTT output handler for publishing pipeline events to MQTT brokers.
+
+    This output implementation provides reliable, asynchronous publishing of weather
+    data pipeline events to MQTT brokers with comprehensive error handling, connection
+    management, and monitoring capabilities. It supports both XML and text product
+    events, automatically building topic hierarchies based on event metadata and
+    maintaining persistent connections with automatic reconnection logic.
+
+    The output handler manages the complete MQTT client lifecycle including connection
+    establishment, authentication, keepalive management, and graceful shutdown. It
+    provides detailed logging and metadata collection for operational monitoring
+    and troubleshooting. Quality of Service levels are configurable to balance
+    delivery guarantees with performance requirements.
+
+    Connection state is monitored and events are buffered during disconnections
+    to prevent data loss. The implementation uses the Paho MQTT client library
+    with callback-based event handling for optimal performance in high-throughput
+    scenarios.
+    """
 
     def __init__(self, output_id: str = "mqtt", *, config: MQTTConfig | None) -> None:
-        """Initialize the MQTT output.
+        """Initialize the MQTT output handler with configuration and connection state.
+
+        Creates a new MQTT output instance with the specified configuration, setting up
+        internal state management for connection tracking and client lifecycle. The
+        initialization process prepares the output for connection but does not establish
+        the MQTT broker connection until the start() method is called.
+
+        The output handler maintains connection state tracking, supports graceful
+        degradation during network issues, and provides comprehensive logging for
+        operational visibility. If no configuration is provided, it automatically
+        loads settings from environment variables using MQTTConfig.from_env().
 
         Args:
-            output_id: Unique identifier for this output.
-            config: MQTT configuration object.
+            output_id: Unique identifier for this output instance used in logging
+                      and metadata collection. Must be unique within the pipeline.
+            config: MQTT configuration object containing broker connection details,
+                   authentication credentials, and publishing parameters. If None,
+                   configuration is loaded from environment variables.
 
         """
         super().__init__(output_id)
@@ -67,7 +132,31 @@ class MQTTOutput(Output):
         logger.info("MQTT Output initialized", output_id=self.output_id)
 
     async def start(self) -> None:
-        """Start MQTT client and connect to broker."""
+        """Start the MQTT client and establish connection to the configured broker.
+
+        This method initializes the Paho MQTT client, configures authentication
+        credentials, sets up connection callbacks, and establishes the broker
+        connection. The connection process includes automatic keepalive configuration,
+        client identification, and comprehensive error handling for network issues.
+
+        The startup process follows these steps:
+        1. Reset any existing connection state and client instances
+        2. Create new MQTT client with configured client ID
+        3. Register connection and disconnection event callbacks
+        4. Configure authentication if username/password are provided
+        5. Start the client's network loop for background message processing
+        6. Initiate connection to the broker with 60-second keepalive
+
+        Connection establishment is logged with broker details for operational
+        visibility. If connection fails, the client loop is properly cleaned up
+        and the error is propagated to allow for retry logic at higher levels.
+
+        Raises:
+            ConnectionError: If the broker connection cannot be established.
+            TimeoutError: If the connection attempt exceeds timeout limits.
+            OSError: For network-related errors during connection setup.
+
+        """
         await super().start()
 
         self._client = None
@@ -111,7 +200,27 @@ class MQTTOutput(Output):
             raise
 
     async def stop(self) -> None:
-        """Stop MQTT client and cleanup."""
+        """Stop the MQTT client and perform complete resource cleanup.
+
+        This method gracefully shuts down the MQTT client connection, stops the
+        background network loop, and cleans up all associated resources. The
+        shutdown process ensures that any pending publications are completed
+        before disconnection and that all internal state is properly reset.
+
+        The cleanup process includes:
+        1. Initiating graceful disconnection from the MQTT broker
+        2. Stopping the client's background network loop
+        3. Resetting connection state flags
+        4. Logging shutdown completion for operational tracking
+
+        Error handling ensures that cleanup proceeds even if individual steps
+        fail, preventing resource leaks during shutdown. Network errors during
+        disconnection are logged but do not prevent the cleanup process from
+        completing successfully.
+
+        This method is safe to call multiple times and will not raise exceptions
+        for already-stopped clients.
+        """
         logger.info("Stopping MQTT output", output_id=self.output_id)
 
         if self._client:
@@ -130,10 +239,39 @@ class MQTTOutput(Output):
         await super().stop()
 
     async def send(self, event: PipelineEvent) -> None:
-        """Send the event to MQTT broker.
+        """Publish a pipeline event to the MQTT broker with comprehensive error handling.
+
+        This method processes pipeline events and publishes them to the MQTT broker
+        using dynamically constructed topic hierarchies based on event metadata.
+        It supports both XML and text product events, automatically serializing
+        event content and routing to appropriate topics with configured QoS levels.
+
+        The publishing process includes:
+        1. Event type validation to ensure supported event types
+        2. Connection state verification before publishing attempts
+        3. Dynamic topic construction using event metadata and configured prefix
+        4. Event serialization using the event's string representation
+        5. MQTT publication with result code validation and logging
+        6. Comprehensive error handling for network and serialization issues
+
+        Events are published with the configured Quality of Service level to
+        balance delivery guarantees with performance. Publication results are
+        logged with detailed context including event IDs, topics, and content
+        types for operational monitoring and troubleshooting.
+
+        Unsupported event types are logged and skipped without raising exceptions
+        to maintain pipeline stability. Connection failures result in warning
+        logs but do not interrupt pipeline processing.
 
         Args:
-            event: The pipeline event to send.
+            event: The pipeline event to publish. Must be an instance of
+                  XmlEventData or TextProductEventData. Other event types
+                  are logged and skipped.
+
+        Raises:
+            ConnectionError: For MQTT broker connection issues during publishing.
+            OSError: For network-related errors during publication.
+            ValueError: For event serialization or topic construction errors.
 
         """
         if not (isinstance(event, (XmlEventData, TextProductEventData))):
@@ -197,7 +335,17 @@ class MQTTOutput(Output):
 
     @property
     def is_connected(self) -> bool:
-        """Return True if MQTT client is connected."""
+        """Return the current MQTT broker connection status.
+
+        This property provides real-time connection state information for monitoring
+        and conditional logic. The connection state is maintained through MQTT
+        client callbacks and reflects the actual broker connectivity status.
+
+        Returns:
+            bool: True if the MQTT client is currently connected to the broker
+                 and ready to publish messages, False otherwise.
+
+        """
         return self._connected
 
     def _on_connect(
@@ -228,7 +376,38 @@ class MQTTOutput(Output):
             logger.info("Disconnected from MQTT broker", output_id=self.output_id)
 
     def get_output_metadata(self, event: PipelineEvent) -> dict[str, Any]:
-        """Get metadata about the MQTT output operation."""
+        """Generate comprehensive metadata about the MQTT output operation and configuration.
+
+        This method produces detailed metadata about the MQTT output's current state,
+        configuration, and processing status for a specific pipeline event. The
+        metadata includes broker connection details, QoS settings, connection status,
+        and event-specific information such as target topics and payload sizes.
+
+        The metadata collection process analyzes the provided event to determine
+        processing eligibility, constructs target topics using the same logic as
+        the actual publishing process, and calculates payload characteristics.
+        This information is essential for monitoring, debugging, and operational
+        visibility into the MQTT output's behavior.
+
+        Metadata includes both static configuration values and dynamic runtime
+        information:
+        - Broker connection details (host, port, QoS level)
+        - Current connection status and client state
+        - Event processing status and eligibility
+        - Target topic construction for supported events
+        - Payload size calculations and content type identification
+        - Skip reasons for unsupported event types
+
+        Args:
+            event: The pipeline event to analyze for metadata generation.
+                  Event type determines the specific metadata collected.
+
+        Returns:
+            dict[str, Any]: Comprehensive metadata dictionary with keys prefixed
+                           by the output ID to prevent naming conflicts in
+                           pipeline-wide metadata collection.
+
+        """
         metadata = super().get_output_metadata(event)
 
         # Add MQTT-specific metadata

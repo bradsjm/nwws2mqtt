@@ -20,10 +20,40 @@ if TYPE_CHECKING:
 
 
 class WeatherGeoDataProvider:
-    """Manages geographic data loading and web optimization for dashboard."""
+    """Provides optimized geographic data services for weather operations dashboard.
+
+    This class manages the loading, caching, and delivery of National Weather Service
+    geographic data including County Warning Area (CWA) boundaries, weather office
+    metadata, and real-time activity overlays. It serves as the primary geographic
+    data provider for web-based weather operations dashboards, offering multiple
+    levels of geometry simplification for optimal web performance.
+
+    The provider handles automatic data loading from pyiem geodata sources, implements
+    intelligent caching with TTL-based invalidation, and provides geographic data
+    enrichment capabilities for operational metrics visualization. All geographic
+    data is normalized to WGS84 (EPSG:4326) coordinate system for web mapping
+    compatibility.
+
+    Key capabilities include:
+    - Automated loading of CWA boundaries from pyiem parquet data sources
+    - Multi-level geometry simplification (overview, web, detailed) for performance
+    - Office metadata extraction with regional classification and timezone mapping
+    - Real-time activity overlay generation combining geographic and metrics data
+    - Comprehensive regional summary statistics and coverage analysis
+    """
 
     def __init__(self) -> None:
-        """Initialize the geographic data provider with cached data loading."""
+        """Initialize the geographic data provider with lazy-loading cache architecture.
+
+        Sets up the provider with uninitialized data containers and cache management
+        parameters. Geographic data loading is deferred until first access to optimize
+        startup performance. The cache system uses a 1-hour TTL to balance data
+        freshness with performance, automatically refreshing stale data when accessed.
+
+        Cache containers are initialized as None to enable lazy loading detection,
+        and the cache timestamp tracking enables TTL-based invalidation for
+        operational data consistency.
+        """
         self._cwa_df: gpd.GeoDataFrame | None = None
         self._office_metadata: dict[str, Any] | None = None
         self._simplified_geometries: dict[str, dict[str, Any]] | None = None
@@ -479,14 +509,38 @@ class WeatherGeoDataProvider:
             self._load_base_data()
 
     def get_cwa_geojson(self, simplification_level: str = "web") -> dict[str, Any]:
-        """Return CWA boundaries as GeoJSON with specified simplification.
+        """Generate GeoJSON representation of County Warning Area boundaries with optimized geometry.
+
+        Retrieves and formats National Weather Service County Warning Area (CWA)
+        boundaries as a standards-compliant GeoJSON FeatureCollection. The method
+        applies intelligent geometry simplification based on the requested level to
+        optimize web delivery performance while maintaining geographic accuracy
+        appropriate for the use case.
+
+        The function ensures data freshness by invoking the cache validation system,
+        applies the requested simplification level with automatic fallback to 'web'
+        level if the requested level is unavailable, and enriches each CWA feature
+        with essential metadata including office names and regional classifications.
+
+        Geometry simplification levels:
+        - "overview": Highly simplified for continental/regional views (fastest)
+        - "web": Balanced simplification for interactive web maps (default)
+        - "detailed": Minimal simplification for detailed analysis (most accurate)
 
         Args:
-            simplification_level: Level of geometry simplification
-                                 ("overview", "web", "detailed")
+            simplification_level: Geometry simplification level for web optimization.
+                                 Must be one of "overview", "web", or "detailed".
+                                 Defaults to "web" for optimal web performance.
 
         Returns:
-            GeoJSON FeatureCollection with CWA boundaries
+            GeoJSON FeatureCollection containing CWA boundary features with properties
+            including CWA identifier, office name, and regional classification. Each
+            feature includes simplified geometry appropriate for the requested level.
+            Includes metadata with simplification level, feature count, and generation
+            timestamp for cache management.
+
+        Raises:
+            RuntimeError: If geographic data loading fails or required data is corrupted.
 
         """
         self._ensure_data_loaded()
@@ -539,10 +593,30 @@ class WeatherGeoDataProvider:
         }
 
     def get_office_metadata(self) -> dict[str, Any]:
-        """Return office locations, regions, and coverage areas.
+        """Retrieve comprehensive metadata for all National Weather Service offices.
+
+        Provides detailed operational metadata for Weather Forecast Offices including
+        geographic coordinates, regional classifications, coverage area calculations,
+        and timezone assignments. This metadata supports operational dashboards,
+        routing systems, and geographic analysis workflows requiring accurate office
+        location and coverage information.
+
+        The metadata includes calculated centroid coordinates for each CWA boundary,
+        enabling precise office location mapping, regional grouping based on NWS
+        administrative structure, coverage area measurements in square kilometers
+        for capacity planning, and timezone assignments for temporal correlation
+        of weather events and operational activities.
 
         Returns:
-            Dictionary mapping CWA IDs to office metadata
+            Dictionary containing complete office metadata organized in two sections:
+            - 'offices': Maps CWA identifiers to detailed office metadata including
+              ID, name, region, coordinates, coverage area, and timezone
+            - 'summary': Aggregate statistics including total office count, unique
+              regions list, and generation timestamp for cache validation
+
+        Raises:
+            RuntimeError: If office metadata creation fails due to corrupted
+                         geographic data or coordinate transformation errors.
 
         """
         self._ensure_data_loaded()
@@ -560,13 +634,41 @@ class WeatherGeoDataProvider:
         }
 
     def get_activity_overlay_data(self, metrics_data: dict[str, Any]) -> dict[str, Any]:
-        """Combine geographic boundaries with current metrics for activity overlay.
+        """Generate activity-enriched geographic overlay combining CWA boundaries with operational metrics.
+
+        Creates a comprehensive geographic visualization layer by merging base CWA
+        boundary geometries with real-time operational metrics from the monitoring
+        system. This enables dynamic geographic visualization of National Weather
+        Service office activity levels, performance indicators, and operational
+        status across the continental United States.
+
+        The function retrieves optimized CWA boundaries at web simplification level
+        for performance, correlates metrics data with office boundaries using CWA
+        identifiers, calculates derived metrics including activity levels and health
+        status, and enriches each geographic feature with operational context for
+        dashboard visualization.
+
+        Activity enrichment includes message processing counts, error rates and
+        totals, average processing latency measurements, timestamp of last message
+        activity, calculated activity level classification (high/medium/low/idle),
+        and overall office status determination (healthy/warning/error/offline).
 
         Args:
-            metrics_data: Current metrics data from collectors
+            metrics_data: Real-time metrics data from operational collectors organized
+                         by WMO office identifiers. Expected to contain 'by_wmo' section
+                         with per-office metrics including message counts, error rates,
+                         latency measurements, and activity timestamps.
 
         Returns:
-            GeoJSON with activity-enriched office boundaries
+            GeoJSON FeatureCollection with activity-enriched CWA boundaries. Each
+            feature contains base geographic properties plus operational metrics,
+            activity classifications, and status indicators. Includes metadata
+            section with enrichment type, source metrics timestamp, and generation
+            time for cache coordination.
+
+        Raises:
+            ValueError: If metrics_data structure is invalid or missing required sections.
+            RuntimeError: If geographic data correlation fails or metric calculations error.
 
         """
         self._ensure_data_loaded()
@@ -658,10 +760,36 @@ class WeatherGeoDataProvider:
         return "healthy"
 
     def get_region_summary(self) -> dict[str, Any]:
-        """Get summary statistics by NWS region.
+        """Generate comprehensive regional statistics for National Weather Service operations.
+
+        Calculates and aggregates operational statistics organized by NWS administrative
+        regions to support strategic planning, resource allocation, and operational
+        oversight. The summary provides region-level office counts, total geographic
+        coverage calculations, and office distribution analysis for management
+        dashboards and capacity planning workflows.
+
+        The function processes office metadata to group offices by regional assignments
+        according to NWS administrative structure, calculates total coverage area
+        per region by summing individual office CWA areas, tracks office counts and
+        identifiers for each region, and provides aggregate statistics across all
+        regions for system-wide operational visibility.
+
+        Regional aggregation supports operational decision-making by providing insights
+        into geographic coverage distribution, office density variations across regions,
+        and total operational capacity measurements for strategic resource planning.
 
         Returns:
-            Dictionary with office counts and coverage by region
+            Dictionary containing regional analysis with two main sections:
+            - 'regions': Maps region identifiers to detailed statistics including
+              office count, total coverage area in square kilometers, and complete
+              list of office identifiers within each region
+            - 'summary': System-wide aggregate statistics including total regions
+              count, total offices across all regions, and generation timestamp
+              for data freshness verification
+
+        Raises:
+            RuntimeError: If regional classification fails or coverage calculations
+                         encounter invalid geometric data.
 
         """
         self._ensure_data_loaded()

@@ -1,4 +1,15 @@
-"""Metrics API endpoints for dashboard data."""
+"""Metrics API endpoints for dashboard data visualization and monitoring.
+
+This module provides RESTful API endpoints for retrieving and transforming
+system metrics data for consumption by the web dashboard. It handles the
+aggregation of raw metrics from the MetricRegistry into dashboard-friendly
+formats, including throughput calculations, latency statistics, error rates,
+and office-specific activity metrics.
+
+The module serves as the bridge between the internal metrics collection
+system and the frontend dashboard interface, providing real-time operational
+visibility into the NWWS message processing pipeline.
+"""
 
 import random
 import time
@@ -13,17 +24,56 @@ from nwws.metrics.types import Metric, MetricType
 
 
 def create_metrics_endpoints(router: APIRouter, registry: MetricRegistry) -> None:
-    """Create metrics endpoints for dashboard.
+    """Create and register metrics API endpoints with the FastAPI router.
+
+    This function sets up the RESTful API endpoints for metrics data retrieval
+    by registering route handlers with the provided FastAPI router. It creates
+    a closure over the MetricRegistry instance to provide access to the metrics
+    data within the endpoint handlers.
+
+    The registered endpoints provide dashboard-specific views of system metrics,
+    including real-time processing statistics, error rates, and office-specific
+    activity levels. All metrics are transformed from their raw internal format
+    into JSON structures optimized for frontend consumption.
 
     Args:
-        router: FastAPI router to add endpoints to
-        registry: MetricRegistry instance
+        router: The FastAPI router instance to register endpoints with. This router
+            should be mounted at an appropriate path in the main application.
+        registry: The MetricRegistry instance containing the collected system metrics.
+            This provides access to all accumulated metrics data across the application.
 
     """
 
     @router.get("/api/metrics")
     async def get_current_metrics() -> JSONResponse:  # type: ignore[no-untyped-def]
-        """Get current metrics for dashboard display."""
+        """Retrieve current system metrics formatted for dashboard consumption.
+
+        This endpoint aggregates and transforms raw metrics data from the registry
+        into a structured JSON response optimized for dashboard visualization. The
+        response includes throughput statistics, latency measurements, error rates,
+        office-specific activity levels, and overall system health indicators.
+
+        The metrics transformation process involves aggregating counter values,
+        calculating statistical measures from histogram data, and determining
+        derived metrics such as activity levels and health status. All temporal
+        data is enriched with the current timestamp for client-side caching
+        and staleness detection.
+
+        Returns:
+            JSONResponse containing dashboard metrics with the following structure:
+            - throughput: Messages per minute and total message counts
+            - latency: Average, P95, and P99 processing latencies
+            - errors: Error rates and total error counts
+            - by_wmo: Office-specific metrics keyed by WMO identifier
+            - system: Overall system health and connection status
+            - timestamp: Unix timestamp of metric generation
+
+        Raises:
+            HTTPException: With status 500 if metric retrieval or transformation fails.
+                This includes registry access errors, data corruption, or unexpected
+                metric format issues.
+
+        """
         try:
             # Get raw metrics
             raw_metrics = registry.list_metrics()
@@ -62,10 +112,40 @@ def _transform_metrics_for_dashboard(metrics: list[Any]) -> dict[str, Any]:
 
 
 class _MetricsAggregator:
-    """Helper class to aggregate metrics data for dashboard."""
+    """Internal metrics aggregation engine for dashboard data transformation.
+
+    This class processes raw metrics from the MetricRegistry and aggregates them
+    into dashboard-specific data structures. It maintains running totals, calculates
+    statistical measures, and tracks office-specific activity patterns to provide
+    comprehensive operational visibility.
+
+    The aggregator handles multiple metric types including counters, histograms,
+    and status indicators. It performs real-time calculations of throughput rates,
+    latency percentiles, error rates, and activity classifications for each
+    monitored office. The class encapsulates the complex logic required to transform
+    low-level metrics into actionable dashboard insights.
+
+    Key responsibilities include:
+    - Accumulating message processing totals across all offices
+    - Computing latency statistics from histogram data
+    - Tracking error rates and failure patterns
+    - Classifying office activity levels based on message volume and recency
+    - Determining overall system health indicators
+    """
 
     def __init__(self) -> None:
-        """Initialize the aggregator."""
+        """Initialize the metrics aggregator with empty state containers.
+
+        Sets up the internal data structures required for metrics aggregation,
+        including counters for total message processing, error tracking, duration
+        collections for latency calculations, and office-specific activity maps.
+        All aggregation state is initialized to safe default values to ensure
+        consistent behavior even with sparse metrics data.
+
+        The initialization establishes the foundation for processing an arbitrary
+        number of metrics while maintaining separation between global system
+        metrics and office-specific measurements.
+        """
         self.messages_processed_total = 0
         self.processing_errors_total = 0
         self.processing_durations: list[float] = []
@@ -75,7 +155,25 @@ class _MetricsAggregator:
         self.connection_active = False
 
     def process_metric(self, metric: Metric) -> None:
-        """Process a single metric and update aggregators."""
+        """Process a single metric and update the appropriate aggregation state.
+
+        This method examines the metric's name, type, and labels to determine
+        how it should be incorporated into the dashboard data structures. It
+        handles different metric types including counters, histograms, and
+        status indicators, updating the relevant aggregation buckets based
+        on the metric's semantic meaning.
+
+        The processing logic includes special handling for office-specific
+        metrics (identified by WMO ID labels), duration measurements from
+        histogram data, and system health indicators. Each metric contributes
+        to both global aggregation totals and office-specific activity tracking.
+
+        Args:
+            metric: The Metric object to process. Must contain a valid key with
+                name and optional labels, along with the metric value and timestamp.
+                The metric type determines the specific aggregation strategy used.
+
+        """
         metric_name = metric.key.name
         metric_value = metric.get_numeric_value()
         timestamp = metric.timestamp

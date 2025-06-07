@@ -22,7 +22,27 @@ if TYPE_CHECKING:
 
 
 class Pipeline:
-    """Core pipeline for processing events through filters, transformers, and outputs."""
+    """Core event processing pipeline with filters, transformers, and outputs.
+
+    The Pipeline class represents a single processing pathway for events within the NWWS
+    system. It orchestrates the sequential processing of events through configurable
+    stages: filtering, transformation, and output delivery. Each pipeline operates
+    independently with its own error handling, statistics collection, and lifecycle
+    management.
+
+    The pipeline implements a robust error handling strategy where failures at any stage
+    are logged with comprehensive context, recorded in statistics, and propagated to
+    allow upstream error handling decisions. All processing stages are instrumented
+    with timing metrics and detailed logging for observability.
+
+    Key responsibilities:
+    - Event filtering through configurable filter chains
+    - Event transformation using pluggable transformers
+    - Concurrent delivery to multiple outputs with error isolation
+    - Comprehensive error handling and recovery
+    - Performance metrics collection and reporting
+    - Lifecycle management with proper resource cleanup
+    """
 
     def __init__(  # noqa: PLR0913
         self,
@@ -33,15 +53,28 @@ class Pipeline:
         stats_collector: PipelineStatsCollector | None = None,
         error_handler: PipelineErrorHandler | None = None,
     ) -> None:
-        """Initialize the pipeline with components.
+        """Initialize the pipeline with processing components and configuration.
+
+        Creates a new pipeline instance with the specified processing components.
+        The pipeline starts in a stopped state and must be explicitly started before
+        processing events. All components are validated and configured during
+        initialization, but actual connections and resources are established during
+        the start phase.
 
         Args:
-            pipeline_id: Unique identifier for this pipeline.
-            filters: List of filters to apply to events.
-            transformer: Transformer to convert events.
-            outputs: List of outputs to send events to.
-            stats_collector: Pipeline statistics collector for metrics.
-            error_handler: Error handler for pipeline errors.
+            pipeline_id: Unique identifier for this pipeline instance used in logging
+                and statistics. Must be unique within a PipelineManager context.
+            filters: Optional list of filter instances to apply to incoming events.
+                Filters are applied sequentially and any filter returning False will
+                cause the event to be dropped from further processing.
+            transformer: Optional transformer instance to convert events between types.
+                If None, events pass through unchanged.
+            outputs: Optional list of output instances for event delivery. Events are
+                delivered to all outputs concurrently with individual error handling.
+            stats_collector: Optional statistics collector for recording performance
+                metrics, processing counts, and error rates.
+            error_handler: Optional error handler for recording and managing pipeline
+                errors. Defaults to basic PipelineErrorHandler if not provided.
 
         """
         self.pipeline_id = pipeline_id
@@ -53,7 +86,24 @@ class Pipeline:
         self._is_started = False
 
     async def start(self) -> None:
-        """Start the pipeline and all outputs."""
+        """Start the pipeline and initialize all output connections.
+
+        Transitions the pipeline from stopped to started state by initializing all
+        configured outputs. The startup process validates output configurations,
+        establishes connections, and prepares resources for event processing.
+        If any output fails to start, the entire pipeline startup fails with a
+        detailed error message.
+
+        The pipeline startup is idempotent - calling start() on an already started
+        pipeline has no effect. All outputs are started sequentially to ensure
+        proper error reporting and resource management.
+
+        Raises:
+            PipelineError: If any output fails to start, containing details about
+                the specific output and underlying error. The pipeline remains in
+                a stopped state if startup fails.
+
+        """
         if self._is_started:
             return
 
@@ -77,7 +127,21 @@ class Pipeline:
         logger.info("Pipeline started successfully", pipeline_id=self.pipeline_id)
 
     async def stop(self) -> None:
-        """Stop the pipeline and all outputs."""
+        """Stop the pipeline and cleanup all output connections.
+
+        Transitions the pipeline from started to stopped state by gracefully shutting
+        down all configured outputs. The shutdown process attempts to stop all outputs
+        even if some fail, logging warnings for any errors encountered but not raising
+        exceptions to ensure complete cleanup.
+
+        The pipeline stop is idempotent - calling stop() on an already stopped
+        pipeline has no effect. After stopping, the pipeline will reject new events
+        until restarted.
+
+        Output shutdown errors are logged as warnings rather than errors since the
+        pipeline is transitioning to a stopped state where failures are expected
+        to be recoverable through restart.
+        """
         if not self._is_started:
             return
 
@@ -99,13 +163,38 @@ class Pipeline:
         logger.info("Pipeline stopped", pipeline_id=self.pipeline_id)
 
     async def process(self, event: PipelineEvent) -> bool:
-        """Process an event through the pipeline.
+        """Process an event through the complete pipeline workflow.
+
+        Orchestrates the processing of a single event through all configured pipeline
+        stages: filtering, transformation, and output delivery. The method implements
+        comprehensive error handling, performance monitoring, and detailed logging
+        throughout the processing lifecycle.
+
+        The processing workflow:
+        1. Validates pipeline is in started state
+        2. Applies all configured filters sequentially
+        3. Applies transformation if configured
+        4. Delivers to all outputs concurrently
+        5. Records performance metrics and success statistics
+        6. Handles errors with detailed context and propagation
+
+        Performance metrics are collected for the entire processing duration as well
+        as individual stage timings. All errors are logged with comprehensive context
+        including event metadata, processing stage, and timing information.
 
         Args:
-            event: The event to process.
+            event: The pipeline event to process containing the payload and metadata
+                for tracking, tracing, and error handling.
 
         Returns:
-            True if the event was processed successfully, False if filtered out.
+            True if the event was successfully processed through all stages and
+            delivered to all outputs. False if the event was filtered out during
+            the filtering stage.
+
+        Raises:
+            Exception: Any exception encountered during processing is logged with
+                comprehensive context and re-raised for upstream handling. This
+                includes filter errors, transformation errors, and output errors.
 
         """
         if not self._is_started:
@@ -197,13 +286,29 @@ class Pipeline:
             return True
 
     def _extract_journey_info(self, metadata: Any) -> dict[str, Any]:
-        """Extract journey information from event metadata for logging.
+        """Extract processing journey information from event metadata for logging.
+
+        Analyzes event metadata to extract comprehensive journey information that
+        tracks the event's path through various processing components. This includes
+        applied transformations, filter decisions, component processing times, and
+        error contexts that provide valuable debugging and monitoring information.
+
+        The extracted journey information is used for detailed logging and debugging
+        to understand how events flow through the system and where potential issues
+        may occur. This method specifically looks for standardized metadata patterns
+        used by pipeline components to record their processing activities.
 
         Args:
-            metadata: Event metadata containing custom fields.
+            metadata: Event metadata object containing custom fields with processing
+                information from filters, transformers, and outputs.
 
         Returns:
-            Dictionary of journey information for logging.
+            Dictionary containing structured journey information with keys:
+            - transformers_applied: List of transformer IDs that processed the event
+            - filter_decisions: Mapping of filter names to their pass/fail decisions
+            - component_durations_ms: Processing times for individual components
+            - derived_from: Information about event transformation chains
+            - error_contexts: Any error-related metadata for debugging
 
         """
         custom = getattr(metadata, "custom", {}) or {}
@@ -252,7 +357,35 @@ class Pipeline:
         return journey_info
 
     async def _apply_filters(self, event: PipelineEvent) -> PipelineEvent | None:
-        """Apply all filters to the event."""
+        """Apply all configured filters to the event sequentially.
+
+        Processes the event through each configured filter in order, applying the
+        filter's logic to determine if the event should continue through the pipeline.
+        If any filter returns False, the event is immediately dropped and no further
+        processing occurs.
+
+        Each filter application is timed and logged for performance monitoring.
+        Filter errors are logged with comprehensive context including filter ID,
+        event details, and processing timing. All filter statistics are recorded
+        including processing duration and pass/fail status.
+
+        The method updates the event's processing stage to FILTER and maintains
+        the event's metadata chain for tracing and debugging purposes.
+
+        Args:
+            event: The pipeline event to filter, which will be updated with filter
+                stage information and processing metadata.
+
+        Returns:
+            The filtered event if all filters pass, or None if any filter rejects
+            the event. The returned event maintains all metadata from the filtering
+            process for downstream components.
+
+        Raises:
+            Exception: Any exception from filter processing is logged with detailed
+                context and re-raised to allow upstream error handling decisions.
+
+        """
         current_event = event.with_stage(PipelineStage.FILTER, self.pipeline_id)
 
         for filter_instance in self.filters:
@@ -345,7 +478,36 @@ class Pipeline:
         return current_event
 
     async def _apply_transformation(self, event: PipelineEvent) -> PipelineEvent:
-        """Apply transformation to the event."""
+        """Apply the configured transformer to convert the event.
+
+        Processes the event through the configured transformer if one is present,
+        otherwise returns the event unchanged. The transformation stage updates
+        the event's processing stage and applies the transformer's logic to
+        convert the event to a different type or modify its content.
+
+        Transformation processing is timed and logged for performance monitoring.
+        Both successful transformations and errors are recorded with comprehensive
+        context including input/output types, processing duration, and event
+        metadata.
+
+        The method maintains event metadata chains and tracing information to
+        support debugging and monitoring of transformation processes.
+
+        Args:
+            event: The pipeline event to transform, which will be updated with
+                transformation stage information.
+
+        Returns:
+            The transformed event with updated type and content as determined by
+            the transformer, or the original event if no transformer is configured.
+            All metadata and tracing information is preserved.
+
+        Raises:
+            Exception: Any exception from transformation processing is logged with
+                detailed context including transformer ID, input/output types, and
+                timing information, then re-raised for upstream handling.
+
+        """
         if not self.transformer:
             return event
 
@@ -430,15 +592,38 @@ class Pipeline:
         return transformed_event
 
     async def _send_to_outputs(self, event: PipelineEvent) -> None:
-        """Send event to all outputs."""
+        """Send the event to all configured outputs concurrently.
+
+        Delivers the event to all configured outputs using concurrent execution
+        to minimize total delivery time. Each output is processed independently
+        with individual error handling to prevent failures in one output from
+        affecting others.
+
+        The method creates an async task for each output and waits for all to
+        complete using asyncio.gather with return_exceptions=True. If any outputs
+        fail, warnings are logged with failure counts, and the first error is
+        re-raised to signal pipeline failure.
+
+        The event's processing stage is updated to OUTPUT before delivery to
+        support proper error handling and tracing throughout the output stage.
+
+        Args:
+            event: The pipeline event to deliver to all outputs, which will be
+                updated with output stage information.
+
+        Raises:
+            Exception: If any output fails during delivery, the first error
+                encountered is re-raised after logging summary information about
+                all failures. This ensures pipeline errors are propagated while
+                providing comprehensive error context.
+
+        """
         output_event = event.with_stage(PipelineStage.OUTPUT, self.pipeline_id)
 
         # Send to all outputs concurrently
         tasks: list[asyncio.Task[None]] = []
         for output in self.outputs:
-            task = asyncio.create_task(
-                self._send_to_single_output(output, output_event)
-            )
+            task = asyncio.create_task(self._send_to_single_output(output, output_event))
             tasks.append(task)
 
         if tasks:
@@ -458,10 +643,31 @@ class Pipeline:
                 # Re-raise the first error
                 raise errors[0]
 
-    async def _send_to_single_output(
-        self, output: Output, event: PipelineEvent
-    ) -> None:
-        """Send event to a single output with error handling."""
+    async def _send_to_single_output(self, output: Output, event: PipelineEvent) -> None:
+        """Send an event to a single output with comprehensive error handling.
+
+        Delivers the event to a specific output while recording detailed performance
+        metrics and error information. The method times the output operation and
+        logs comprehensive context for both successful deliveries and failures.
+
+        For successful deliveries, the method records processing duration, payload
+        size estimation, and destination information in the statistics collector.
+        For failures, detailed error context is logged including output state,
+        timing information, and event metadata.
+
+        All errors are handled through the pipeline's error handler and recorded
+        in statistics before being re-raised for upstream handling decisions.
+
+        Args:
+            output: The specific output instance to deliver the event to.
+            event: The pipeline event to deliver with all metadata and content.
+
+        Raises:
+            Exception: Any exception from output delivery is logged with comprehensive
+                context including output ID, event details, timing information, and
+                output state, then re-raised for pipeline-level error handling.
+
+        """
         start_time = time.time()
 
         try:
@@ -544,45 +750,118 @@ class Pipeline:
 
     @property
     def is_started(self) -> bool:
-        """Check if the pipeline is started."""
+        """Check if the pipeline is currently in a started state.
+
+        Returns:
+            True if the pipeline has been started and is ready to process events,
+            False if the pipeline is stopped or has not been started.
+
+        """
         return self._is_started
 
     def get_stats_summary(self) -> dict[str, Any] | None:
-        """Get a summary of pipeline statistics."""
+        """Get a comprehensive summary of pipeline processing statistics.
+
+        Retrieves accumulated statistics from the pipeline's statistics collector
+        including processing counts, timing metrics, error rates, and performance
+        data across all pipeline stages.
+
+        Returns:
+            Dictionary containing pipeline statistics summary with metrics for
+            events processed, processing times, error counts, and stage-specific
+            performance data. Returns None if no statistics collector is configured.
+
+        """
         return self.stats_collector.get_summary() if self.stats_collector else None
 
     def get_error_summary(self) -> dict[str, Any]:
-        """Get a summary of pipeline errors."""
+        """Get a comprehensive summary of pipeline error history and statistics.
+
+        Retrieves accumulated error information from the pipeline's error handler
+        including error counts by type, stage-specific error rates, and recent
+        error context for debugging and monitoring purposes.
+
+        Returns:
+            Dictionary containing error summary with counts by error type, stage
+            where errors occurred, recent error details, and other error-related
+            metrics for operational monitoring.
+
+        """
         return self.error_handler.get_error_summary()
 
 
 class PipelineManager:
-    """Manages multiple pipelines and event routing."""
+    """Centralized manager for multiple pipelines with concurrent event processing.
+
+    The PipelineManager serves as the central orchestration point for multiple
+    Pipeline instances within the NWWS system. It provides unified event routing,
+    lifecycle management, and resource coordination across all registered pipelines.
+    The manager implements a queue-based architecture for efficient event distribution
+    and concurrent processing.
+
+    Key responsibilities:
+    - Pipeline registration and lifecycle management
+    - Centralized event queuing and distribution
+    - Concurrent event processing across multiple pipelines
+    - Resource management and cleanup coordination
+    - Performance monitoring and statistics aggregation
+    - Graceful shutdown and error handling
+
+    The manager operates an internal event processing loop that continuously dequeues
+    events and routes them to appropriate pipelines. Events can be routed to specific
+    pipelines or broadcast to all registered pipelines. The processing loop includes
+    timeout handling, error recovery, and comprehensive logging.
+
+    The manager implements proper async context manager protocol for resource management
+    and provides safety mechanisms to prevent resource leaks through proper cleanup
+    in destructor and context exit handlers.
+    """
 
     def __init__(self, config: PipelineManagerConfig | None = None) -> None:
-        """Initialize the pipeline manager.
+        """Initialize the pipeline manager with configuration and internal state.
+
+        Creates a new pipeline manager instance with an internal event queue for
+        processing events across multiple pipelines. The manager starts in a stopped
+        state and must be explicitly started before accepting events.
+
+        The event queue is configured with a maximum size to provide backpressure
+        and prevent memory exhaustion under high load conditions. The processing
+        task is created during startup to handle the continuous event processing loop.
 
         Args:
-            config: Optional configuration for the pipeline manager.
+            config: Optional configuration object containing queue size limits,
+                timeout values, and other operational parameters. If not provided,
+                default configuration values are used.
 
         """
         from .config import PipelineManagerConfig
 
         self.config = config or PipelineManagerConfig()
         self._pipelines: dict[str, Pipeline] = {}
-        self._event_queue: asyncio.Queue[tuple[str | None, PipelineEvent]] = (
-            asyncio.Queue(
-                maxsize=self.config.max_queue_size,
-            )
+        self._event_queue: asyncio.Queue[tuple[str | None, PipelineEvent]] = asyncio.Queue(
+            maxsize=self.config.max_queue_size,
         )
         self._processing_task: asyncio.Task[None] | None = None
         self._is_running = False
 
     async def add_pipeline(self, pipeline: Pipeline) -> None:
-        """Add a pipeline to the manager.
+        """Add a pipeline to the manager's registry for event processing.
+
+        Registers a new pipeline with the manager and starts it immediately if
+        the manager is currently running. This allows for dynamic pipeline
+        registration during runtime without requiring manager restart.
+
+        The pipeline is indexed by its pipeline_id, which must be unique within
+        the manager's context. If the manager is running, the pipeline is started
+        immediately to begin participating in event processing.
 
         Args:
-            pipeline: The pipeline to add.
+            pipeline: The pipeline instance to register with the manager. The
+                pipeline's pipeline_id must be unique within this manager's context.
+
+        Raises:
+            PipelineError: If the pipeline fails to start when the manager is
+                running, or if there are conflicts with the pipeline configuration.
 
         """
         self._pipelines[pipeline.pipeline_id] = pipeline
@@ -598,13 +877,24 @@ class PipelineManager:
         )
 
     def remove_pipeline(self, pipeline_id: str) -> Pipeline | None:
-        """Remove a pipeline from the manager.
+        """Remove a pipeline from the manager's registry.
+
+        Unregisters a pipeline from the manager's active pipeline list. The
+        pipeline is not automatically stopped - the caller is responsible for
+        proper lifecycle management of the removed pipeline.
+
+        Removing a pipeline while the manager is running will prevent new events
+        from being routed to that pipeline, but does not affect events already
+        in the processing queue.
 
         Args:
-            pipeline_id: ID of the pipeline to remove.
+            pipeline_id: Unique identifier of the pipeline to remove from the
+                manager's registry.
 
         Returns:
-            The removed pipeline, or None if not found.
+            The removed pipeline instance if found, or None if no pipeline with
+            the specified ID was registered. The caller should handle stopping
+            the returned pipeline if needed.
 
         """
         pipeline = self._pipelines.pop(pipeline_id, None)
@@ -617,23 +907,59 @@ class PipelineManager:
         return pipeline
 
     def get_pipeline(self, pipeline_id: str) -> Pipeline | None:
-        """Get a pipeline by ID.
+        """Retrieve a specific pipeline by its identifier.
+
+        Provides access to registered pipeline instances for direct manipulation
+        or status checking. This method is used for pipeline-specific operations
+        that cannot be performed through the manager's unified interface.
 
         Args:
-            pipeline_id: ID of the pipeline to retrieve.
+            pipeline_id: Unique identifier of the pipeline to retrieve.
 
         Returns:
-            The pipeline, or None if not found.
+            The pipeline instance if found, or None if no pipeline with the
+            specified ID is registered with this manager.
 
         """
         return self._pipelines.get(pipeline_id)
 
     def get_all_pipelines(self) -> list[Pipeline]:
-        """Get all registered pipelines."""
+        """Retrieve all registered pipelines for bulk operations or monitoring.
+
+        Provides access to all pipeline instances managed by this manager for
+        operations that need to iterate over all pipelines or collect aggregate
+        information.
+
+        Returns:
+            List of all pipeline instances currently registered with the manager.
+            The list is a copy and modifications will not affect the manager's
+            internal registry.
+
+        """
         return list(self._pipelines.values())
 
     async def start(self) -> None:
-        """Start the pipeline manager and all pipelines."""
+        """Start the pipeline manager and all registered pipelines.
+
+        Transitions the manager from stopped to running state by starting all
+        registered pipelines and launching the internal event processing task.
+        The startup process validates that all pipelines can be started before
+        beginning event processing.
+
+        The manager startup is idempotent - calling start() on an already running
+        manager has no effect. All pipelines are started sequentially to ensure
+        proper error reporting and resource initialization.
+
+        After successful startup, the manager begins accepting events through
+        submit_event and submit_event_to_all methods and processes them through
+        the internal event processing loop.
+
+        Raises:
+            PipelineError: If any pipeline fails to start, the manager startup
+                fails and remains in stopped state. All successfully started
+                pipelines are left running.
+
+        """
         if self._is_running:
             return
 
@@ -650,7 +976,20 @@ class PipelineManager:
         logger.info("Pipeline manager started successfully")
 
     async def stop(self) -> None:
-        """Stop the pipeline manager and all pipelines."""
+        """Stop the pipeline manager and gracefully shut down all components.
+
+        Transitions the manager from running to stopped state by cancelling the
+        event processing task and stopping all registered pipelines. The shutdown
+        process attempts to stop all components gracefully even if some fail.
+
+        The manager stop is idempotent - calling stop() on an already stopped
+        manager has no effect. The event processing task is cancelled and awaited
+        to ensure proper cleanup of the processing loop.
+
+        After stopping, the manager will no longer accept new events and all
+        pipelines will be in a stopped state. The manager can be restarted after
+        stopping to resume operations.
+        """
         if not self._is_running:
             return
 
@@ -670,7 +1009,19 @@ class PipelineManager:
         logger.info("Pipeline manager stopped")
 
     async def __aenter__(self) -> Self:
-        """Enter async context manager."""
+        """Enter async context manager by starting the pipeline manager.
+
+        Provides async context manager support for automatic resource management.
+        Starting the manager when entering the context ensures all pipelines are
+        ready for event processing.
+
+        Returns:
+            Self instance for use within the async context block.
+
+        Raises:
+            PipelineError: If the manager fails to start during context entry.
+
+        """
         await self.start()
         return self
 
@@ -680,16 +1031,35 @@ class PipelineManager:
         exc_val: BaseException | None,
         exc_tb: object,
     ) -> None:
-        """Exit async context manager and ensure cleanup."""
+        """Exit async context manager and ensure complete cleanup.
+
+        Provides async context manager support for automatic resource cleanup.
+        Stopping the manager when exiting the context ensures all pipelines are
+        properly shut down and resources are released.
+
+        Args:
+            exc_type: Type of exception that caused context exit, if any.
+            exc_val: Exception instance that caused context exit, if any.
+            exc_tb: Exception traceback object, if any.
+
+        """
         await self.stop()
 
     def __del__(self) -> None:
-        """Clean up resources when the manager is garbage collected."""
-        if (
-            self._is_running
-            and self._processing_task
-            and not self._processing_task.done()
-        ):
+        """Clean up resources when the manager is garbage collected.
+
+        Provides safety mechanism to prevent resource leaks if the manager is
+        garbage collected while still running. This should not be relied upon
+        for normal operation - proper cleanup should use stop() or async context
+        manager protocol.
+
+        If the manager is still running when garbage collected, a warning is
+        logged and an attempt is made to cancel the processing task. However,
+        this cleanup is best-effort and may not complete successfully if the
+        event loop is already closed.
+
+        """
+        if self._is_running and self._processing_task and not self._processing_task.done():
             logger.warning(
                 "PipelineManager was garbage collected while still running. "
                 "Call stop() or use as async context manager to avoid resource leaks.",
@@ -701,9 +1071,24 @@ class PipelineManager:
     async def submit_event(self, pipeline_id: str, event: PipelineEvent) -> None:
         """Submit an event to a specific pipeline for processing.
 
+        Queues an event for processing by a specific pipeline identified by its
+        pipeline_id. The event is added to the internal event queue and will be
+        processed by the event processing loop when capacity is available.
+
+        The submission includes timeout handling to prevent blocking indefinitely
+        if the event queue is full. If the manager is not running, the event is
+        dropped with a warning log message.
+
         Args:
-            pipeline_id: ID of the pipeline to process the event.
-            event: The event to process.
+            pipeline_id: Identifier of the specific pipeline that should process
+                the event. The pipeline must be registered with this manager.
+            event: The pipeline event to process containing payload and metadata
+                for tracking and error handling.
+
+        Raises:
+            TimeoutError: If the event cannot be queued within the configured
+                timeout period, typically due to queue backpressure from high
+                event volume or slow pipeline processing.
 
         """
         if not self._is_running:
@@ -733,10 +1118,25 @@ class PipelineManager:
             )
 
     async def submit_event_to_all(self, event: PipelineEvent) -> None:
-        """Submit an event to all pipelines for processing.
+        """Submit an event to all registered pipelines for processing.
+
+        Queues an event for processing by all currently registered pipelines.
+        The event is added to the internal event queue with a None pipeline_id
+        marker indicating it should be broadcast to all pipelines.
+
+        The submission includes timeout handling to prevent blocking indefinitely
+        if the event queue is full. If the manager is not running, the event is
+        dropped with a warning log message.
 
         Args:
-            event: The event to process.
+            event: The pipeline event to process through all registered pipelines.
+                Each pipeline will receive a copy of the event for independent
+                processing.
+
+        Raises:
+            TimeoutError: If the event cannot be queued within the configured
+                timeout period, typically due to queue backpressure from high
+                event volume or slow pipeline processing.
 
         """
         if not self._is_running:
@@ -751,9 +1151,7 @@ class PipelineManager:
                 self._event_queue.put((None, event)),
                 timeout=self.config.processing_timeout_seconds,
             )
-            logger.debug(
-                "Event submitted to all pipelines", event_id=event.metadata.event_id
-            )
+            logger.debug("Event submitted to all pipelines", event_id=event.metadata.event_id)
         except TimeoutError:
             logger.error(
                 "Event submission timeout",
@@ -762,13 +1160,31 @@ class PipelineManager:
             )
 
     async def _process_events(self) -> None:  # noqa: C901
-        """Process events from the queue through specified or all pipelines."""
+        """Process events from the queue through specified or all pipelines.
+
+        Implements the core event processing loop that continuously dequeues events
+        and routes them to appropriate pipelines. The loop runs until the manager
+        is stopped and handles both targeted pipeline processing and broadcast
+        processing to all pipelines.
+
+        For broadcast events (pipeline_id is None), the event is processed
+        concurrently through all started pipelines using asyncio.gather. For
+        targeted events, the event is processed by the specified pipeline with
+        timeout handling.
+
+        The processing loop includes comprehensive error handling for various
+        failure scenarios including pipeline errors, timeouts, and queue
+        processing errors. All errors are logged with detailed context but
+        do not terminate the processing loop.
+
+        The loop uses a 1-second timeout on queue operations to allow periodic
+        checking of the running state and graceful shutdown when requested.
+
+        """
         while self._is_running:
             try:
                 # Wait for next event with timeout
-                pipeline_id, event = await asyncio.wait_for(
-                    self._event_queue.get(), timeout=1.0
-                )
+                pipeline_id, event = await asyncio.wait_for(self._event_queue.get(), timeout=1.0)
 
                 if pipeline_id is None:
                     # Process event through all pipelines concurrently
@@ -783,11 +1199,7 @@ class PipelineManager:
                         results = await asyncio.gather(*tasks, return_exceptions=True)
 
                         # Log any errors
-                        errors = [
-                            result
-                            for result in results
-                            if isinstance(result, Exception)
-                        ]
+                        errors = [result for result in results if isinstance(result, Exception)]
                         if errors:
                             logger.warning(
                                 "Some pipelines failed to process event",
@@ -839,16 +1251,48 @@ class PipelineManager:
 
     @property
     def is_running(self) -> bool:
-        """Check if the pipeline manager is running."""
+        """Check if the pipeline manager is currently running and processing events.
+
+        Returns:
+            True if the manager is started and actively processing events through
+            the internal processing loop, False if stopped or not yet started.
+
+        """
         return self._is_running
 
     @property
     def queue_size(self) -> int:
-        """Get the current size of the event queue."""
+        """Get the current number of events in the processing queue.
+
+        Provides insight into the current queue depth for monitoring and
+        capacity planning. High queue sizes may indicate processing bottlenecks
+        or high event volume that exceeds processing capacity.
+
+        Returns:
+            Current number of events waiting in the queue for processing.
+
+        """
         return self._event_queue.qsize()
 
     def get_manager_stats(self) -> dict[str, Any]:
-        """Get manager-level statistics."""
+        """Get comprehensive statistics and status information for the manager.
+
+        Collects and aggregates status information from the manager and all
+        registered pipelines including running state, queue status, pipeline
+        counts, and individual pipeline statistics and error summaries.
+
+        This method provides a complete operational view of the manager state
+        for monitoring, debugging, and capacity planning purposes.
+
+        Returns:
+            Dictionary containing comprehensive manager statistics including:
+            - is_running: Current running state of the manager
+            - pipeline_count: Total number of registered pipelines
+            - queue_size: Current event queue depth
+            - pipelines: Per-pipeline status and statistics including start state,
+              component counts, processing statistics, and error summaries
+
+        """
         return {
             "is_running": self._is_running,
             "pipeline_count": len(self._pipelines),

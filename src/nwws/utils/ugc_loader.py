@@ -1,9 +1,25 @@
 # pyright: standard
-"""UGC (Universal Geographic Code) loader utility.
+"""UGC (Universal Geographic Code) loader utility for offline geographic data resolution.
 
-This module provides functionality to load UGC data from pyIEM's bundled
-parquet files and create a UGCProvider for resolving UGC codes to names
-without requiring a PostgreSQL database.
+This module provides comprehensive functionality to load and process UGC data from pyIEM's
+bundled parquet files, enabling geographic code resolution without requiring a PostgreSQL
+database connection. The module serves as a critical component in the NWWS2MQTT system
+for translating geographic codes found in weather messages into human-readable names.
+
+The UGC system is used by the National Weather Service to identify specific geographic
+areas (counties and forecast zones) in weather products. This module creates an offline
+UGCProvider that can resolve UGC codes like "MIC084" (Macomb County, Michigan) or
+"MIZ084" (Southeast Michigan forecast zone) to their corresponding names and associated
+Weather Forecast Office (WFO) information.
+
+Key Components:
+- Loading county and zone geographic data from parquet files
+- Processing UGC codes into structured UGC objects with proper geoclass classification
+- Creating a legacy dictionary mapping for efficient code lookup
+- Providing fallback error handling for robust operation
+
+The module integrates with pyIEM's data distribution system and provides a self-contained
+solution for geographic code resolution in weather message processing pipelines.
 """
 
 import importlib.resources
@@ -15,28 +31,44 @@ from pyiem.nws.ugc import UGC, UGCProvider
 
 
 def load_ugc_dataframes() -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
-    """Load UGC county and zone data from pyIEM's bundled parquet files.
+    """Load UGC county and zone geographic data from pyIEM's distributed parquet files.
+
+    This function accesses the pyIEM package's bundled geographic data files to load
+    Universal Geographic Code (UGC) information for both counties and forecast zones.
+    The data is distributed as part of the pyIEM package installation and provides
+    comprehensive coverage of all NWS geographic areas without requiring external
+    database connections.
+
+    The function uses importlib.resources to access the bundled parquet files in a
+    cross-platform compatible manner, handling both traditional and namespace package
+    installations. It loads two separate datasets: county-level UGC codes (geoclass 'C')
+    and forecast zone UGC codes (geoclass 'Z'), each containing geographic boundaries,
+    UGC identifiers, and associated Weather Forecast Office assignments.
+
+    The loaded GeoDataFrames contain spatial geometry information along with UGC
+    metadata, enabling both geographic operations and code resolution functionality.
+    Debug logging is performed to track the number of records loaded from each dataset
+    for monitoring and troubleshooting purposes.
 
     Returns:
-        Tuple of (county_df, zone_df) GeoDataFrames containing UGC data.
+        Tuple of (county_df, zone_df) GeoDataFrames containing UGC data with spatial
+        geometry and metadata fields including UGC codes and WFO assignments.
 
     Raises:
-        FileNotFoundError: If the parquet files cannot be found.
-        Exception: For other errors during file loading.
+        FileNotFoundError: If the pyIEM parquet data files cannot be located in the
+            package resources, indicating a corrupted or incomplete installation.
+        ImportError: If the pyIEM package is not properly installed or accessible.
+        OSError: For file system errors during parquet file reading operations.
 
     """
     try:
         # Load county data
-        county_traversable = (
-            importlib.resources.files("pyiem.data.geodf") / "ugcs_county.parquet"
-        )
+        county_traversable = importlib.resources.files("pyiem.data.geodf") / "ugcs_county.parquet"
         county_path_str = str(county_traversable)
         county_df = gpd.read_parquet(county_path_str)
 
         # Load zone data
-        zone_traversable = (
-            importlib.resources.files("pyiem.data.geodf") / "ugcs_zone.parquet"
-        )
+        zone_traversable = importlib.resources.files("pyiem.data.geodf") / "ugcs_zone.parquet"
         zone_path_str = str(zone_traversable)
         zone_df = gpd.read_parquet(zone_path_str)
 
@@ -56,17 +88,39 @@ def load_ugc_dataframes() -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
     return county_df, zone_df
 
 
-def create_ugc_legacy_dict(
-    county_df: "pd.DataFrame", zone_df: "pd.DataFrame"
-) -> dict[str, UGC]:
-    """Create a legacy dictionary mapping UGC codes to UGC objects.
+def create_ugc_legacy_dict(county_df: "pd.DataFrame", zone_df: "pd.DataFrame") -> dict[str, UGC]:
+    """Create a comprehensive legacy dictionary mapping UGC codes to structured UGC objects.
+
+    This function processes raw UGC data from county and zone DataFrames and transforms
+    them into a standardized dictionary structure compatible with pyIEM's UGCProvider
+    legacy format. The function performs critical data parsing and validation to ensure
+    proper UGC code structure and extract geographic classification information.
+
+    The processing workflow involves:
+    1. Iterating through county and zone DataFrames using iterrows() to avoid pandas
+       Series ambiguity issues with mixed data types
+    2. Parsing UGC codes to extract state abbreviation, geoclass ('C' for county, 'Z'
+       for zone), and numeric identifier components
+    3. Safely extracting County Warning Area (CWA/WFO) assignments with robust null
+       value handling to prevent pandas conversion errors
+    4. Creating structured UGC objects with proper metadata and WFO associations
+    5. Validating UGC code format and length before processing
+
+    The function handles data quality issues commonly found in geographic datasets,
+    including missing values, inconsistent data types, and malformed UGC codes. It
+    applies defensive programming practices to ensure robustness when processing
+    real-world data that may contain anomalies or missing fields.
 
     Args:
-        county_df: DataFrame containing county UGC data.
-        zone_df: DataFrame containing zone UGC data.
+        county_df: DataFrame containing county UGC data with index as UGC codes
+            and columns including 'cwa' for Weather Forecast Office assignments.
+        zone_df: DataFrame containing forecast zone UGC data with similar structure
+            to county_df but representing weather forecast zones instead of counties.
 
     Returns:
-        Dictionary mapping UGC codes (e.g., 'MIZ084') to UGC objects.
+        Dictionary mapping UGC code strings (e.g., 'MIC084', 'MIZ084') to UGC objects
+        containing parsed geographic information, names, and WFO associations. The
+        dictionary serves as a lookup table for efficient UGC code resolution.
 
     """
     legacy_dict: dict[str, UGC] = {}
@@ -142,13 +196,41 @@ def create_ugc_legacy_dict(
 
 
 def create_ugc_provider() -> UGCProvider:
-    """Create a UGCProvider with local data for UGC name resolution.
+    """Create a fully configured UGCProvider instance for offline geographic code resolution.
+
+    This function serves as the primary entry point for creating a UGCProvider that can
+    resolve UGC codes to geographic names without requiring database connectivity. It
+    orchestrates the complete data loading and processing pipeline to create a self-contained
+    geographic resolution service suitable for weather message processing applications.
+
+    The function implements a robust initialization sequence:
+    1. Loading county and zone geographic data from pyIEM's bundled parquet files
+    2. Processing the raw data into a structured legacy dictionary format
+    3. Instantiating a UGCProvider with the processed data for immediate use
+    4. Implementing comprehensive error handling with graceful degradation
+
+    The resulting UGCProvider enables resolution of UGC codes commonly found in National
+    Weather Service products, such as converting "MIC163" to "Wayne County, Michigan" or
+    "MIZ084" to "Southeast Michigan forecast zone". This capability is essential for
+    weather message processing systems that need to provide human-readable geographic
+    context for weather warnings, watches, and forecasts.
+
+    Error handling includes graceful degradation where a connection failure or data
+    loading issue results in an empty UGCProvider rather than system failure, ensuring
+    the calling application can continue operating with reduced functionality rather
+    than crashing completely.
 
     Returns:
-        UGCProvider instance configured with local UGC data.
+        UGCProvider instance configured with comprehensive UGC data for both counties
+        and forecast zones, ready for immediate geographic code resolution operations.
+        In case of data loading failures, returns an empty UGCProvider as a fallback.
 
     Raises:
-        Exception: If UGC data cannot be loaded or processed.
+        ImportError: If the pyIEM package dependencies are not properly installed
+            or accessible in the current Python environment.
+        OSError: For file system errors during parquet data file access or processing.
+        ValueError: If the loaded UGC data contains invalid or unparseable values
+            that prevent proper UGCProvider initialization.
 
     """
     try:
